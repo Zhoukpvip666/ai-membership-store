@@ -72,11 +72,11 @@ Exact structure may be refined during scaffold task, but preserve module boundar
 ### Frontend
 - Public storefront routes.
 - Authenticated customer routes.
-- Administrator routes protected by role checks.
+- One unified owner/admin console route group protected by the ADMIN role. It combines merchant operations and administrative controls; do not build separate merchant and administrator frontends.
 - Central API client and error handling.
 - Form renderer based on product field definitions.
 - Customer order and subscription views.
-- Admin tables, filters, detail views, and state-transition actions.
+- Unified owner/admin tables, filters, detail views, product controls, customer management, and order/subscription state-transition actions.
 
 Frontend route guards are UX only. Backend enforces authorization on every protected endpoint.
 
