@@ -8,6 +8,16 @@
 - Keep docs synchronized with implementation.
 - Owner reviews each milestone before next substantial milestone.
 
+## Architecture decision — single merchant
+
+**Status: Confirmed by owner**
+
+- [x] One site owner is the only merchant.
+- [x] Customers are buyers only; no customer sub-merchant accounts.
+- [x] No multi-merchant onboarding, merchant wallets, merchant balances, merchant withdrawals, or split settlement.
+- [x] Payment provider account and settlement relationship belong to the site owner.
+- [x] Provider-level delayed settlement/held funds are optional external capabilities, never simulated by application order status.
+
 ## Phase 0 — Planning baseline
 
 **Status: Complete**
