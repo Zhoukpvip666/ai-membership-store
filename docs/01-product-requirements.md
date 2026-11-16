@@ -49,7 +49,9 @@ The first release deliberately supports manual operations. It must be useful bef
 - Place a renewal order.
 - Manage basic profile and notification email.
 
-### Administrator / operator
+### Owner / administrator (single back office)
+The site owner uses one unified management console. Do not split it into a separate merchant portal and system-administrator portal.
+
 - View dashboard metrics and operational queues.
 - Create, edit, publish, archive, and sort products.
 - Configure product type, initial price, renewal price, service duration, and form fields.
@@ -112,7 +114,17 @@ The order preserves the product name, product type, selling price, renewal price
 - Provide password change and logout.
 - Do not expose authentication secrets or internal notes.
 
-## 7. Administrator pages
+## 7. Unified owner/admin console
+
+There is one management console for the site owner. Its navigation combines all merchant operations and administrative controls; no separate merchant-side application or admin-side application is required.
+
+Recommended navigation:
+1. Overview
+2. Products
+3. Orders
+4. Subscriptions
+5. Users
+6. Settings
 
 ### Dashboard
 - Customer sales total for a selected period.
