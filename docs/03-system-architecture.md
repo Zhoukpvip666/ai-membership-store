@@ -70,6 +70,8 @@ Exact structure may be refined during scaffold task, but preserve module boundar
 ## 4. Runtime components
 
 ### Frontend
+- Follow [08-interface-specification.md](08-interface-specification.md) as the UI source of truth.
+- Implement the first customer and owner/admin interfaces with local mock data before wiring backend business workflows.
 - Public storefront routes.
 - Authenticated customer routes.
 - One unified owner/admin console route group protected by the ADMIN role. It combines merchant operations and administrative controls; do not build separate merchant and administrator frontends.
@@ -77,6 +79,8 @@ Exact structure may be refined during scaffold task, but preserve module boundar
 - Form renderer based on product field definitions.
 - Customer order and subscription views.
 - Unified owner/admin tables, filters, detail views, product controls, customer management, and order/subscription state-transition actions.
+- Customer desktop navigation is a top bar; customer mobile navigation is a fixed four-item bottom bar. Admin desktop navigation is a left sidebar; on mobile/tablet it becomes a horizontally scrollable navigation row.
+- The first UI prototype must not call real payment, refund, settlement, SMTP, or supplier services.
 
 Frontend route guards are UX only. Backend enforces authorization on every protected endpoint.
 
