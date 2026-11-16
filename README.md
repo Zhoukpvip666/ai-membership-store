@@ -77,6 +77,7 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 6. docs/05-api-contract.md — initial API contract.
 7. docs/06-security-and-operations.md — security, privacy, and operational rules.
 8. docs/07-development-roadmap.md — phased implementation plan and acceptance criteria.
+9. docs/08-interface-specification.md — approved customer and owner/admin responsive UI specification.
 
 ## Important launch gates
 
