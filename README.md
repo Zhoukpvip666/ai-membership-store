@@ -41,7 +41,7 @@ The platform must distinguish customer payment, supplier payment, and service fu
 - Manual recording of supplier transfer and supplier fulfillment.
 - Customer completion email.
 - Subscription list, renewal price, expiry date, renewal orders, and expiry reminders.
-- Admin dashboard, product management, order management, subscription management, and user management.
+- One unified owner/admin console combining the dashboard, product management, order management, subscription management, user management, and settings. There is no separate merchant portal and administrator portal.
 - Audit trail for important administrative actions.
 
 ## Explicitly out of scope for the MVP
