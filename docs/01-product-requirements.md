@@ -78,6 +78,8 @@ A one-time service has a name, description, category, one-time selling price, re
 ### Price snapshots
 The order preserves the product name, product type, selling price, renewal price (when relevant), term, and supplier cost reference as they were when the order was placed. Later product edits must not rewrite historical orders.
 
+The approved page layouts, responsive behavior, concise visual style, and prototype interactions are specified in [08-interface-specification.md](08-interface-specification.md). Treat that document as the UI source of truth.
+
 ## 6. Customer-facing pages
 
 ### Product catalog
@@ -132,14 +134,13 @@ Recommended navigation:
 - Subscription count and upcoming expirations.
 - Pending payment verification.
 - Orders waiting for supplier transfer or fulfillment.
-- Estimated gross margin based on recorded selling and supplier costs.
+- Keep the overview simple: today's verified receipts, this month's verified receipts, total order count, pending-delivery count, recent orders, and active/expired subscription counts. Do not show supplier procurement cost, gross profit, merchant wallet balance, or withdrawable balance in the first version.
 
 ### Product management
 - Product CRUD and publication status.
 - Product type: subscription or one-time.
 - Initial price and renewal price.
 - Term description and configured duration.
-- Supplier cost reference (internal only).
 - Product-specific form field configuration.
 - Product images and display ordering.
 
@@ -180,6 +181,7 @@ Recommended navigation:
 
 ### Customer payment
 - MVP payment verification is manual.
+- The first frontend prototype uses mock checkout only. Real payment integration is out of scope until an eligible provider is selected and approved.
 - The checkout page may display administrator-configured, compliant payment instructions.
 - A customer clicking "I have paid" only changes the order to pending verification; it does not mark the order paid.
 - An administrator verifies the actual transaction in the relevant payment account.
@@ -203,7 +205,7 @@ Recommended navigation:
 ### Failure and refund
 - Supplier rejection, delay, or failure is recorded as an exception.
 - Operator contacts customer and decides whether to retry, offer an alternative, or refund under the published policy.
-- Refunds are performed through the actual payment provider/account, not simulated by changing a database status.
+- Refunds are performed through the actual payment provider/account, not simulated by changing a database status. The first frontend prototype may show a simulated refund interaction only and must label it clearly.
 - Record the external refund reference and operator.
 
 ## 9. Subscription and renewal rules
