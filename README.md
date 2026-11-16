@@ -4,6 +4,10 @@ A private, independently operated storefront and order-management system for AI 
 
 **Project status:** Planning baseline. No application code has been implemented yet.
 
+## Operating model: single merchant
+
+This is a **single-merchant storefront**. The site owner is the only merchant and the payment beneficiary. Customers are buyers, not merchants, and do not receive payment-provider sub-merchant accounts. Do not build merchant onboarding, multi-merchant balances, merchant withdrawals, merchant settlement wallets, or marketplace split payments. The payment provider account belongs to the site owner; the application records order, payment, refund, and settlement information returned by the provider. Any order-level delayed settlement or refund-from-held-funds capability must be explicitly supported by the selected provider and contract; it cannot be created by changing an order status in this application.
+
 ## Business model
 
 The platform is a reseller storefront. It does not initially automate the supplier's membership activation process.
