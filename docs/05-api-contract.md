@@ -6,6 +6,10 @@ Initial contract for MVP. Formalize schemas in TypeScript and validate with Zod 
 
 ## 1. Conventions
 
+### Single-merchant API boundary
+
+All `/admin/*` routes operate on the one site-owner merchant account. There are no merchant registration, sub-merchant creation, merchant wallet, balance, withdrawal, or marketplace split-payment endpoints. Customer APIs represent buyers only. Payment-provider credentials identify the site owner's merchant account and remain server-side. Provider settlement/refund status may be recorded, but application order status does not itself freeze or release funds.
+
 - JSON request/response.
 - Authentication through secure server-side session cookie.
 - Every protected route enforces backend authorization.
