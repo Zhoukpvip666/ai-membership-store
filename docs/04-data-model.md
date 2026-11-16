@@ -4,6 +4,10 @@ Logical model for MVP. Codex may refine column names and Prisma relations but mu
 
 ## 1. Core entities
 
+### Single-merchant configuration
+
+There is no `merchants` table and no per-customer payment account. The MVP has one owner/admin account and one payment-provider merchant configuration supplied through deployment secrets or provider-approved configuration. Do not model customer balances, merchant wallets, withdrawable balances, or sub-merchant accounts. If provider settlement reporting is integrated later, store provider transaction/settlement references as records for the single owner merchant, not as user-owned wallets.
+
 ### users
 Customer and administrator accounts.
 
