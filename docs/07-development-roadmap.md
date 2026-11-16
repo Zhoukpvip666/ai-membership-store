@@ -23,7 +23,7 @@
 **Status: Complete**
 
 - [x] Record business model and manual fulfillment workflow.
-- [x] Define customer and administrator pages.
+- [x] Define customer pages and one unified owner/admin console (not separate merchant and administrator portals).
 - [x] Define subscription versus one-time product behavior.
 - [x] Define proposed stack and modular-monolith architecture.
 - [x] Define initial domain model and API contract.
@@ -69,8 +69,9 @@ Acceptance:
 
 - Implement customer register/login/logout.
 - Implement server-side session cookie.
-- Implement admin role guard.
-- Add minimal protected admin route.
+- Implement one ADMIN role for the site owner.
+- Protect the unified owner/admin console and all its APIs with the ADMIN role.
+- Add a minimal protected management-console route.
 
 Acceptance:
 - Customer can register/login/logout.
