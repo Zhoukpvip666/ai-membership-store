@@ -3,7 +3,7 @@
 ## Before changing code
 
 1. Read this file and every document listed in the README documentation reading order.
-2. Treat the documents as the current product baseline.
+2. Treat the documents as the current product baseline. For UI work, follow docs/08-interface-specification.md as the approved source of truth.
 3. Check the existing repository before creating or replacing files. Preserve user changes.
 4. Work on only the explicitly requested task or the next not-yet-completed task in the roadmap. Do not implement the entire roadmap in one run.
 5. If a requirement is ambiguous or conflicts with the current implementation, stop and report the exact decision needed instead of inventing business rules.
@@ -28,6 +28,15 @@
 - Subscription renewal creates a new order. It is not an automatic recurring charge.
 - Do not assume that a renewal extends an existing expiry date by a fixed number of days. The operator must record the expiry date confirmed by the supplier until a product-specific renewal rule is verified.
 - Do not add a real payment gateway or supplier API integration unless the user explicitly approves the provider, credentials, product eligibility, and integration scope.
+
+## UI prototype constraints
+
+- The customer storefront and the unified owner/admin console are the only two application surfaces.
+- The owner/admin console combines merchant operations and administrator functions; do not create separate merchant and administrator portals.
+- Follow docs/08-interface-specification.md for layout, responsive behavior, navigation, and page content.
+- The first UI prototype uses mock data only. Clearly label simulated checkout, completion, and refund actions.
+- Never connect mock buttons to real payment, refund, settlement, supplier, or email operations.
+- Do not add procurement-cost, gross-profit, merchant-wallet, or merchant-withdrawal UI to the first version.
 
 ## Security and privacy constraints
 
