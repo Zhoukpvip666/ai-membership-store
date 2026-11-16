@@ -4,6 +4,10 @@
 
 Use a modular monolith for the MVP. Frontend and backend are separate applications in one repository. Keep domain modules separated in code, but deploy one API service and one database initially.
 
+### Single-merchant boundary
+
+The application serves one merchant: the site owner. There is one configured payment-provider merchant identity, not one payment account per customer. Do not add merchant tenant IDs, merchant onboarding, sub-merchant creation, merchant wallets, merchant withdrawal APIs, or platform split-payment logic. Customer accounts are buyer accounts only. Provider credentials and onboarding are configured for the owner outside the application. The application records provider payment/refund/settlement events; it does not custody funds. Delayed settlement or order-level fund holds are provider capabilities and must not be simulated in application logic.
+
 Do not introduce microservices, Redis, Kubernetes, or a message broker without a measured requirement.
 
 ## 2. Proposed technology stack
