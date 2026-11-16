@@ -6,6 +6,15 @@ Build an independent storefront for reselling AI membership services and other d
 
 The first release deliberately supports manual operations. It must be useful before the supplier has an API and before an automated payment API is available.
 
+## 1.1 Operating model: single merchant only
+
+- The site owner is the only merchant and the only seller using the merchant console.
+- Customers are buyers only. Customer registration must never create a merchant account or a payment-provider sub-merchant account.
+- There is no public merchant registration, merchant onboarding, merchant store, merchant wallet, merchant balance, merchant withdrawal, marketplace split settlement, or multi-merchant commission feature.
+- The owner configures one payment-provider merchant identity through provider credentials and onboarding outside the application.
+- The application may display the owner's order-level payment, refund, and settlement records returned by the provider. It does not hold customer funds or independently custody/transfer money.
+- If the selected provider offers a compliant order-level delayed-settlement, split, or refund-from-held-funds product, it may be integrated only after the owner confirms provider eligibility and contract terms. The application cannot freeze funds merely by keeping an order in a pending state.
+
 ## 2. Goals
 
 - Present subscription services and one-time services with clear prices and terms.
