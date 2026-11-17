@@ -32,9 +32,13 @@
 
 ## Phase 1 — Repository scaffold and foundation
 
-**Status: Not started**
+**Status: In progress — Task 1.1 implemented; Task 1.2 not started**
 
-### Task 1.1 — Scaffold frontend and backend
+### Task 1.1 — Scaffold the application and implement the first UI prototype
+
+**Status: Complete — scaffold, Mock UI and validation passed.** See [implementation report](09-task-1.1-report.md).
+
+Scope updated by the owner's explicit Task 1.1 instruction: include the local Mock UI in docs/08-interface-specification.md. This supersedes the original scaffold-only restriction; backend business features remain excluded.
 
 - Create agreed repository structure.
 - Initialize Vue 3 + TypeScript + Vite frontend.
@@ -43,7 +47,9 @@
 - Add .gitignore and .env.example.
 - Add health endpoint.
 - Add Docker Compose for local MySQL.
-- Do not build product/order features in this task.
+- Implement all four customer sections and six unified owner/admin sections with local Mock data only.
+- Implement responsive navigation, product filters/add/edit/toggles, local checkout, order filtering/detail/simulated completion/refund, subscription filtering/detail/renewal, and user/settings/profile prototype interactions.
+- Do not implement business APIs, Prisma, migrations, real authentication, or payment/refund/settlement/SMTP/supplier integrations.
 
 Acceptance:
 - Frontend starts locally.
@@ -52,6 +58,9 @@ Acceptance:
 - MySQL starts with Docker Compose.
 - No secrets committed.
 - README includes exact setup commands.
+- Desktop/mobile layout and local interactions follow docs/08-interface-specification.md.
+- Build, type checks, lint, formatting, unit tests and available browser tests pass.
+- Only Task 1.1 is implemented; stop for owner review before Task 1.2.
 
 ### Task 1.2 — Database and shared configuration
 
@@ -241,4 +250,4 @@ Acceptance:
 
 ## First Codex task
 
-Start with **Task 1.1 — Scaffold frontend and backend** only after owner confirms proposed stack and visual direction. Do not start product, payment, supplier, subscription, or UI feature implementation in scaffold task.
+Task 1.1 now includes the owner-authorized Mock UI prototype following docs/08-interface-specification.md. Review the prototype and verification results before authorizing Task 1.2. Do not start subsequent database or business implementation automatically.

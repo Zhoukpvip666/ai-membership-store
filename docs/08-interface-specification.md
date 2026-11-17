@@ -50,7 +50,7 @@ The same Vue application may serve both surfaces with route-level layouts and au
 ### 3.3 Customer pages
 
 **商品**
-- Show active/purchasable products and simple category filters.
+- Show listed products and simple category filters. Listing alone determines catalog visibility; a listed product remains visible when new purchases are disabled, with a disabled 暂不可购买 button.
 - Subscription and one-time products are visually distinguishable.
 - Product prices and terms come from product configuration.
 
@@ -68,6 +68,7 @@ The same Vue application may serve both surfaces with route-level layouts and au
 
 **我的订单**
 - Customer-facing primary order statuses are only 待发货 and 已完成.
+- Payment is a separate dimension: an unpaid local order displays 未付款 with fulfillment 未开始. Only confirmed-paid pending orders display 待发货. The unpaid filter is a payment-derived view, not a new fulfillment state.
 - A refunded order may display 已退款 as a terminal outcome.
 - Show product, order number, date, amount, and status.
 - Detail view can show a concise timeline.
@@ -112,6 +113,7 @@ No merchant registration, merchant onboarding, merchant wallet, merchant balance
 - Four simple metrics: 今日已确认收款, 本月已确认收款, 累计订单, 待发货订单.
 - Recent orders list/table.
 - Subscription summary: active and expired counts.
+- 待发货订单 counts only confirmed-paid pending orders; unpaid orders remain in total orders but do not enter the delivery queue.
 - Do not show supplier procurement cost, gross profit, merchant wallet balance, or withdrawable balance in this first version.
 - Sales figures count verified customer payments and account for recorded refunds. They are not the same as provider settlement/withdrawal figures.
 
@@ -122,6 +124,7 @@ No merchant registration, merchant onboarding, merchant wallet, merchant balance
   - Whether the product is listed/visible.
   - Whether new customers can purchase.
   - Whether existing subscribers can renew.
+- Listing controls catalog visibility only. Disabling new purchases keeps a listed card visible with a disabled purchase button; new checkout requires both listing and new-purchase permission. Renewal depends only on the renewal switch and subscription eligibility, independently of listing/new-purchase switches. Closing renewal does not prevent new purchases when they remain enabled.
 - Delisting must not delete historical orders or subscriptions.
 - Disabling new purchases or renewals must not automatically terminate existing subscriptions.
 - No supplier cost field in the first-version UI.
@@ -129,11 +132,13 @@ No merchant registration, merchant onboarding, merchant wallet, merchant balance
 **订单管理**
 - List/search/filter by order number, customer, and primary status.
 - Customer-facing primary states: 待发货, 已完成; show 已退款 after confirmed refund.
+- Display payment separately from order/fulfillment state. Unpaid pending orders display 未付款 in lists, details and linked history; they must not match the 待发货 filter.
 - Order detail shows order number, product snapshot, customer contact email, approved non-sensitive form data, amount, payment status, and fulfillment state.
 - Main actions for a paid pending order: 确认已完成 and 申请退款.
 - 确认已完成 means the owner confirms service fulfillment; it does not automatically prove payment settlement or release funds.
 - Refund action creates a refund request through the payment provider when integrated. Keep internal refund states separate: 未申请, 处理中, 成功, 失败.
 - Never mark an order refunded merely because the owner clicked the refund button. Only a confirmed provider result changes refund status to success.
+- In the local mock flow, simulated success also changes fulfillment to CANCELLED (已取消), while retaining historical payment confirmation. A pending/failed refund leaves fulfillment unchanged. Refunded fixtures and detail views must follow the same rule.
 - No customer self-service refund application in the first version; customers contact the merchant privately.
 
 **订阅管理**
@@ -163,6 +168,7 @@ The first implementation is a frontend prototype using mock data:
 - Navigation between all customer and management pages works.
 - Product filters work.
 - Product add/edit/listing and purchase/renewal toggles work locally.
+- The eight combinations of listing/new-purchase/renewal switches preserve independent visibility, checkout and renewal behavior without changing historical orders or current entitlement dates.
 - Order list filters and detail view work.
 - Mock 确认已完成 updates the local mock order state.
 - Mock 申请退款 shows a confirmation and a clearly labelled simulated result; it must not call a real provider or claim real money moved.

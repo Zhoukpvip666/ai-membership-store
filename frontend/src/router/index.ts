@@ -1,0 +1,65 @@
+import { createRouter, createWebHistory } from 'vue-router'
+import StoreLayout from '../layouts/StoreLayout.vue'
+import AdminLayout from '../layouts/AdminLayout.vue'
+
+export const router = createRouter({
+  history: createWebHistory(),
+  scrollBehavior: () => ({ top: 0 }),
+  routes: [
+    {
+      path: '/',
+      component: StoreLayout,
+      children: [
+        {
+          path: '',
+          name: 'catalog',
+          component: () => import('../views/storefront/Catalog.vue'),
+        },
+        {
+          path: 'subscriptions',
+          component: () => import('../views/account/Subscriptions.vue'),
+        },
+        {
+          path: 'orders',
+          component: () => import('../views/account/Orders.vue'),
+        },
+        {
+          path: 'profile',
+          component: () => import('../views/account/Profile.vue'),
+        },
+      ],
+    },
+    {
+      path: '/admin',
+      component: AdminLayout,
+      children: [
+        { path: '', component: () => import('../views/admin/Overview.vue') },
+        {
+          path: 'products',
+          component: () => import('../views/admin/Products.vue'),
+        },
+        {
+          path: 'orders',
+          component: () => import('../views/account/Orders.vue'),
+          props: { admin: true },
+        },
+        {
+          path: 'subscriptions',
+          component: () => import('../views/account/Subscriptions.vue'),
+          props: { admin: true },
+        },
+        { path: 'users', component: () => import('../views/admin/Users.vue') },
+        {
+          path: 'settings',
+          component: () => import('../views/admin/Settings.vue'),
+        },
+      ],
+    },
+    { path: '/:pathMatch(.*)*', redirect: '/' },
+  ],
+})
+router.afterEach((to) => {
+  document.title =
+    (to.path.startsWith('/admin') ? '管理控制台' : 'AI 会员商店') +
+    ' · Mock 原型'
+})

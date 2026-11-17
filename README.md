@@ -2,7 +2,7 @@
 
 A private, independently operated storefront and order-management system for AI membership services and other digital services.
 
-**Project status:** Planning baseline. No application code has been implemented yet.
+**Project status:** Task 1.1 scaffold and local Mock UI prototype implemented. Task 1.2 has not started.
 
 ## Operating model: single merchant
 
@@ -59,7 +59,7 @@ The platform must distinguish customer payment, supplier payment, and service fu
 These are implementation defaults, not irreversible decisions. Confirm any change before implementation.
 
 - Frontend: Vue 3, TypeScript, Vite.
-- UI: Element Plus for the first implementation; visual style remains to be confirmed.
+- UI: Element Plus; approved visual baseline in docs/08-interface-specification.md.
 - Backend: Node.js 24, TypeScript, Express.
 - Database: MySQL 8.
 - ORM and migrations: Prisma.
@@ -85,10 +85,16 @@ Before accepting real orders, the operator must verify that the supplier is auth
 
 ## Repository structure
 
-~~~text
+```text
 .
 ├── AGENTS.md
 ├── README.md
+├── package.json             # npm workspaces and common checks
+├── frontend/                # Vue 3 / TypeScript / Vite / Element Plus
+├── backend/                 # Node.js 24 / TypeScript / Express health API
+├── e2e/                     # desktop and mobile browser checks
+├── compose.yaml             # development-only MySQL 8.4
+├── .env.example
 └── docs/
     ├── 01-product-requirements.md
     ├── 02-user-and-operations-flows.md
@@ -96,5 +102,74 @@ Before accepting real orders, the operator must verify that the supplier is auth
     ├── 04-data-model.md
     ├── 05-api-contract.md
     ├── 06-security-and-operations.md
-    └── 07-development-roadmap.md
-~~~
+    ├── 07-development-roadmap.md
+    └── 08-interface-specification.md
+```
+
+## Local development — Task 1.1
+
+Prerequisites: Node.js **24.x**, npm, and Docker with Compose. Run all commands from the repository root. On PowerShell, use `npm.cmd` if the local execution policy blocks `npm.ps1`.
+
+```powershell
+npm ci
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+```
+
+For a fresh clone, replace the two password placeholders in your local `.env` before starting MySQL. Preserve an existing `.env` so that its credentials continue to match the initialized database volume. Never commit `.env`. The application database user is separate from root. The default host port is **3307**, to avoid a common local MySQL conflict; change `MYSQL_PORT` if needed.
+
+```powershell
+docker compose config --quiet
+docker compose up -d --wait mysql
+npm run dev
+```
+
+- Storefront: [http://localhost:5173](http://localhost:5173)
+- Unified owner/admin console: [http://localhost:5173/admin](http://localhost:5173/admin)
+- Health: [http://127.0.0.1:3000/api/v1/health](http://127.0.0.1:3000/api/v1/health), returns `{"status":"ok"}`. `/health` is an alias. This is a process-health check, not a database-readiness check.
+- MySQL: `127.0.0.1:3307`, database/user from `.env`; named volume `mysql-data` preserves development data.
+
+Frontend and backend can also run separately in two terminals:
+
+```powershell
+npm run dev:web
+npm run dev:api
+```
+
+The frontend works with the API and MySQL stopped. There are **no business API calls or database connections** in this prototype.
+
+To stop development, press Ctrl+C in the application terminal and run `docker compose stop mysql`. To remove the development container while retaining its data, use `docker compose down`; do not add `--volumes` unless you intend to delete the local database.
+
+## Prototype behavior and boundaries
+
+- Four customer pages: product catalog, subscriptions, orders, profile. Six unified management pages: overview, products, orders, subscriptions, users, settings.
+- Responsive desktop top navigation / mobile safe-area bottom navigation; desktop admin sidebar / horizontally scrollable tablet and mobile navigation; horizontally scrollable tables and mobile dialogs.
+- Product category filters, local add/edit, independent listing / new-purchase / renewal controls. Listing controls catalog visibility; disabling new purchases keeps a listed card visible with a disabled 暂不可购买 button. New checkout requires listing and new-purchase permission; eligible existing subscriptions can renew solely according to the renewal switch, even when delisted or closed to new purchases. Disabling renewal does not block permitted new purchases. These switches preserve historical orders and existing entitlement dates.
+- Checkout collects notification email plus a configured target email or project name where required. It creates an **unpaid local mock order**, without a payment operation. Prices are integer CNY fen; orders retain product and price snapshots.
+- Customer lists show only the fictitious demo customer's records. Renewal creates a separate order linked to the subscription and does not extend its expiry.
+- Order search/status filters, details and timeline show payment independently: unpaid orders display 未付款 and fulfillment 未开始 in customer/admin lists, details, overview recent orders and linked subscription history. Only confirmed-paid pending orders match 待发货. Seeded paid pending orders support simulated completion and simulated refund. Refund request enters processing; an explicit simulated success/failure result is needed. Only success shows 已退款 and cancels fulfillment (已取消), retaining historical payment confirmation. Pending/failed refunds leave fulfillment unchanged and failed simulations can retry. Unpaid, completed, and refunded orders do not expose these pending-order actions.
+- Subscription filters/details include confirmed sample dates, masked identifiers and linked initial/renewal order history. Disabling renewal preserves the current entitlement and explains why renewal is unavailable.
+- User search/detail links to that customer's orders and subscriptions. Profile notification email, demo sign-out/re-entry, basic system settings and email preferences work locally.
+- Overview computes verified mock receipts minus confirmed mock refunds by event date in the configured business timezone (default Asia/Shanghai), plus total orders, confirmed-paid pending orders and active/expired subscriptions. Unpaid orders increase the total but not the delivery queue count.
+
+All fixture names, products, contacts (`example.com`), orders and metrics are fictitious. State is shared between the two surfaces **only in the same browser tab**, held in memory, and reset on refresh; there is no localStorage persistence. No payment, refund, funds transfer, settlement, SMTP, supplier service or network integration is configured. Both application surfaces are deliberately accessible for demo navigation; **no real authentication or authorization exists yet**. Do not enter real customer information.
+
+The backend exposes health and JSON 404 responses only. Prisma, database schemas/migrations, shared environment validation, request logging, authentication, server-side authorization, business APIs, entitlement changes, subscription date correction/termination, email workers and production deployment remain future tasks. No business tables are created in Task 1.1.
+
+## Checks
+
+See [the Task 1.1 implementation report](docs/09-task-1.1-report.md) for implemented behavior, verification coverage, remaining scope, and the complete changed-file list.
+
+```powershell
+npm run typecheck
+npm run lint
+npm run format:check
+npm test
+npm run build
+npm run test:e2e
+```
+
+Browser tests use installed **Microsoft Edge** via Playwright on desktop and at an iPhone-sized viewport. Install Edge first if it is unavailable; the tests do not require downloading Playwright's browser bundle. Mobile viewport emulation is not a physical iOS-device test. Playwright builds and serves the frontend automatically on loopback port 4175, without the backend, and fails on business API calls. Screenshots and failure traces are written to ignored `test-results/`.
+
+The frontend tests cover checkout validation/snapshots, independent product controls, renewals, completion/refund transitions, duplicate actions and timezone-aware net receipts. Backend tests use an ephemeral HTTP port to check health JSON and absent business routes.
+
+Build artifacts: `frontend/dist/` and `backend/dist/`. To serve compiled output locally, use `npm run preview -w frontend` (default port 4173) and `npm start -w backend` in separate terminals. These commands are development previews, not production deployment configuration.
