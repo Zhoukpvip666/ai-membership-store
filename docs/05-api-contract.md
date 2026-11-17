@@ -1,152 +1,119 @@
-# Initial REST API Contract
+# Local Operations API Contract (Task 1.2)
 
-Base path: /api/v1
-
-Initial contract for MVP. Formalize schemas in TypeScript and validate with Zod during implementation.
+Base path: /api/v1. All payloads are JSON. Timestamps are UTC ISO-8601. Money is integer CNY fen. Validate all input with Zod or an equivalent schema validator. This contract covers the local-only offline operations milestone; online payment and supplier/email APIs are deliberately absent.
 
 ## 1. Conventions
 
-### Single-merchant API boundary
+- Single merchant and one owner ADMIN account.
+- All /admin routes require server-side ADMIN authorization.
+- Customer routes require an authenticated CUSTOMER and enforce ownership.
+- Customers may be PENDING_ACTIVATION and still have admin-managed orders/subscriptions.
+- No public registration, online checkout, payment-provider API, supplier API, SMTP, settlement, or withdrawal endpoints.
+- Stable error shape with code, message, and requestId.
+- Server generates IDs/order numbers and calculates/defaults prices. Never trust browser-supplied payment status, role, or transaction confirmation.
+- Store money in integer fen. Store timestamps in UTC.
+- Do not return password hashes, session token hashes, invitation token hashes, internal notes, or audit metadata to customers.
 
-All `/admin/*` routes operate on the one site-owner merchant account. There are no merchant registration, sub-merchant creation, merchant wallet, balance, withdrawal, or marketplace split-payment endpoints. Customer APIs represent buyers only. Payment-provider credentials identify the site owner's merchant account and remain server-side. Provider settlement/refund status may be recorded, but application order status does not itself freeze or release funds.
-
-- JSON request/response.
-- Authentication through secure server-side session cookie.
-- Every protected route enforces backend authorization.
-- Consistent errors with stable code and human-readable message.
-- Server-generated order numbers.
-- Integer fen for money.
-- UTC timestamps in API payloads.
-- Never return supplier costs, secrets, password hashes, session IDs, or internal notes to customers.
-- Use request IDs for tracing.
-- Validate and normalize all input.
-
-Suggested error:
-
-~~~json
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Please check the submitted fields.",
-    "requestId": "..."
-  }
-}
-~~~
-
-## 2. Authentication
+## 2. Authentication and invitation activation
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | /auth/register | Register customer |
-| POST | /auth/login | Login |
-| POST | /auth/logout | Logout |
-| GET | /auth/me | Current account |
-| POST | /auth/change-password | Change password |
+| POST | /auth/login | Admin/customer login |
+| POST | /auth/logout | Revoke current session |
+| GET | /auth/me | Current account and role |
+| POST | /auth/activate | Consume one-time invitation token and set customer password |
 
-Password reset/email verification may be added after email configuration.
+No public /auth/register route. Admin is seeded from local environment configuration. Customer activation requires a valid, unused, unexpired invitation token. The raw invitation token is never returned by a read endpoint and is never emailed.
 
-## 3. Public catalog
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | /products | List active products |
-| GET | /products/:slug | Product detail and public form fields |
-
-Public responses include selling price, product type, term, renewal price when relevant, and public form metadata. Omit supplier cost and internal supplier details.
-
-## 4. Customer orders
+## 3. Admin customers and invitations
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | /orders | Create order |
-| GET | /me/orders | List current customer's orders |
-| GET | /me/orders/:orderNo | Order detail and customer-visible timeline |
-| POST | /orders/:orderNo/payment-submitted | Optional notice of attempted payment |
+| GET | /admin/users | Search/list customers |
+| POST | /admin/users | Create a PENDING_ACTIVATION customer |
+| GET | /admin/users/:id | Customer detail and order/subscription counts |
+| PATCH | /admin/users/:id | Update display name/notification email |
+| PATCH | /admin/users/:id/status | Disable/enable customer account |
+| POST | /admin/users/:id/invitations | Generate/reissue invitation and return copyable URL once |
+| POST | /admin/invitations/:id/revoke | Revoke an unused invitation |
 
-Order input contains product identifier, optional subscription identifier for renewal, and approved non-sensitive form values. Server determines price and order kind.
+Creating a user and creating a subscription are independent. A pending customer may have orders and subscriptions. Reissuing an invitation revokes previous unused tokens. The UI must warn that localhost invitation URLs are not externally reachable.
 
-Payment-submitted only marks pending verification; it never marks order paid.
-
-## 5. Customer subscriptions
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | /me/subscriptions | List current customer's subscriptions |
-| GET | /me/subscriptions/:id | Subscription detail and renewal history |
-| POST | /me/subscriptions/:id/renew | Create renewal order |
-
-Renewal endpoint checks ownership, eligibility, and current renewal price server-side. It creates a new order; it does not charge customer or extend expiry.
-
-## 6. Admin dashboard and products
+## 4. Admin products and settings
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | /admin/dashboard | Metrics and work queues |
-| GET | /admin/products | List all products |
+| GET | /admin/products | List products including archived |
 | POST | /admin/products | Create product |
-| GET | /admin/products/:id | Product detail |
-| PATCH | /admin/products/:id | Update product |
-| POST | /admin/products/:id/archive | Archive product |
-| PUT | /admin/products/:id/form-fields | Replace product form-field configuration |
+| PATCH | /admin/products/:id | Edit product and independent listing/new-purchase/renewal flags |
+| POST | /admin/products/:id/archive | Soft archive product |
+| GET | /admin/settings | Read store name, owner email, timezone |
+| PATCH | /admin/settings | Update non-secret settings |
 
-Product writes require admin authorization and server validation.
+No supplier-cost or secret credential fields.
 
-## 7. Admin orders and fulfillment
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | /admin/orders | Search/filter orders |
-| GET | /admin/orders/:orderNo | Full internal order detail |
-| POST | /admin/orders/:orderNo/verify-customer-payment | Verify customer payment |
-| POST | /admin/orders/:orderNo/send-supplier-email | Queue/retry supplier email |
-| POST | /admin/orders/:orderNo/record-supplier-transfer | Record manual supplier transfer |
-| POST | /admin/orders/:orderNo/mark-processing | Mark supplier processing |
-| POST | /admin/orders/:orderNo/complete | Confirm fulfillment and queue customer email |
-| POST | /admin/orders/:orderNo/fail | Record fulfillment failure |
-| POST | /admin/orders/:orderNo/record-refund | Record externally completed refund |
-
-Payment verification requires admin and records actor/time. In one transaction it updates payment state, creates supplier fulfillment record, and queues supplier email with unique idempotency key.
-
-Supplier email retry must not create another procurement record.
-
-Recording supplier transfer does not call a bank/payment API.
-
-Completion requires valid state. For subscription order, operator must provide actual start/expiry details confirmed by supplier before activation.
-
-## 8. Admin subscriptions and users
+## 5. Admin offline orders and payment transactions
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | /admin/subscriptions | Search subscriptions |
-| GET | /admin/subscriptions/:id | Subscription detail/events |
-| PATCH | /admin/subscriptions/:id | Correct status or confirmed dates with audit |
-| GET | /admin/users | Search users |
-| GET | /admin/users/:id | User detail/history |
-| PATCH | /admin/users/:id/status | Enable/disable account |
+| GET | /admin/orders | Search/filter by customer, order number, payment status, fulfillment status, date |
+| POST | /admin/orders | Create OFFLINE_MANUAL order |
+| GET | /admin/orders/:id | Order snapshot, transactions, events, linked subscription |
+| POST | /admin/orders/:id/payment-transactions | Record offline payment transaction as pending verification |
+| POST | /admin/payment-transactions/:id/confirm | Confirm payment after checking the actual external account |
+| POST | /admin/orders/:id/refunds | Record a pending full-refund action after private agreement |
+| POST | /admin/payment-transactions/:id/confirm-refund | Confirm only after refund has actually been sent externally |
+| POST | /admin/payment-transactions/:id/fail | Record a failed/uncompleted transaction attempt |
+| PATCH | /admin/orders/:id/fulfillment | Change fulfillment status with required reason |
+| POST | /admin/orders/:id/complete | Complete paid order; for subscription order include supplier-confirmed dates and create/update entitlement atomically |
 
-All admin routes require server-side ADMIN authorization.
+Supported offline channels: WECHAT, ALIPAY, CASH, BANK_TRANSFER, OTHER. Payment and fulfillment states are independent. Order.paymentStatus is recomputed from transaction records in the same DB transaction. The app does not move money.
 
-## 9. Email and settings
+No partial payments or partial refunds in Task 1.2. Refund is confirmed only after external money return. A confirmed full refund before fulfillment completion cancels fulfillment; a refund after completion does not erase historical completion.
+
+## 6. Admin subscriptions
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | /admin/email-outbox | View email queue/delivery |
-| POST | /admin/email-outbox/:id/retry | Retry failed email |
-| GET | /admin/settings/public | Public checkout/payment instructions |
-| PATCH | /admin/settings | Update non-secret business settings |
+| GET | /admin/subscriptions | Search/filter subscriptions |
+| POST | /admin/subscriptions | Create subscription from ORDER, MANUAL_GRANT, or HISTORICAL_IMPORT source |
+| GET | /admin/subscriptions/:id | Subscription and event history |
+| PATCH | /admin/subscriptions/:id | Correct dates/renewal price/status with reason and audit |
+| POST | /admin/subscriptions/:id/renewal-orders | Create separate OFFLINE_MANUAL renewal order |
+| POST | /admin/subscriptions/:id/terminate | Terminate with required reason |
 
-SMTP credentials are not managed by normal settings API. They are deployment secrets.
+Pending-activation customers are valid subscription owners. MANUAL_GRANT and HISTORICAL_IMPORT do not create fake orders or payments. Renewal creates a new order but does not extend expiry until service completion is confirmed and the administrator enters the supplier-confirmed new expiry date.
 
-## 10. State transitions
+## 7. Customer read-only APIs
 
-- Customer payment: UNPAID -> PENDING_VERIFICATION -> PAID only through admin verification.
-- Supplier email queued only after payment PAID.
-- Supplier transfer recorded only for a paid order with supplier fulfillment.
-- Fulfillment cannot be COMPLETED before supplier confirms success and operator verifies it.
-- Subscription activation/renewal is committed in same transaction as order completion.
-- Duplicate state-changing requests must be safe using transactions, unique constraints, and idempotency keys.
-- Invalid transitions return conflict and do not partially update DB.
+| Method | Path | Purpose |
+|---|---|---|
+| GET | /me/orders | Current customer's own orders |
+| GET | /me/orders/:orderNo | Own order detail and safe timeline |
+| GET | /me/subscriptions | Current customer's own subscriptions |
+| GET | /me/subscriptions/:id | Own subscription detail and renewal history |
 
-## 11. Future integrations (not MVP)
+No customer purchase or online renewal endpoint in Task 1.2.
 
-Future payment-provider webhooks and supplier APIs require official docs, merchant eligibility, signing requirements, callback behavior, refund flow, and idempotency requirements. Do not invent provider payloads in MVP.
+## 8. Dashboard
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | /admin/dashboard | Confirmed offline receipts minus confirmed refunds, order counts by payment/fulfillment state, pending fulfillment, and subscription counts |
+
+Dashboard totals must be computed from confirmed PaymentTransaction records and reconciled with order summaries. Unconfirmed payment/refund records must not count as received/returned money.
+
+## 9. State transitions and atomicity
+
+- Payment transaction PENDING -> CONFIRMED only through an ADMIN action after external verification.
+- Refund transaction PENDING -> CONFIRMED only after money has actually been returned outside the application.
+- Order paymentStatus is a derived summary and cannot be set directly by the client.
+- Order fulfillmentStatus changes require an ADMIN action and reason.
+- Only a fully paid order may be completed.
+- Initial subscription creation and renewal expiry update must be committed in the same database transaction as order completion and their event/audit records.
+- Invalid transitions return 409 CONFLICT and make no partial changes.
+- Repeated confirmation/completion/refund requests must be rejected or idempotent; do not create duplicate transaction/event rows.
+
+## 10. Explicitly absent endpoints
+
+Do not implement public checkout, online payment intent, payment webhook, automatic refund API, supplier email, supplier API, supplier transfer, SMTP, email outbox, settlement, split payment, merchant wallet, or withdrawal routes.
