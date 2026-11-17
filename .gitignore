@@ -11,3 +11,4 @@ test-results/
 *.key
 *.p12
 *.tsbuildinfo
+backend/src/generated/

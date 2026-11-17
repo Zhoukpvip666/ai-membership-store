@@ -1,0 +1,334 @@
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "ts"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum UserRole {
+  ADMIN
+  CUSTOMER
+}
+
+enum AccountStatus {
+  PENDING_ACTIVATION
+  ACTIVE
+  DISABLED
+}
+
+enum ProductType {
+  SUBSCRIPTION
+  ONE_TIME
+}
+
+enum TargetField {
+  EMAIL
+  TEXT
+  NONE
+}
+
+enum OrderKind {
+  INITIAL
+  RENEWAL
+  ONE_TIME
+}
+
+enum OrderSource {
+  OFFLINE_MANUAL
+}
+
+enum PaymentStatus {
+  UNPAID
+  PENDING_VERIFICATION
+  PAID
+  REFUND_PENDING
+  REFUNDED
+}
+
+enum FulfillmentStatus {
+  NOT_STARTED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum TransactionKind {
+  PAYMENT
+  REFUND
+}
+
+enum PaymentChannel {
+  WECHAT
+  ALIPAY
+  CASH
+  BANK_TRANSFER
+  OTHER
+}
+
+enum TransactionStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+}
+
+enum SubscriptionSource {
+  ORDER
+  MANUAL_GRANT
+  HISTORICAL_IMPORT
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+}
+
+enum OrderEventType {
+  ORDER_CREATED
+  PAYMENT_RECORDED
+  PAYMENT_CONFIRMED
+  REFUND_RECORDED
+  REFUND_CONFIRMED
+  FULFILLMENT_CHANGED
+  COMPLETED
+  NOTE
+}
+
+enum SubscriptionEventType {
+  CREATED
+  ACTIVATED
+  RENEWED
+  EXPIRY_ADJUSTED
+  MANUAL_GRANT
+  HISTORICAL_IMPORT
+  SUSPENDED
+  RESUMED
+  TERMINATED
+  NOTE
+}
+
+model User {
+  id                String        @id @default(uuid()) @db.VarChar(36)
+  displayName       String        @db.VarChar(80)
+  loginEmail        String        @unique @db.VarChar(254)
+  notificationEmail String?       @db.VarChar(254)
+  passwordHash      String?       @db.VarChar(255)
+  role              UserRole      @default(CUSTOMER)
+  status            AccountStatus @default(PENDING_ACTIVATION)
+  activatedAt       DateTime?     @db.DateTime(3)
+  createdByAdminId  String?       @db.VarChar(36)
+  createdAt         DateTime      @default(now()) @db.DateTime(3)
+  updatedAt         DateTime      @updatedAt @db.DateTime(3)
+
+  createdByAdmin        User?                @relation("UserCreator", fields: [createdByAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdUsers          User[]               @relation("UserCreator")
+  sessions              Session[]
+  invitations           InvitationToken[]    @relation("InvitedUser")
+  issuedInvitations     InvitationToken[]    @relation("InvitationCreator")
+  orders                Order[]              @relation("OrderCustomer")
+  createdOrders         Order[]              @relation("OrderCreator")
+  recordedTransactions  PaymentTransaction[] @relation("TransactionCreator")
+  confirmedTransactions PaymentTransaction[] @relation("TransactionConfirmer")
+  subscriptions         Subscription[]       @relation("SubscriptionCustomer")
+  createdSubscriptions  Subscription[]       @relation("SubscriptionCreator")
+  orderEvents           OrderEvent[]
+  subscriptionEvents    SubscriptionEvent[]
+  auditLogs             AdminAuditLog[]
+}
+
+model Session {
+  id         String    @id @default(uuid()) @db.VarChar(36)
+  userId     String    @db.VarChar(36)
+  tokenHash  String    @unique @db.VarChar(64)
+  expiresAt  DateTime  @db.DateTime(3)
+  lastSeenAt DateTime? @db.DateTime(3)
+  revokedAt  DateTime? @db.DateTime(3)
+  createdAt  DateTime  @default(now()) @db.DateTime(3)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model InvitationToken {
+  id               String    @id @default(uuid()) @db.VarChar(36)
+  userId           String    @db.VarChar(36)
+  tokenHash        String    @unique @db.VarChar(64)
+  expiresAt        DateTime  @db.DateTime(3)
+  usedAt           DateTime? @db.DateTime(3)
+  revokedAt        DateTime? @db.DateTime(3)
+  createdByAdminId String    @db.VarChar(36)
+  createdAt        DateTime  @default(now()) @db.DateTime(3)
+  user             User      @relation("InvitedUser", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdByAdmin   User      @relation("InvitationCreator", fields: [createdByAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Product {
+  id              String         @id @default(uuid()) @db.VarChar(36)
+  slug            String         @unique @db.VarChar(100)
+  name            String         @db.VarChar(120)
+  description     String?        @db.Text
+  type            ProductType
+  priceFen        Int
+  renewalPriceFen Int?
+  termLabel       String         @db.VarChar(40)
+  targetField     TargetField    @default(NONE)
+  listed          Boolean        @default(false)
+  purchaseEnabled Boolean        @default(false)
+  renewalEnabled  Boolean        @default(false)
+  archivedAt      DateTime?      @db.DateTime(3)
+  createdAt       DateTime       @default(now()) @db.DateTime(3)
+  updatedAt       DateTime       @updatedAt @db.DateTime(3)
+  orders          Order[]
+  subscriptions   Subscription[]
+}
+
+model Order {
+  id                      String               @id @default(uuid()) @db.VarChar(36)
+  orderNo                 String               @unique @db.VarChar(40)
+  userId                  String               @db.VarChar(36)
+  productId               String               @db.VarChar(36)
+  subscriptionId          String?              @db.VarChar(36)
+  kind                    OrderKind
+  source                  OrderSource          @default(OFFLINE_MANUAL)
+  productNameSnapshot     String               @db.VarChar(120)
+  productTypeSnapshot     ProductType
+  termSnapshot            String               @db.VarChar(40)
+  amountFen               Int
+  renewalPriceSnapshotFen Int?
+  contactEmailSnapshot    String               @db.VarChar(254)
+  targetIdentifier        String?              @db.VarChar(254)
+  paymentStatus           PaymentStatus        @default(UNPAID)
+  fulfillmentStatus       FulfillmentStatus    @default(NOT_STARTED)
+  internalNote            String?              @db.Text
+  createdByAdminId        String               @db.VarChar(36)
+  createdAt               DateTime             @default(now()) @db.DateTime(3)
+  updatedAt               DateTime             @updatedAt @db.DateTime(3)
+  user                    User                 @relation("OrderCustomer", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  product                 Product              @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  subscription            Subscription?        @relation("RenewalOrders", fields: [subscriptionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdByAdmin          User                 @relation("OrderCreator", fields: [createdByAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourcedSubscription     Subscription?        @relation("SubscriptionSourceOrder")
+  transactions            PaymentTransaction[]
+  events                  OrderEvent[]
+  subscriptionEvents      SubscriptionEvent[]
+
+  @@index([userId, createdAt])
+  @@index([paymentStatus, createdAt])
+  @@index([fulfillmentStatus, createdAt])
+  @@index([subscriptionId, createdAt])
+}
+
+model PaymentTransaction {
+  id                 String            @id @default(uuid()) @db.VarChar(36)
+  orderId            String            @db.VarChar(36)
+  kind               TransactionKind
+  channel            PaymentChannel
+  amountFen          Int
+  status             TransactionStatus @default(PENDING)
+  externalReference  String?           @db.VarChar(120)
+  occurredAt         DateTime          @db.DateTime(3)
+  confirmedAt        DateTime?         @db.DateTime(3)
+  createdByAdminId   String            @db.VarChar(36)
+  confirmedByAdminId String?           @db.VarChar(36)
+  note               String?           @db.VarChar(500)
+  createdAt          DateTime          @default(now()) @db.DateTime(3)
+  updatedAt          DateTime          @updatedAt @db.DateTime(3)
+  order              Order             @relation(fields: [orderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdByAdmin     User              @relation("TransactionCreator", fields: [createdByAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  confirmedByAdmin   User?             @relation("TransactionConfirmer", fields: [confirmedByAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([orderId, kind, status])
+}
+
+model OrderEvent {
+  id            String         @id @default(uuid()) @db.VarChar(36)
+  orderId       String         @db.VarChar(36)
+  eventType     OrderEventType
+  actorAdminId  String         @db.VarChar(36)
+  fromStateJson Json?
+  toStateJson   Json?
+  note          String?        @db.VarChar(500)
+  createdAt     DateTime       @default(now()) @db.DateTime(3)
+  order         Order          @relation(fields: [orderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorAdmin    User           @relation(fields: [actorAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([orderId, createdAt])
+}
+
+model Subscription {
+  id               String              @id @default(uuid()) @db.VarChar(36)
+  userId           String              @db.VarChar(36)
+  productId        String              @db.VarChar(36)
+  sourceOrderId    String?             @unique @db.VarChar(36)
+  sourceType       SubscriptionSource
+  targetIdentifier String              @db.VarChar(254)
+  startedAt        DateTime            @db.DateTime(3)
+  expiresAt        DateTime            @db.DateTime(3)
+  renewalPriceFen  Int
+  status           SubscriptionStatus  @default(ACTIVE)
+  createdByAdminId String              @db.VarChar(36)
+  createdAt        DateTime            @default(now()) @db.DateTime(3)
+  updatedAt        DateTime            @updatedAt @db.DateTime(3)
+  user             User                @relation("SubscriptionCustomer", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  product          Product             @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceOrder      Order?              @relation("SubscriptionSourceOrder", fields: [sourceOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdByAdmin   User                @relation("SubscriptionCreator", fields: [createdByAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  renewalOrders    Order[]             @relation("RenewalOrders")
+  events           SubscriptionEvent[]
+
+  @@index([userId, status])
+  @@index([expiresAt, status])
+}
+
+model SubscriptionEvent {
+  id             String                @id @default(uuid()) @db.VarChar(36)
+  subscriptionId String                @db.VarChar(36)
+  orderId        String?               @db.VarChar(36)
+  eventType      SubscriptionEventType
+  oldStartedAt   DateTime?             @db.DateTime(3)
+  newStartedAt   DateTime?             @db.DateTime(3)
+  oldExpiresAt   DateTime?             @db.DateTime(3)
+  newExpiresAt   DateTime?             @db.DateTime(3)
+  actorAdminId   String                @db.VarChar(36)
+  reason         String?               @db.VarChar(500)
+  createdAt      DateTime              @default(now()) @db.DateTime(3)
+  subscription   Subscription          @relation(fields: [subscriptionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  order          Order?                @relation(fields: [orderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorAdmin     User                  @relation(fields: [actorAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([subscriptionId, createdAt])
+}
+
+model AdminAuditLog {
+  id           String   @id @default(uuid()) @db.VarChar(36)
+  actorAdminId String   @db.VarChar(36)
+  action       String   @db.VarChar(80)
+  entityType   String   @db.VarChar(40)
+  entityId     String   @db.VarChar(40)
+  beforeJson   Json?
+  afterJson    Json?
+  reason       String?  @db.VarChar(500)
+  requestId    String?  @db.VarChar(64)
+  createdAt    DateTime @default(now()) @db.DateTime(3)
+  actorAdmin   User     @relation(fields: [actorAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([actorAdminId, createdAt])
+}
+
+model AppSettings {
+  id         Int      @id @default(1)
+  storeName  String   @db.VarChar(80)
+  ownerEmail String   @db.VarChar(254)
+  timezone   String   @default("Asia/Shanghai") @db.VarChar(64)
+  updatedAt  DateTime @updatedAt @db.DateTime(3)
+}

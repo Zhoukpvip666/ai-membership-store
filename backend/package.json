@@ -10,13 +10,25 @@
     "start": "node --env-file-if-exists=../.env dist/server.js",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/health.test.ts"
+    "test": "node --test test/*.test.ts",
+    "db:generate": "node scripts/prisma.ts generate",
+    "db:format": "node scripts/prisma.ts format",
+    "db:validate": "node scripts/prisma.ts validate",
+    "db:migrate": "node --env-file-if-exists=../.env scripts/prisma.ts migrate deploy",
+    "db:status": "node --env-file-if-exists=../.env scripts/prisma.ts migrate status",
+    "db:seed": "node --env-file-if-exists=../.env scripts/prisma.ts db seed",
+    "test:db": "node scripts/test-database.ts"
   },
   "dependencies": {
-    "express": "^5.1.0"
+    "@prisma/adapter-mariadb": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "argon2": "0.45.2",
+    "express": "^5.1.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
-    "@types/node": "^24.0.0"
+    "@types/node": "^24.0.0",
+    "prisma": "7.10.1"
   }
 }

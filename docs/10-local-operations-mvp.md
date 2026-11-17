@@ -1,6 +1,6 @@
 # Task 1.2 — Local Offline Customer and Order Management
 
-**Status: Design baseline for owner approval. Implementation has not started.**
+**Status: Approved design baseline. Task 1.2.1 database foundation is implemented for owner review; Task 1.2.2 and all business workflows remain unimplemented.** See [11-database-foundation.md](11-database-foundation.md).
 
 ## 1. Objective
 

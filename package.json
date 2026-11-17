@@ -9,6 +9,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "postinstall": "npm run db:generate",
     "dev": "concurrently --kill-others-on-fail --names web,api \"npm:dev:web\" \"npm:dev:api\"",
     "dev:web": "npm run dev -w frontend",
     "dev:api": "npm run dev -w backend",
@@ -18,7 +19,13 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "npm run test --workspaces",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "db:generate": "npm run db:generate -w backend",
+    "db:validate": "npm run db:validate -w backend",
+    "db:migrate": "npm run db:migrate -w backend",
+    "db:status": "npm run db:status -w backend",
+    "db:seed": "npm run db:seed -w backend",
+    "test:db": "npm run test:db -w backend"
   },
   "overrides": {
     "@typescript-eslint/typescript-estree": {
