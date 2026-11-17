@@ -6,10 +6,12 @@ export const money = (fen: number) =>
     minimumFractionDigits: 2,
   }).format(fen / 100)
 export function parsePrice(input: string): number {
-  if (!/^\d{1,7}(\.\d{1,2})?$/.test(input.trim()))
-    throw new Error('价格需为最多两位小数的正数')
+  if (!/^\d{1,8}(\.\d{1,2})?$/.test(input.trim()))
+    throw new Error('价格需为最多两位小数的非负金额')
   const [whole, fraction = ''] = input.trim().split('.')
-  return Number(whole) * 100 + Number(fraction.padEnd(2, '0'))
+  const fen = Number(whole) * 100 + Number(fraction.padEnd(2, '0'))
+  if (fen > 2147483647) throw new Error('价格超出允许范围')
+  return fen
 }
 export const date = (value: string, timezone = 'Asia/Shanghai') =>
   new Intl.DateTimeFormat('zh-CN', {

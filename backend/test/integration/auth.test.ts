@@ -106,7 +106,7 @@ test('all admin routes require a database session, even unimplemented routes', a
     assert.equal((await request(path, 'GET', undefined, '')).status, 401)
   assert.equal((await request('/auth/me', 'GET', undefined, '')).status, 401)
   assert.equal((await request('/auth/register', 'POST', {}, '')).status, 404)
-  assert.equal((await request('/admin/products')).status, 404)
+  assert.equal((await request('/admin/products')).status, 200)
   assert.equal((await request('/admin/orders', 'POST', {})).status, 404)
 })
 

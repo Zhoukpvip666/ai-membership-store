@@ -12,6 +12,7 @@ const cwd = fileURLToPath(new URL('..', import.meta.url))
 const project = 'membership-foundation-' + randomBytes(6).toString('hex')
 const directory = mkdtempSync(join(tmpdir(), 'membership-foundation-'))
 const envFile = join(directory, 'test.env')
+const upgradeSnapshot = join(directory, 'upgrade.json')
 const password = randomBytes(24).toString('hex')
 const rootPassword = randomBytes(24).toString('hex')
 const adminPassword = randomBytes(24).toString('hex')
@@ -44,7 +45,7 @@ function run(
       env,
       encoding: 'utf8',
       stdio: 'pipe',
-      timeout: browserMode ? 300000 : 180000,
+      timeout: browserMode ? 600000 : 180000,
     })
   } catch (error) {
     const result = error as { stdout?: string; stderr?: string }
@@ -80,7 +81,47 @@ try {
     ADMIN_PASSWORD: adminPassword,
     FOUNDATION_DB_TEST: project,
   }
+  if (!browserMode) {
+    // Exercise the actual committed old schema with populated records before upgrading.
+    run(
+      process.execPath,
+      [
+        'scripts/prisma.ts',
+        'db',
+        'execute',
+        '--file',
+        'prisma/migrations/20261117000000_init_local_operations/migration.sql',
+      ],
+      env,
+    )
+    run(
+      process.execPath,
+      [
+        'scripts/prisma.ts',
+        'migrate',
+        'resolve',
+        '--applied',
+        '20261117000000_init_local_operations',
+      ],
+      env,
+    )
+    run(
+      process.execPath,
+      ['test/integration/upgrade.ts', 'before', upgradeSnapshot],
+      env,
+    )
+  }
   run(process.execPath, ['scripts/prisma.ts', 'migrate', 'deploy'], env)
+  if (!browserMode) {
+    console.info(
+      run(
+        process.execPath,
+        ['test/integration/upgrade.ts', 'after', upgradeSnapshot],
+        env,
+      ),
+    )
+    unlinkSync(upgradeSnapshot)
+  }
   const repeated = run(
     process.execPath,
     ['scripts/prisma.ts', 'migrate', 'deploy'],
@@ -90,7 +131,7 @@ try {
     throw new Error('Repeated migration was not a no-op.')
   run(process.execPath, ['scripts/prisma.ts', 'migrate', 'status'], env)
   console.info(
-    'Initial migration applied; repeated deploy has no pending migrations.',
+    'Versioned migrations applied; repeated deploy has no pending migrations.',
   )
   if (browserMode) {
     run(process.execPath, ['scripts/prisma.ts', 'db', 'seed'], env)
@@ -190,6 +231,23 @@ try {
     console.info(
       run(process.execPath, ['--test', 'test/integration/auth.test.ts'], env),
     )
+    console.info(
+      run(
+        process.execPath,
+        ['--test', 'test/integration/products.test.ts'],
+        env,
+      ),
+    )
+    run('docker', [...compose, 'stop', 'mysql'])
+    run('docker', [...compose, 'up', '-d', '--wait', 'mysql'])
+    env.DATABASE_URL = `mysql://foundation_test:${password}@${databaseAddress()}/foundation_test`
+    console.info(
+      run(
+        process.execPath,
+        ['--test', 'test/integration/products-restart.test.ts'],
+        env,
+      ),
+    )
   }
 } catch (error) {
   console.error(
@@ -215,5 +273,10 @@ try {
     process.exitCode = 1
   }
   unlinkSync(envFile)
+  try {
+    unlinkSync(upgradeSnapshot)
+  } catch {
+    /* No fixture remains after a successful upgrade. */
+  }
   rmdirSync(directory)
 }

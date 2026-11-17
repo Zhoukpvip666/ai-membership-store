@@ -1,5 +1,7 @@
 # Interface Specification
 
+Task 1.2.3 persistence update: product management and settings use local ADMIN APIs, alongside persistent customer management. Product dialogs add description, sort order and a responsive field editor/preview for eight supported types; archive replaces deletion. Every field has a fixed read-only ID, editable label/hint/required/default, optional choices and move/delete controls. Schema limits/errors are visible before saving. Preview input is ephemeral and has no submission action. Existing order/subscription/overview screens remain explicitly Mock. The catalog shows persisted listed/unarchived products only to ADMIN as a preview; public/customers see a not-yet-open notice. All purchasing and renewal creation are disabled in this stage, and no public product API is added. The desktop/mobile layout baseline below remains applicable. See [13-products-settings-forms.md](13-products-settings-forms.md).
+
 This document is the approved first-version UI baseline for the customer storefront and the single-owner management console. It is intentionally simple and should be implemented before real payment, supplier, or database workflows.
 
 ## 1. Product surfaces

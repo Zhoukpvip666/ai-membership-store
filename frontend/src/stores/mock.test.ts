@@ -191,6 +191,10 @@ describe('local prototype behavior', () => {
   it('requires whole minor-unit prices and required subscription fields', () => {
     expect(parsePrice('9.09')).toBe(909)
     expect(parsePrice('0.01')).toBe(1)
+    expect(parsePrice('0')).toBe(0)
+    expect(parsePrice('21474836.47')).toBe(2147483647)
+    expect(() => parsePrice('21474836.48')).toThrow()
+    expect(() => parsePrice('-1')).toThrow()
     expect(() => parsePrice('9.009')).toThrow()
     const store = createMockStore()
     const input = { ...store.state.products[0]!, priceFen: 1.1 }

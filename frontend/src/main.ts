@@ -8,6 +8,12 @@ import {
   ElSwitch,
   ElForm,
   ElFormItem,
+  ElInputNumber,
+  ElRadio,
+  ElRadioGroup,
+  ElCheckbox,
+  ElCheckboxGroup,
+  ElPagination,
 } from 'element-plus'
 import 'element-plus/dist/index.css'
 import './style.css'
@@ -24,6 +30,12 @@ for (const component of [
   ElSwitch,
   ElForm,
   ElFormItem,
+  ElInputNumber,
+  ElRadio,
+  ElRadioGroup,
+  ElCheckbox,
+  ElCheckboxGroup,
+  ElPagination,
 ])
   app.component(component.name!, component)
 app.use(router).mount('#app')

@@ -75,10 +75,12 @@ Only one unexpired, unused invitation should remain active per user. Enforce by 
 | listed | Boolean | Catalog visibility |
 | purchaseEnabled | Boolean | New-purchase permission |
 | renewalEnabled | Boolean | Existing-subscription renewal permission |
+| sortOrder | Int, default 0 | Nonnegative display order; ties use createdAt then id |
+| formSchema | JSON, default `{"version":1,"fields":[]}` | Versioned non-sensitive product form configuration; see docs/13-products-settings-forms.md |
 | archivedAt | DateTime?, nullable | Soft archive |
 | createdAt / updatedAt | DateTime(3) | Timestamps |
 
-Do not add supplierCost. Do not hard-delete products referenced by orders/subscriptions.
+Do not add supplierCost. Product API never hard-deletes any product. Archive retains flags and history and prevents editing. New slugs are server-generated and stable. The legacy targetField column remains unchanged for old records; new products use NONE and formSchema. Form configuration edits never rewrite orders or subscriptions. Future order work must snapshot any relevant schema and field labels rather than read mutable product configuration for historical display; no order field or submission storage is added in Task 1.2.3.
 
 ### Order
 

@@ -9,6 +9,11 @@ import {
 } from '@lucide/vue'
 import Brand from '../components/Brand.vue'
 import { auth } from '../stores/auth'
+import { onMounted } from 'vue'
+import { settings } from '../stores/settings'
+onMounted(() => {
+  if (auth.state.user?.role === 'ADMIN') void settings.load().catch(() => {})
+})
 const nav = [
   { path: '/', text: '商品', short: '商品', icon: Store },
   {
@@ -47,8 +52,8 @@ const nav = [
     <main class="store-main">
       <div class="demo-notice">
         <FlaskConical :size="15" /><span
-          >本地管理工具 · 商品为 Mock 展示，暂未开放线上购买</span
-        ><span class="demo-pill">MOCK</span>
+          >本地管理工具 · 管理员可预览真实商品，暂未开放线上购买</span
+        ><span class="demo-pill">LOCAL</span>
       </div>
       <RouterView />
       <footer class="page-footer">

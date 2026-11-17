@@ -1414,3 +1414,96 @@ tbody tr:hover {
     scroll-behavior: auto !important;
   }
 }
+.product-filters {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.product-filters .el-select {
+  width: 140px;
+}
+.product-dialog .el-dialog__body {
+  overflow: visible;
+}
+.form-configuration {
+  border-top: 1px solid #e5e7eb;
+  margin-top: 24px;
+  padding-top: 16px;
+}
+.form-section-heading {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+}
+.form-field-editor,
+.form-preview {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 18px;
+  margin: 16px 0;
+  min-width: 0;
+}
+.form-preview {
+  background: #f8fafc;
+}
+.field-id {
+  display: block;
+  overflow-wrap: anywhere;
+  margin: 12px 0;
+  color: #64748b;
+}
+.field-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.field-actions .el-button + .el-button {
+  margin-left: 0;
+}
+.option-editor {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+  align-items: center;
+}
+.preview-field {
+  margin: 16px 0;
+}
+.preview-field > label {
+  display: block;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+.preview-field .el-select {
+  width: 100%;
+}
+.preview-field .el-radio-group,
+.preview-field .el-checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+}
+.required-mark {
+  color: #c2410c;
+}
+.product-description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.preview-button {
+  width: 100%;
+  margin: 10px 0 0 !important;
+}
+@media (max-width: 640px) {
+  .form-field-editor,
+  .form-preview {
+    padding: 12px;
+  }
+  .product-dialog .form-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .product-filters .search-input {
+    max-width: 100%;
+  }
+}

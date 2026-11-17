@@ -1,6 +1,6 @@
 # Task 1.2 — Local Offline Customer and Order Management
 
-**Status: Approved design baseline. Task 1.2.1 is complete. Task 1.2.2 authentication/customers/invitations is implemented for owner review; Task 1.2.3 and later business workflows remain unimplemented.** See [12-authentication-customers-invitations.md](12-authentication-customers-invitations.md).
+**Status: Approved design baseline. Tasks 1.2.1–1.2.2 are merged. Task 1.2.3 products/settings and dynamic form configuration is implemented for owner review; later workflows remain unimplemented.** See [13-products-settings-forms.md](13-products-settings-forms.md).
 
 ## 1. Objective
 
@@ -113,7 +113,7 @@ Use these 11 Prisma models. There is no separate Customer table: CUSTOMER is a U
 1. **User** — ADMIN/CUSTOMER identity, loginEmail, notificationEmail, displayName, nullable passwordHash, role, account status, activatedAt, timestamps, createdByAdminId.
 2. **Session** — hashed opaque session token, userId, expiresAt, revokedAt, lastSeenAt, timestamps. Never store the raw session token.
 3. **InvitationToken** — userId, unique tokenHash, expiresAt, usedAt, revokedAt, createdByAdminId, createdAt. Never store the raw invitation token.
-4. **Product** — slug, name, description, product type, priceFen, renewalPriceFen, termLabel, targetField, listed, purchaseEnabled, renewalEnabled, archivedAt, timestamps.
+4. **Product** — slug, name, description, product type, priceFen, renewalPriceFen, termLabel, legacy targetField, listed, purchaseEnabled, renewalEnabled, sortOrder, versioned formSchema JSON, archivedAt, timestamps.
 5. **Order** — orderNo, userId, productId, optional subscriptionId for renewals, orderKind, source OFFLINE_MANUAL, immutable product/price/contact/target snapshots, amountFen, paymentStatus summary, fulfillmentStatus, internalNote, createdByAdminId, timestamps.
 6. **PaymentTransaction** — orderId, kind PAYMENT/REFUND, channel, amountFen, status PENDING/CONFIRMED/FAILED, externalReference, occurredAt, confirmedAt, createdByAdminId, confirmedByAdminId, note, timestamps. Records customer money only; it is not a supplier-transfer table.
 7. **OrderEvent** — orderId, event type, actorAdminId, note, safe metadata/before-after snapshot, createdAt. Used for order timeline and status history.
@@ -211,7 +211,7 @@ Implement one subtask at a time and wait for owner review after each PR.
 - **Task 1.2.5 — Subscriptions and renewals:** manual grant/import, order-linked activation, renewal orders, supplier-confirmed expiry updates, event history.
 - **Task 1.2.6 — Dashboard and customer read-only portal:** reconciled metrics, own-order/subscription views, full end-to-end tests and local operating guide.
 
-Task 1.2.1 was reviewed and Task 1.2.2 was explicitly authorized by the owner. Stop after the Task 1.2.2 PR and wait for human review. Do not start Task 1.2.3 or later business API/UI work without a separate authorization.
+Tasks 1.2.1–1.2.2 were merged and Task 1.2.3 was separately authorized by the owner. Stop after the Task 1.2.3 PR and wait for human review. Task 1.2.4 requires separate authorization. Product forms are configuration/preview only; no customer values or order submissions are stored.
 
 ## 9. Acceptance criteria for the full local milestone
 

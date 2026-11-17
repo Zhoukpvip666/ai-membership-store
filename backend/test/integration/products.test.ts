@@ -1,0 +1,561 @@
+import { before, after, test } from 'node:test'
+import assert from 'node:assert/strict'
+import { once } from 'node:events'
+import type { Server } from 'node:http'
+import { randomUUID } from 'node:crypto'
+import { createApp } from '../../src/app.ts'
+import { createDatabase, checkDatabase } from '../../src/db/client.ts'
+import { integrationEnvironment } from './support.ts'
+import { productService } from '../../src/modules/products/service.ts'
+import { settingsService } from '../../src/modules/settings/service.ts'
+import { createProduct } from '../../src/modules/products/schemas.ts'
+import {
+  tokenHash,
+  COOKIE_NAME,
+  newToken,
+} from '../../src/modules/auth/security.ts'
+const env = integrationEnvironment(),
+  db = createDatabase(env.DATABASE_URL)
+let server: Server,
+  base: string,
+  cookie = '',
+  adminId = '',
+  productId = ''
+const original = {
+  name: 'Persisted product',
+  type: 'SUBSCRIPTION',
+  priceFen: 1234,
+  renewalPriceFen: 999,
+  termLabel: '供应商确认周期',
+}
+const formSchema = {
+  version: 1,
+  fields: [
+    {
+      id: 'text_id',
+      type: 'text',
+      label: '<b>literal label</b>',
+      required: true,
+      hint: 'safe hint',
+      defaultValue: 'original',
+    },
+    {
+      id: 'email_id',
+      type: 'email',
+      label: '邮箱',
+      required: false,
+      defaultValue: 'fixture@example.com',
+    },
+    {
+      id: 'area_id',
+      type: 'textarea',
+      label: '说明',
+      required: false,
+      defaultValue: 'line1\nline2',
+    },
+    {
+      id: 'select_id',
+      type: 'select',
+      label: '方案',
+      required: false,
+      options: [
+        { label: 'A', value: 'a' },
+        { label: 'B', value: 'b' },
+      ],
+      defaultValue: 'a',
+    },
+    {
+      id: 'radio_id',
+      type: 'radio',
+      label: '选项',
+      required: false,
+      options: [{ label: 'R', value: 'r' }],
+      defaultValue: 'r',
+    },
+    {
+      id: 'check_id',
+      type: 'checkbox',
+      label: '多选',
+      required: false,
+      options: [{ label: 'C', value: 'c' }],
+      defaultValue: ['c'],
+    },
+    {
+      id: 'number_id',
+      type: 'number',
+      label: '数量',
+      required: false,
+      defaultValue: 2.5,
+    },
+    {
+      id: 'date_id',
+      type: 'date',
+      label: '日期',
+      required: false,
+      defaultValue: '2028-02-29',
+    },
+  ],
+}
+async function request(
+  path: string,
+  method = 'GET',
+  body?: unknown,
+  session = cookie,
+  extra: Record<string, string> = {},
+) {
+  const response = await fetch(base + '/api/v1' + path, {
+    method,
+    headers: {
+      origin: env.APP_BASE_URL,
+      'x-requested-with': 'MembershipStore',
+      'content-type': 'application/json',
+      cookie: session,
+      ...extra,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  return {
+    status: response.status,
+    body: await response.json(),
+    headers: response.headers,
+  }
+}
+async function start() {
+  server = createApp(() => checkDatabase(db), { database: db, env }).listen(
+    0,
+    '127.0.0.1',
+  )
+  await once(server, 'listening')
+  const address = server.address()
+  assert(address && typeof address !== 'string')
+  base = 'http://127.0.0.1:' + address.port
+}
+const stop = () =>
+  new Promise<void>((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  )
+before(async () => {
+  await start()
+  const login = await request(
+    '/auth/login',
+    'POST',
+    { email: env.ADMIN_EMAIL, password: env.ADMIN_PASSWORD },
+    '',
+  )
+  assert.equal(login.status, 200)
+  cookie = login.headers.get('set-cookie')!.split(';')[0]!
+  adminId = login.body.user.id
+})
+after(async () => {
+  if (server) await stop()
+  await db.$disconnect()
+})
+test('every product/settings endpoint requires ADMIN session and mutations require CSRF protection', async () => {
+  const token = newToken()
+  const customer = await db.user.create({
+    data: {
+      displayName: 'Permission fixture',
+      loginEmail: randomUUID() + '@example.com',
+      role: 'CUSTOMER',
+      status: 'ACTIVE',
+    },
+  })
+  await db.session.create({
+    data: {
+      userId: customer.id,
+      tokenHash: tokenHash(token),
+      expiresAt: new Date(Date.now() + 60000),
+    },
+  })
+  for (const [path, method] of [
+    ['/products', 'GET'],
+    ['/products', 'POST'],
+    ['/products/' + randomUUID(), 'GET'],
+    ['/products/' + randomUUID(), 'PATCH'],
+    ['/products/' + randomUUID() + '/archive', 'POST'],
+    ['/settings', 'GET'],
+    ['/settings', 'PATCH'],
+  ]) {
+    assert.equal(
+      (
+        await request(
+          '/admin' + path,
+          method,
+          method === 'GET' ? undefined : {},
+          '',
+        )
+      ).status,
+      401,
+    )
+    assert.equal(
+      (
+        await request(
+          '/admin' + path,
+          method,
+          method === 'GET' ? undefined : {},
+          COOKIE_NAME + '=' + token,
+        )
+      ).status,
+      403,
+    )
+  }
+  assert.equal(
+    (
+      await request('/admin/products', 'POST', original, cookie, {
+        origin: 'http://evil.invalid',
+      })
+    ).status,
+    403,
+  )
+})
+test('create stores all field types with safe defaults, independent schema, integer prices and sorting', async () => {
+  const created = await request('/admin/products', 'POST', {
+    ...original,
+    formSchema,
+    sortOrder: 7,
+  })
+  assert.equal(created.status, 201)
+  const p = created.body.product
+  productId = p.id
+  assert.deepEqual(
+    [
+      p.priceFen,
+      p.renewalPriceFen,
+      p.listed,
+      p.purchaseEnabled,
+      p.renewalEnabled,
+      p.targetField,
+    ],
+    [1234, 999, false, false, false, 'NONE'],
+  )
+  assert.equal(p.formSchema.fields.length, 8)
+  assert.match(p.slug, /^product-/)
+  const other = await request('/admin/products', 'POST', {
+    ...original,
+    name: 'Separate schema',
+    sortOrder: 2,
+  })
+  assert.deepEqual(other.body.product.formSchema, { version: 1, fields: [] })
+  const list = await request('/admin/products?search=schema&pageSize=1')
+  assert.equal(list.body.items[0].id, other.body.product.id)
+  assert.equal(list.body.total, 1)
+  const ordered = await request('/admin/products?archived=ACTIVE&pageSize=100')
+  const ids = ordered.body.items.map((item: { id: string }) => item.id)
+  assert(ids.indexOf(other.body.product.id) < ids.indexOf(p.id))
+  assert.equal(
+    (await request('/admin/products/' + p.id, 'PATCH', { sortOrder: 1 }))
+      .status,
+    200,
+  )
+  const reordered = await request(
+    '/admin/products?archived=ACTIVE&pageSize=100',
+  )
+  const reorderedIds = reordered.body.items.map(
+    (item: { id: string }) => item.id,
+  )
+  assert(
+    reorderedIds.indexOf(p.id) < reorderedIds.indexOf(other.body.product.id),
+  )
+  assert.equal(
+    (await request('/admin/products?search=Persisted')).body.items[0].id,
+    p.id,
+  )
+  assert.equal(
+    (
+      await db.adminAuditLog.findFirstOrThrow({
+        where: { entityId: p.id, action: 'PRODUCT_CREATED' },
+      })
+    ).actorAdminId,
+    adminId,
+  )
+})
+test('server rejects invalid prices, types, fields, options, defaults, IDs and query inputs', async () => {
+  for (const patch of [
+    { priceFen: 1.2 },
+    { priceFen: -1 },
+    { priceFen: 2147483648 },
+    { priceFen: '1234' },
+    { type: 'UNKNOWN' },
+    { renewalPriceFen: null },
+    { type: 'ONE_TIME', renewalPriceFen: 1 },
+    {
+      formSchema: {
+        version: 1,
+        fields: [formSchema.fields[0], formSchema.fields[0]],
+      },
+    },
+    {
+      formSchema: {
+        version: 1,
+        fields: [{ ...formSchema.fields[3], options: [] }],
+      },
+    },
+    {
+      formSchema: {
+        version: 1,
+        fields: [{ ...formSchema.fields[3], defaultValue: 'missing' }],
+      },
+    },
+    {
+      formSchema: {
+        version: 1,
+        fields: [{ ...formSchema.fields[0], type: 'script' }],
+      },
+    },
+    {
+      formSchema: {
+        version: 1,
+        fields: [{ ...formSchema.fields[0], html: '<script>unsafe</script>' }],
+      },
+    },
+    { targetField: 'EMAIL' },
+    { archivedAt: new Date().toISOString() },
+  ])
+    assert.equal(
+      (await request('/admin/products', 'POST', { ...original, ...patch }))
+        .status,
+      400,
+    )
+  assert.equal(
+    (
+      await request('/admin/products', 'POST', {
+        ...original,
+        formSchema: {
+          version: 1,
+          fields: Array.from({ length: 21 }, (_, i) => ({
+            ...formSchema.fields[0],
+            id: 'field_' + i,
+          })),
+        },
+      })
+    ).status,
+    400,
+  )
+  assert.equal((await request('/admin/products?listed=1')).status, 400)
+  assert.equal((await request('/admin/products?unknown=1')).status, 400)
+  assert.equal((await request('/admin/products/' + randomUUID())).status, 404)
+  assert.equal((await request('/admin/products/not-an-id')).status, 400)
+  assert.equal(
+    (await request('/admin/products/' + productId, 'PATCH', {})).status,
+    400,
+  )
+  assert.equal(
+    (
+      await request('/admin/products/' + productId, 'PATCH', {
+        type: 'ONE_TIME',
+      })
+    ).status,
+    400,
+  )
+  const one = await request('/admin/products', 'POST', {
+    ...original,
+    type: 'ONE_TIME',
+    renewalPriceFen: null,
+  })
+  assert.equal(one.status, 201)
+  assert.equal(
+    (
+      await request('/admin/products/' + one.body.product.id, 'PATCH', {
+        renewalEnabled: true,
+      })
+    ).status,
+    400,
+  )
+})
+test('three switches persist all eight combinations independently and list visibility is separate', async () => {
+  for (const listed of [false, true])
+    for (const purchaseEnabled of [false, true])
+      for (const renewalEnabled of [false, true]) {
+        const value = { listed, purchaseEnabled, renewalEnabled }
+        assert.equal(
+          (await request('/admin/products/' + productId, 'PATCH', value))
+            .status,
+          200,
+        )
+        const p = (await request('/admin/products/' + productId)).body.product
+        assert.deepEqual(
+          {
+            listed: p.listed,
+            purchaseEnabled: p.purchaseEnabled,
+            renewalEnabled: p.renewalEnabled,
+          },
+          value,
+        )
+        const list = await request(
+          '/admin/products?listed=true&archived=ACTIVE&search=Persisted',
+        )
+        assert.equal(list.body.total, listed ? 1 : 0)
+      }
+  const p = (
+    await request('/admin/products/' + productId, 'PATCH', { listed: false })
+  ).body.product
+  assert.equal(p.purchaseEnabled, true)
+  assert.equal(p.renewalEnabled, true)
+})
+test('editing configuration and archiving preserve accounts, invitations, sessions and immutable order/subscription history', async () => {
+  const users = await db.user.findMany(),
+    sessions = await db.session.findMany(),
+    invitations = await db.invitationToken.findMany()
+  const user = users.find((u) => u.role === 'CUSTOMER')!
+  const order = await db.order.create({
+    data: {
+      orderNo: 'PRODUCT-HISTORY',
+      userId: user.id,
+      productId,
+      kind: 'INITIAL',
+      productNameSnapshot: original.name,
+      productTypeSnapshot: 'SUBSCRIPTION',
+      termSnapshot: 'Confirmed old term',
+      amountFen: 1234,
+      contactEmailSnapshot: user.loginEmail,
+      createdByAdminId: adminId,
+    },
+  })
+  const sub = await db.subscription.create({
+    data: {
+      userId: user.id,
+      productId,
+      sourceType: 'MANUAL_GRANT',
+      targetIdentifier: 'history@example.com',
+      startedAt: new Date(),
+      expiresAt: new Date(Date.now() + 86400000),
+      renewalPriceFen: 999,
+      createdByAdminId: adminId,
+    },
+  })
+  const result = await request('/admin/products/' + productId, 'PATCH', {
+    name: 'Changed current name',
+    priceFen: 5678,
+    formSchema: { version: 1, fields: [...formSchema.fields].reverse() },
+  })
+  assert.equal(result.status, 200)
+  assert.equal(result.body.product.formSchema.fields[0].id, 'date_id')
+  const beforeArchive = result.body.product
+  for (let i = 0; i < 2; i++)
+    assert.equal(
+      (await request('/admin/products/' + productId + '/archive', 'POST', {}))
+        .status,
+      200,
+    )
+  const archived = (await request('/admin/products/' + productId)).body.product
+  assert.equal(archived.purchaseEnabled, beforeArchive.purchaseEnabled)
+  assert.equal(archived.renewalEnabled, beforeArchive.renewalEnabled)
+  assert.equal(
+    await db.adminAuditLog.count({
+      where: { entityId: productId, action: 'PRODUCT_ARCHIVED' },
+    }),
+    1,
+  )
+  assert.equal(
+    (
+      await request('/admin/products/' + productId, 'PATCH', {
+        name: 'Forbidden',
+      })
+    ).status,
+    409,
+  )
+  assert.equal(
+    (
+      await request(
+        '/admin/products?archived=ACTIVE&search=Changed%20current%20name',
+      )
+    ).body.total,
+    0,
+  )
+  assert.equal(
+    (
+      await request(
+        '/admin/products?archived=ARCHIVED&search=Changed%20current%20name',
+      )
+    ).body.total,
+    1,
+  )
+  assert.equal(
+    (await request('/admin/products/' + productId, 'DELETE', {})).status,
+    404,
+  )
+  assert.deepEqual(
+    await db.order.findUniqueOrThrow({ where: { id: order.id } }),
+    order,
+  )
+  assert.deepEqual(
+    await db.subscription.findUniqueOrThrow({ where: { id: sub.id } }),
+    sub,
+  )
+  assert.deepEqual(await db.user.findMany(), users)
+  assert.deepEqual(await db.session.findMany(), sessions)
+  assert.deepEqual(await db.invitationToken.findMany(), invitations)
+})
+test('settings persist only allowed fields, leave admin identity unchanged and audit writes roll back atomically', async () => {
+  const admin = await db.user.findUniqueOrThrow({ where: { id: adminId } })
+  for (const input of [
+    { storeName: '' },
+    { ownerEmail: 'bad' },
+    { timezone: 'Unknown/Zone' },
+    { timezone: '+08:00' },
+    { smtpPassword: 'never' },
+    { paymentKey: 'never' },
+    {},
+  ])
+    assert.equal((await request('/admin/settings', 'PATCH', input)).status, 400)
+  const input = {
+    storeName: 'Persisted settings',
+    ownerEmail: 'notifications@example.com',
+    timezone: 'UTC',
+  }
+  assert.equal((await request('/admin/settings', 'PATCH', input)).status, 200)
+  const saved = (await request('/admin/settings')).body.settings
+  assert.equal(saved.storeName, input.storeName)
+  assert.equal(saved.ownerEmail, input.ownerEmail)
+  assert.equal(saved.timezone, input.timezone)
+  assert.deepEqual(
+    await db.user.findUniqueOrThrow({ where: { id: adminId } }),
+    admin,
+  )
+  const count = await db.product.count()
+  await assert.rejects(
+    productService(db).create(
+      createProduct.parse({ ...original, name: 'Must roll back' }),
+      adminId,
+      'x'.repeat(100),
+    ),
+  )
+  assert.equal(await db.product.count(), count)
+  await assert.rejects(
+    settingsService(db).edit(
+      { storeName: 'Must roll back' },
+      adminId,
+      'x'.repeat(100),
+    ),
+  )
+  assert.equal(
+    (await db.appSettings.findUniqueOrThrow({ where: { id: 1 } })).storeName,
+    input.storeName,
+  )
+  const audit = await db.adminAuditLog.findFirstOrThrow({
+    where: { action: 'SETTINGS_UPDATED' },
+  })
+  assert(!JSON.stringify(audit.afterJson).includes(input.ownerEmail))
+})
+test('new API instance and database connection read persisted product/schema/settings with existing session', async () => {
+  await db.product.create({
+    data: {
+      slug: 'restart-persistence',
+      name: 'Restart proof',
+      type: 'ONE_TIME',
+      priceFen: 100,
+      termLabel: '一次',
+      formSchema: { version: 1, fields: [] },
+    },
+  })
+  await stop()
+  await db.$disconnect()
+  await start()
+  const list = await request('/admin/products?search=Restart')
+  assert.equal(list.status, 200)
+  assert.equal(list.body.total, 1)
+  assert.equal(
+    (await request('/admin/settings')).body.settings.storeName,
+    'Persisted settings',
+  )
+})

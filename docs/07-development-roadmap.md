@@ -32,7 +32,7 @@
 
 ## Phase 1 — Repository scaffold and local operations
 
-**Status: Tasks 1.1 and 1.2.1 complete; Task 1.2.2 implemented for owner review. Task 1.2.3 has not started.**
+**Status: Tasks 1.1–1.2.2 merged; Task 1.2.3 implemented for owner review. Task 1.2.4 has not started.**
 
 ### Task 1.1 — Responsive Mock UI prototype
 
@@ -47,7 +47,7 @@
 
 ### Task 1.2 — Local offline customer and order management
 
-**Status: Database foundation complete; authentication/customers/invitations implemented for owner review. Remaining subtasks have not started.**
+**Status: Database foundation and authentication/customers/invitations merged; product/settings persistence and form configuration implemented for owner review. Later subtasks have not started.**
 
 Use [10-local-operations-mvp.md](10-local-operations-mvp.md) as the scope and implementation source of truth. Use [04-data-model.md](04-data-model.md) for the database model and [05-api-contract.md](05-api-contract.md) for API boundaries.
 
@@ -77,7 +77,7 @@ Acceptance:
 
 #### Task 1.2.2 — Authentication, customers, and invitations
 
-**Status: Implemented for owner review.** See [12-authentication-customers-invitations.md](12-authentication-customers-invitations.md). Stop after this PR; Task 1.2.3 is not authorized.
+**Status: Merged and separately followed by owner-authorized Task 1.2.3.** Historical report: [12-authentication-customers-invitations.md](12-authentication-customers-invitations.md).
 
 - Implement admin login/logout/me with server-side sessions.
 - Implement admin customer creation/edit/disable.
@@ -97,10 +97,15 @@ Acceptance:
 
 #### Task 1.2.3 — Product and settings persistence
 
+**Status: Implemented for owner review.** See [13-products-settings-forms.md](13-products-settings-forms.md). Stop after this PR; do not start Task 1.2.4.
+
 - Replace product Mock state with database-backed CRUD.
 - Persist listed, purchaseEnabled, and renewalEnabled independently.
 - Add archive instead of hard delete.
 - Persist storeName, ownerEmail, and timezone.
+- Configure/preview eight dynamic field types with stable IDs, server validation and safe JSON defaults.
+- Apply an additive migration preserving all eleven business tables and existing records.
+- Verify real admin product/settings UI at desktop and mobile sizes using isolated MySQL fixtures.
 
 Acceptance:
 - Product edits survive refresh/restart.
@@ -168,4 +173,4 @@ These remain future work and must not be pulled into Task 1.2:
 
 ## Current review boundary
 
-Task 1.2.1 was reviewed before the owner authorized Task 1.2.2. This change stops after Task 1.2.2 and its PR. Wait for human review; do not begin Task 1.2.3 or any later business persistence work without a separate authorization.
+Tasks 1.2.1–1.2.2 are merged. The owner separately authorized Task 1.2.3, which stops at its PR for human review. Do not begin Task 1.2.4 or later business work without separate authorization.
