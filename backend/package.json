@@ -17,7 +17,8 @@
     "db:migrate": "node --env-file-if-exists=../.env scripts/prisma.ts migrate deploy",
     "db:status": "node --env-file-if-exists=../.env scripts/prisma.ts migrate status",
     "db:seed": "node --env-file-if-exists=../.env scripts/prisma.ts db seed",
-    "test:db": "node scripts/test-database.ts"
+    "test:db": "node scripts/test-database.ts",
+    "test:e2e": "node scripts/test-database.ts --e2e"
   },
   "dependencies": {
     "@prisma/adapter-mariadb": "7.10.1",

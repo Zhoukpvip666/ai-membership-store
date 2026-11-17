@@ -14,6 +14,7 @@ import {
 import type { Subscription } from '../../types'
 import CheckoutDialog from '../../components/CheckoutDialog.vue'
 import OrderDialog from '../../components/OrderDialog.vue'
+import { auth } from '../../stores/auth'
 const props = defineProps<{ admin?: boolean }>()
 const route = useRoute()
 const status = ref('ALL')
@@ -39,7 +40,7 @@ const linkedOrder = computed(() =>
 const fmt = (value: string) => date(value, mock.state.settings.timezone)
 </script>
 <template>
-  <section>
+  <section v-if="auth.state.user?.role !== 'CUSTOMER'">
     <div class="page-heading">
       <div>
         <span class="eyebrow">{{
@@ -253,5 +254,11 @@ const fmt = (value: string) => date(value, mock.state.settings.timezone)
       :subscription="renewing"
       @close="renewing = undefined"
     />
+  </section>
+  <section v-else>
+    <div class="page-heading"><h1>我的订阅</h1></div>
+    <div class="panel empty-state">
+      真实订阅历史将在后续任务接入，此处不会展示其他客户或演示账户的数据。
+    </div>
   </section>
 </template>

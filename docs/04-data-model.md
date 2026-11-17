@@ -30,6 +30,8 @@ This is the approved data model for the first persistent, local-only operating v
 
 A pending customer can have orders and subscriptions. Never require ACTIVE status to create them.
 
+Task 1.2.2 uses the existing schema without a migration. Login email is immutable after customer creation. Disabling preserves business history while revoking sessions and unused invitations; restoring derives ACTIVE versus PENDING_ACTIVATION from the existing activation timestamp and password hash. Account activation and one-time invitation consumption commit together.
+
 ### Session
 
 | Field | Type / rule | Meaning |

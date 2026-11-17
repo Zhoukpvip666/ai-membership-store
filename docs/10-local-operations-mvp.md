@@ -1,6 +1,6 @@
 # Task 1.2 — Local Offline Customer and Order Management
 
-**Status: Approved design baseline. Task 1.2.1 database foundation is implemented for owner review; Task 1.2.2 and all business workflows remain unimplemented.** See [11-database-foundation.md](11-database-foundation.md).
+**Status: Approved design baseline. Task 1.2.1 is complete. Task 1.2.2 authentication/customers/invitations is implemented for owner review; Task 1.2.3 and later business workflows remain unimplemented.** See [12-authentication-customers-invitations.md](12-authentication-customers-invitations.md).
 
 ## 1. Objective
 
@@ -211,7 +211,7 @@ Implement one subtask at a time and wait for owner review after each PR.
 - **Task 1.2.5 — Subscriptions and renewals:** manual grant/import, order-linked activation, renewal orders, supplier-confirmed expiry updates, event history.
 - **Task 1.2.6 — Dashboard and customer read-only portal:** reconciled metrics, own-order/subscription views, full end-to-end tests and local operating guide.
 
-The first Codex task is **Task 1.2.1 only**. Do not start 1.2.2 or any business API/UI task until the owner reviews and approves the database foundation.
+Task 1.2.1 was reviewed and Task 1.2.2 was explicitly authorized by the owner. Stop after the Task 1.2.2 PR and wait for human review. Do not start Task 1.2.3 or later business API/UI work without a separate authorization.
 
 ## 9. Acceptance criteria for the full local milestone
 

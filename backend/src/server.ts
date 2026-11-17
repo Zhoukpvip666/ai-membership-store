@@ -5,13 +5,12 @@ import { createDatabase, checkDatabase } from './db/client.ts'
 try {
   const env = parseEnvironment()
   const database = createDatabase(env.DATABASE_URL)
-  const server = createApp(() => checkDatabase(database)).listen(
-    env.API_PORT,
-    '127.0.0.1',
-    () => {
-      console.info(`Local API: http://127.0.0.1:${env.API_PORT}/api/v1/health`)
-    },
-  )
+  const server = createApp(() => checkDatabase(database), {
+    database,
+    env,
+  }).listen(env.API_PORT, '127.0.0.1', () => {
+    console.info(`Local API: http://127.0.0.1:${env.API_PORT}/api/v1/health`)
+  })
   const disconnect = async (exitCode: number) => {
     try {
       await database.$disconnect()

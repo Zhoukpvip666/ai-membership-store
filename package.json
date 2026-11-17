@@ -19,7 +19,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "npm run test --workspaces",
-    "test:e2e": "playwright test",
+    "test:e2e": "npm run test:e2e -w backend",
     "db:generate": "npm run db:generate -w backend",
     "db:validate": "npm run db:validate -w backend",
     "db:migrate": "npm run db:migrate -w backend",

@@ -179,6 +179,14 @@ The first implementation is a frontend prototype using mock data:
 
 ## 6. Implementation acceptance criteria
 
+### Task 1.2.2 persistent slice
+
+- Keep the visual style and all navigation. Add /admin/login, /login and /activate; guard admin routes by a real backend-checked session and role.
+- User management now shows real CUSTOMER rows, status filters, paging, profile-only add/edit forms, disable/restore with reason, real counts and invitation metadata. It never asks the administrator to set a customer password.
+- Show a copyable invitation only after issuance; closing the detail clears it. Reissue/revoke are explicit actions. Show the 7-day, one-use, local-machine-only and no-email limits.
+- Customer activation asks for a new password and confirmation. Expired/revoked/used tokens share a clear failure message. Customer login/profile/logout uses the real account.
+- Keep unrelated admin screens explicitly Mock. Real customer profiles must not show fictitious customer histories; own history remains a later task. Public/customer catalog purchasing stays disabled.
+
 - Customer storefront and owner/admin console share the approved visual language.
 - Desktop and mobile navigation behave as specified.
 - Customer catalog uses three columns on desktop and one column on mobile.
