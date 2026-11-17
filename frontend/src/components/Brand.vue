@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { Layers2 } from '@lucide/vue'
-import { mock } from '../stores/mock'
+import { settings } from '../stores/settings'
 </script>
 <template>
   <RouterLink class="brand" to="/"
     ><span class="brand-icon"><Layers2 :size="21" /></span
-    ><span>{{ mock.state.settings.name }}</span></RouterLink
+    ><span>{{ settings.state.value.storeName }}</span></RouterLink
   >
 </template>

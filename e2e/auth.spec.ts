@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
       throw new Error('Browser tests must not call external services.')
     if (
       url.pathname.startsWith('/api/') &&
-      !/^\/api\/v1\/(?:auth\/(?:login|logout|me|activate)|admin\/(?:users(?:\/[^/]+(?:\/(?:invitations|status))?)?|invitations\/[^/]+\/revoke))$/.test(
+      !/^\/api\/v1\/(?:auth\/(?:login|logout|me|activate)|admin\/(?:settings|products|users(?:\/[^/]+(?:\/(?:invitations|status))?)?|invitations\/[^/]+\/revoke))$/.test(
         url.pathname,
       )
     )

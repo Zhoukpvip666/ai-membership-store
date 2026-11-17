@@ -80,6 +80,8 @@ The site owner uses one unified management console. Do not split it into a separ
 
 ## 5. Product model
 
+Product state consists only of listed (public catalog visibility) and archivedAt (irreversible archive); type is a classification. Public products must be listed and unarchived. Unlisted/unarchived products remain available to administrators for future offline orders and, for SUBSCRIPTION products, manual grants/imports. Archive atomically sets listed=false, forbids edits/relisting and future new orders, renewals or subscriptions, while preserving existing entitlements and historical records. These future write operations are outside Task 1.2.3.
+
 ### Subscription service
 A subscription product has a name, description, category, initial purchase price, renewal price, service period, required non-sensitive form fields, internal supplier cost reference, and publication status.
 

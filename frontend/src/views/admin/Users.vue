@@ -9,6 +9,7 @@ import {
   type Invitation,
 } from '../../api/client'
 import { date, mask } from '../../stores/format'
+import { settings } from '../../stores/settings'
 const search = ref('')
 const status = ref('')
 const page = ref(1)
@@ -42,7 +43,7 @@ const activeInvitation = computed(() =>
       new Date(item.expiresAt).getTime() > Date.now(),
   ),
 )
-const fmt = (value: string) => date(value, 'Asia/Shanghai')
+const fmt = (value: string) => date(value, settings.state.value.timezone)
 const message = (cause: unknown) =>
   cause instanceof Error ? cause.message : '操作失败，请重试'
 function openStatus(user: Customer) {

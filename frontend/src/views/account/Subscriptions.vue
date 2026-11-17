@@ -12,14 +12,12 @@ import {
   orderDisplayStatus,
 } from '../../stores/format'
 import type { Subscription } from '../../types'
-import CheckoutDialog from '../../components/CheckoutDialog.vue'
 import OrderDialog from '../../components/OrderDialog.vue'
 import { auth } from '../../stores/auth'
 const props = defineProps<{ admin?: boolean }>()
 const route = useRoute()
 const status = ref('ALL')
 const selected = ref<Subscription>()
-const renewing = ref<Subscription>()
 const linkedOrderId = ref<string>()
 const subscriptions = computed(() =>
   mock.state.subscriptions.filter(
@@ -158,15 +156,7 @@ const fmt = (value: string) => date(value, mock.state.settings.timezone)
           </div>
           <div class="subscription-actions">
             <ElButton @click="selected = sub">详情</ElButton
-            ><ElButton
-              v-if="mock.canRenew(sub)"
-              type="primary"
-              plain
-              @click="renewing = sub"
-              >续费</ElButton
-            ><span v-else class="muted">{{
-              sub.status === 'TERMINATED' ? '订阅已终止' : '暂不支持续费'
-            }}</span>
+            ><span class="muted">续费将在后续任务接入</span>
           </div>
         </div>
       </article>
@@ -225,11 +215,7 @@ const fmt = (value: string) => date(value, mock.state.settings.timezone)
           </div>
         </dl>
         <p class="inline-note">
-          {{
-            mock.canRenew(selected)
-              ? '续费生成独立模拟订单，不自动扣费或延长到期日。'
-              : '续费已停用；当前订阅权益与到期日期仍然保留。'
-          }}
+          当前为历史 Mock 演示。真实商品已独立持久化，续费将在后续任务接入。
         </p>
         <h4>关联订单</h4>
         <div v-for="order in linkedOrders" :key="order.id" class="linked-row">
@@ -248,11 +234,6 @@ const fmt = (value: string) => date(value, mock.state.settings.timezone)
       :order="linkedOrder"
       :admin="admin"
       @close="linkedOrderId = undefined"
-    />
-    <CheckoutDialog
-      :product="renewing ? mock.product(renewing.productId) : undefined"
-      :subscription="renewing"
-      @close="renewing = undefined"
     />
   </section>
   <section v-else>

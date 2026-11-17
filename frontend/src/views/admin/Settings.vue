@@ -1,14 +1,44 @@
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { mock } from '../../stores/mock'
-const form = reactive({ ...mock.state.settings })
-function save() {
-  if (!form.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.ownerEmail))
-    return ElMessage.error('请填写店铺名称与有效邮箱')
-  Object.assign(mock.state.settings, form, { name: form.name.trim() })
-  ElMessage.success('设置已保存到当前 Mock 会话')
+import { settings } from '../../stores/settings'
+const form = reactive({
+  storeName: '',
+  ownerEmail: '',
+  timezone: 'Asia/Shanghai',
+})
+const loading = ref(true),
+  busy = ref(false),
+  error = ref('')
+async function load() {
+  loading.value = true
+  error.value = ''
+  try {
+    const value = await settings.load(true)
+    Object.assign(form, {
+      storeName: value.storeName,
+      ownerEmail: value.ownerEmail,
+      timezone: value.timezone,
+    })
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    loading.value = false
+  }
 }
+async function save() {
+  busy.value = true
+  error.value = ''
+  try {
+    await settings.save({ ...form })
+    ElMessage.success('设置已保存至数据库')
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    busy.value = false
+  }
+}
+onMounted(load)
 </script>
 <template>
   <section>
@@ -18,62 +48,49 @@ function save() {
         <h1>系统设置</h1>
       </div>
     </div>
-    <ElForm class="settings-form" label-position="top" @submit.prevent="save"
+    <p v-if="error" class="form-error" role="alert">
+      {{ error }} <ElButton link @click="load">重新加载</ElButton>
+    </p>
+    <ElForm
+      class="settings-form"
+      label-position="top"
+      :disabled="loading || busy"
+      @submit.prevent="save"
       ><div class="panel settings-panel">
         <h2>基本设置</h2>
         <div class="form-grid">
           <ElFormItem label="店铺名称"
             ><ElInput
-              v-model="form.name"
-              maxlength="30"
+              v-model="form.storeName"
+              maxlength="80"
               aria-label="店铺名称" /></ElFormItem
-          ><ElFormItem label="店主 / 通知邮箱"
+          ><ElFormItem label="管理员通知邮箱"
             ><ElInput
               v-model="form.ownerEmail"
               type="email"
               maxlength="254"
-              aria-label="店主 / 通知邮箱"
+              aria-label="管理员通知邮箱"
           /></ElFormItem>
         </div>
         <ElFormItem label="业务时区"
-          ><ElSelect v-model="form.timezone" aria-label="业务时区"
-            ><ElOption
-              label="北京时间 · Asia/Shanghai"
-              value="Asia/Shanghai" /><ElOption
-              label="UTC"
-              value="UTC" /><ElOption
-              label="洛杉矶 · America/Los_Angeles"
-              value="America/Los_Angeles" /></ElSelect
-        ></ElFormItem>
+          ><ElInput
+            v-model="form.timezone"
+            maxlength="64"
+            aria-label="业务时区"
+            placeholder="Asia/Shanghai"
+        /></ElFormItem>
+        <p class="muted">
+          使用 IANA 时区名称，例如
+          Asia/Shanghai、UTC、America/Los_Angeles。时间戳以 UTC
+          保存，页面日期按此设置展示。
+        </p>
+        <p class="inline-note">
+          通知邮箱不改变管理员登录邮箱，本阶段不发送任何邮件。
+        </p>
       </div>
-      <div class="panel settings-panel">
-        <h2>邮件通知偏好</h2>
-        <div class="toggle-row">
-          <div>
-            <strong>订单完成通知</strong><small>演示偏好，不发送邮件</small>
-          </div>
-          <ElSwitch v-model="form.notifyEmail" aria-label="订单完成通知" />
-        </div>
-        <div class="toggle-row">
-          <div>
-            <strong>订阅到期提醒</strong><small>演示偏好，不运行提醒任务</small>
-          </div>
-          <ElSwitch v-model="form.notifyExpiry" aria-label="订阅到期提醒" />
-        </div>
-      </div>
-      <div class="panel settings-panel">
-        <h2>服务配置状态</h2>
-        <div class="toggle-row">
-          <span>支付服务</span><span class="badge gray">未接入 · Mock</span>
-        </div>
-        <div class="toggle-row">
-          <span>SMTP 邮件服务</span><span class="badge gray">未接入</span>
-        </div>
-        <p class="muted">密钥及凭据由部署环境管理。</p>
-      </div>
-      <ElButton type="primary" native-type="submit"
-        >保存本地设置</ElButton
-      ></ElForm
-    >
+      <ElButton type="primary" native-type="submit" :loading="busy"
+        >保存设置</ElButton
+      >
+    </ElForm>
   </section>
 </template>

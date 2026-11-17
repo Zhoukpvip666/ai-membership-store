@@ -1,6 +1,6 @@
 # Task 1.2 — Local Offline Customer and Order Management
 
-**Status: Approved design baseline. Task 1.2.1 is complete. Task 1.2.2 authentication/customers/invitations is implemented for owner review; Task 1.2.3 and later business workflows remain unimplemented.** See [12-authentication-customers-invitations.md](12-authentication-customers-invitations.md).
+**Status: Approved design baseline. Tasks 1.2.1–1.2.2 are merged. Task 1.2.3 products/settings and dynamic form configuration is implemented for owner review; later workflows remain unimplemented.** See [13-products-settings-forms.md](13-products-settings-forms.md).
 
 ## 1. Objective
 
@@ -17,7 +17,7 @@ The first operational version is not a public online store. It must persist data
 - Admin-created customer accounts with PENDING_ACTIVATION status.
 - Copyable, one-time invitation links. No invitation or notification email is sent.
 - Customer activation by setting a password; customer can later log in and view only their own historical orders and subscriptions.
-- Persistent product CRUD and the three independent product controls: listed, purchaseEnabled, renewalEnabled.
+- Persistent product management with only listed (public visibility) and archivedAt (irreversible archive) as product state.
 - Admin-created offline orders for existing/new customers.
 - Manually recorded WeChat, Alipay, cash, bank-transfer, or other offline payments.
 - Admin-controlled payment verification, fulfillment status, and manual refund records.
@@ -57,17 +57,17 @@ The customer storefront may remain available as a read-only portal after activat
 
 - Product types: SUBSCRIPTION and ONE_TIME.
 - Persist initial price and renewal price as integer CNY fen.
-- Keep listed, purchaseEnabled, and renewalEnabled independent.
-- listed controls catalog visibility; purchaseEnabled controls whether a new purchase can be placed; renewalEnabled controls whether an eligible existing subscription can be renewed.
+- Product state consists only of listed and archivedAt. type remains SUBSCRIPTION/ONE_TIME.
+- Public catalog selection requires listed=true AND archivedAt=null. ADMIN may use unlisted/unarchived products for future offline orders; future manual subscription grants/imports require an unarchived SUBSCRIPTION product regardless of listing. No separate purchase/renewal permissions exist.
 - Product edits must not rewrite historical order or subscription snapshots.
-- Archive products instead of deleting rows. Existing orders and subscriptions must remain queryable.
+- Archive products instead of deleting rows. Set listed=false and archivedAt in the same transaction; archive is irreversible and prevents editing/relisting. Archived products cannot be used for new orders, renewals or new subscriptions. Existing orders and subscription entitlements remain queryable and unchanged.
 - Do not add supplier cost fields.
 
 ### 3.3 Offline orders
 
 - Every order created in this milestone has source OFFLINE_MANUAL. Do not implement ONLINE order creation.
 - Order kinds: INITIAL, RENEWAL, ONE_TIME.
-- Admin selects a customer (including PENDING_ACTIVATION), product, kind, target service identifier, notification/contact email, and amount. Default amount comes from the product initial price or the subscription renewal price. If the administrator overrides it, record the override in the audit log.
+- Admin selects a customer (including PENDING_ACTIVATION), an unarchived product (listed may be false), kind, target service identifier, notification/contact email, and amount. Default amount comes from the product initial price or the subscription renewal price. If the administrator overrides it, record the override in the audit log.
 - A RENEWAL order must link to an existing subscription belonging to the selected customer and matching the product.
 - Snapshot product name/type/term, amount, renewal price, contact email, and target identifier on the order.
 - Payment and fulfillment are separate dimensions.
@@ -95,6 +95,7 @@ The customer storefront may remain available as a read-only portal after activat
 ### 3.5 Subscriptions
 
 - A subscription is an entitlement record and is independent of user activation status.
+- Manual grants/imports select only unarchived SUBSCRIPTION products; listed may be false. Archived products cannot create new subscriptions or renewal orders. Product archive does not terminate existing entitlements.
 - A customer with PENDING_ACTIVATION can have ACTIVE subscriptions.
 - A subscription can be created from a completed INITIAL order, as a MANUAL_GRANT, or as a HISTORICAL_IMPORT.
 - MANUAL_GRANT and HISTORICAL_IMPORT do not create a fake order or payment transaction.
@@ -113,7 +114,7 @@ Use these 11 Prisma models. There is no separate Customer table: CUSTOMER is a U
 1. **User** — ADMIN/CUSTOMER identity, loginEmail, notificationEmail, displayName, nullable passwordHash, role, account status, activatedAt, timestamps, createdByAdminId.
 2. **Session** — hashed opaque session token, userId, expiresAt, revokedAt, lastSeenAt, timestamps. Never store the raw session token.
 3. **InvitationToken** — userId, unique tokenHash, expiresAt, usedAt, revokedAt, createdByAdminId, createdAt. Never store the raw invitation token.
-4. **Product** — slug, name, description, product type, priceFen, renewalPriceFen, termLabel, targetField, listed, purchaseEnabled, renewalEnabled, archivedAt, timestamps.
+4. **Product** — slug, name, description, product type, priceFen, renewalPriceFen, termLabel, legacy targetField, listed, sortOrder, versioned formSchema JSON, archivedAt, timestamps.
 5. **Order** — orderNo, userId, productId, optional subscriptionId for renewals, orderKind, source OFFLINE_MANUAL, immutable product/price/contact/target snapshots, amountFen, paymentStatus summary, fulfillmentStatus, internalNote, createdByAdminId, timestamps.
 6. **PaymentTransaction** — orderId, kind PAYMENT/REFUND, channel, amountFen, status PENDING/CONFIRMED/FAILED, externalReference, occurredAt, confirmedAt, createdByAdminId, confirmedByAdminId, note, timestamps. Records customer money only; it is not a supplier-transfer table.
 7. **OrderEvent** — orderId, event type, actorAdminId, note, safe metadata/before-after snapshot, createdAt. Used for order timeline and status history.
@@ -193,7 +194,7 @@ Do not add public checkout, payment-provider webhook, online payment, supplier, 
 Keep the existing visual design and route structure. Replace Mock data with API-backed data in the admin console.
 
 - Users: add customer form; show PENDING_ACTIVATION/ACTIVE/DISABLED; generate/reissue invitation link and copy it; show a warning that localhost links are not externally reachable.
-- Products: persist CRUD, archive, and the three independent controls.
+- Products: persist list/detail/create/edit, listing visibility and irreversible archive; no physical deletion or separate purchase/renewal controls.
 - Orders: add offline order creation; filter by payment and fulfillment separately; record/confirm offline payment; record/confirm manual refund; update fulfillment with reason; show transaction and order event history.
 - Subscriptions: add subscription; select existing customer including pending activation; choose ORDER/MANUAL_GRANT/HISTORICAL_IMPORT; enter target identifier, start/expiry, renewal price; create renewal order; update expiry only after supplier confirmation; show event history.
 - Overview: calculate sales from confirmed payment transactions minus confirmed refund transactions; distinguish unpaid/pending verification from paid orders; show pending fulfillment and subscription counts.
@@ -211,7 +212,7 @@ Implement one subtask at a time and wait for owner review after each PR.
 - **Task 1.2.5 — Subscriptions and renewals:** manual grant/import, order-linked activation, renewal orders, supplier-confirmed expiry updates, event history.
 - **Task 1.2.6 — Dashboard and customer read-only portal:** reconciled metrics, own-order/subscription views, full end-to-end tests and local operating guide.
 
-Task 1.2.1 was reviewed and Task 1.2.2 was explicitly authorized by the owner. Stop after the Task 1.2.2 PR and wait for human review. Do not start Task 1.2.3 or later business API/UI work without a separate authorization.
+Tasks 1.2.1–1.2.2 were merged and Task 1.2.3 was separately authorized by the owner. Stop after the Task 1.2.3 PR and wait for human review. Task 1.2.4 requires separate authorization. Product forms are configuration/preview only; no customer values or order submissions are stored.
 
 ## 9. Acceptance criteria for the full local milestone
 

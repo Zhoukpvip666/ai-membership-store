@@ -14,7 +14,7 @@
 | User | ADMIN/CUSTOMER、唯一登录邮箱、可空密码哈希、账号状态、创建管理员 |
 | Session | 用户关联、唯一 tokenHash、到期/撤销时间；没有原始 token 字段 |
 | InvitationToken | 用户/签发管理员、唯一 tokenHash、到期/使用/撤销时间；仅表结构 |
-| Product | 唯一 slug、类型、整数分价格、三个独立开关、归档时间 |
+| Product | 唯一 slug、类型、整数分价格、商城展示 listed、不可逆归档 archivedAt |
 | Order | 唯一 orderNo、客户/商品/可选续费订阅、快照、OFFLINE_MANUAL、独立付款/履约状态 |
 | PaymentTransaction | 订单关联、PAYMENT/REFUND、线下渠道、整数分金额、记录/确认管理员 |
 | OrderEvent | 订单时间线、管理员、脱敏状态快照 |
@@ -173,3 +173,7 @@ package-lock.json
 本任务完成后停止，等待人工审查。下一项仅为建议：获批后再执行 Task 1.2.2。没有实现客户/商品/订单 CRUD、邀请链接或激活、会话认证流程、线上支付、邮件或上游 API，也没有部署。
 
 实现参考：[Prisma 7 MySQL 与 driver adapter](https://www.prisma.io/docs/orm/v7/core-concepts/supported-databases/mysql)、[Prisma 7 迁移流程](https://www.prisma.io/docs/orm/v7/prisma-migrate/workflows/development-and-production)、[显式 Seed 配置](https://www.prisma.io/docs/orm/v7/prisma-migrate/workflows/seeding)。
+
+## Task 1.2.3 商品状态迁移说明
+
+初始迁移作为历史版本保持不变。最新商品状态仅有 listed 与 archivedAt；后续版本化迁移移除旧购买/续费权限列，并把历史归档商品设为未上架。动态表单增量迁移保留，已有表、账户、订单、订阅、表单及排序数据不重建。迁移验证只操作隔离测试数据库；本轮修订未对开发数据库执行迁移或 Seed。当前运行说明和检查结果见 [13-products-settings-forms.md](13-products-settings-forms.md)。

@@ -12,8 +12,7 @@ export interface Product {
   renewalPriceFen: number | null
   term: string
   listed: boolean
-  purchaseEnabled: boolean
-  renewalEnabled: boolean
+  archivedAt: string | null
   targetField: 'EMAIL' | 'TEXT' | 'NONE'
 }
 export interface Order {

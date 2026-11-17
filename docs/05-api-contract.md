@@ -74,12 +74,23 @@ Task 1.2.2 adds no customer order/subscription read APIs. They remain section 7 
 |---|---|---|
 | GET | /admin/products | List products including archived |
 | POST | /admin/products | Create product |
-| PATCH | /admin/products/:id | Edit product and independent listing/new-purchase/renewal flags |
-| POST | /admin/products/:id/archive | Soft archive product |
+| GET | /admin/products/:id | Read product and versioned form configuration |
+| PATCH | /admin/products/:id | Edit unarchived product and catalog listing |
+| POST | /admin/products/:id/archive | Irreversibly archive and unlist product |
 | GET | /admin/settings | Read store name, owner email, timezone |
 | PATCH | /admin/settings | Update non-secret settings |
 
 No supplier-cost or secret credential fields.
+
+Implemented in Task 1.2.3. All seven routes use existing ADMIN sessions, Origin/custom-header CSRF checks and admin mutation limits. Detail/create/edit/archive return `{product}`; settings return `{settings}`. Lists return `{items,total,page,pageSize}`. No public product API is introduced.
+
+Product list query: search (name, max 120), type SUBSCRIPTION/ONE_TIME, archived ALL/ACTIVE/ARCHIVED (default ALL), listed true/false, page (default 1, max 10000), pageSize (default 20, max 100). Sort is sortOrder, createdAt, id ascending. Unknown query/body properties are rejected.
+
+Create accepts name (1–120), description (nullable, max 2000), type, priceFen, renewalPriceFen, termLabel (1–40), optional listed (default false), sortOrder (default 0), formSchema (default v1 empty). Fen and sortOrder are integers 0–2147483647. SUBSCRIPTION requires a renewal price; ONE_TIME requires null renewal price. PATCH is nonempty and validates the complete merged record. Switching type requires supplying compatible renewal values in the same request. Only listed and archivedAt represent product state; archivedAt is server-managed. Removed purchase/renewal permission properties are rejected as unknown inputs. Unlisted/unarchived products remain in ADMIN lists and details. Public catalog selection must require listed=true AND archivedAt=null. Future offline orders may select any unarchived product; future manual subscription grants/imports must select an unarchived SUBSCRIPTION product. Neither ADMIN selection requires listed=true. Archived products cannot be used for new orders, renewals or new subscriptions; these write flows remain future tasks. Slug, targetField, IDs and timestamps cannot be supplied. Description/schema strings are plain text, never executable markup.
+
+Archive POST accepts `{}`, sets listed=false and archivedAt together once, retains the row and historical references, and writes one audit record even on retry. Archived products remain readable in ADMIN lists/details but every valid PATCH, including listed=true, returns 409 PRODUCT_ARCHIVED. The archive timestamp is stable on retry, and archivedAt cannot be supplied or cleared by clients. Missing product returns 404. No DELETE/restore route exists. All mutations and their sanitized audit records commit in one transaction; audit failures roll back changes. Audit records contain changed keys and operational flags/prices/counts, never form defaults or contact values.
+
+Settings PATCH is nonempty and accepts only storeName (1–80), ownerEmail (normalized valid email, max 254) and timezone (valid IANA identifier, max 64; numeric offsets rejected). Existing singleton id=1 is updated, never an account/password. Missing initialization returns 503 SETTINGS_UNAVAILABLE. Validation returns sanitized 400 INVALID_INPUT; no request values are echoed. Full schema contract, limits and examples: [13-products-settings-forms.md](13-products-settings-forms.md).
 
 ## 5. Admin offline orders and payment transactions
 

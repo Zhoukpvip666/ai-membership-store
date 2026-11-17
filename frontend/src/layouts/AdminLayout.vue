@@ -10,12 +10,19 @@ import {
   FlaskConical,
 } from '@lucide/vue'
 import Brand from '../components/Brand.vue'
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { settings } from '../stores/settings'
 import { useRoute, useRouter } from 'vue-router'
 import { auth } from '../stores/auth'
 const route = useRoute()
 const router = useRouter()
 const logoutError = ref('')
+const persistentPage = computed(() =>
+  ['/admin/users', '/admin/products', '/admin/settings'].includes(route.path),
+)
+onMounted(() => {
+  void settings.load().catch(() => {})
+})
 async function logout() {
   try {
     await auth.logout()
@@ -62,19 +69,17 @@ const nav = [
       </nav>
       <div class="sidebar-bottom">
         <span class="online-dot"></span> 本地运行环境
-        <small>Task 1.2.2 · 仅限本机</small>
+        <small>Task 1.2.3 · 仅限本机</small>
       </div>
     </aside>
     <main class="admin-main">
       <div class="demo-notice">
         <FlaskConical :size="15" /><span>{{
-          route.path === '/admin/users'
-            ? '客户资料保存至本地数据库 · 不发送邮件'
-            : '当前页面仍为 Mock 演示 · 仅用户管理已接入数据库'
+          persistentPage
+            ? '当前页面保存至本地数据库 · 不发送邮件'
+            : '经营概览、订单和订阅仍为 Mock 演示'
         }}</span
-        ><span class="demo-pill">{{
-          route.path === '/admin/users' ? 'LOCAL' : 'MOCK'
-        }}</span>
+        ><span class="demo-pill">{{ persistentPage ? 'LOCAL' : 'MOCK' }}</span>
       </div>
       <p v-if="logoutError" class="form-error" role="alert">
         {{ logoutError }}
