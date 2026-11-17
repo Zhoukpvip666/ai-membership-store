@@ -73,3 +73,18 @@ A task is complete only when:
 3. No secrets or real customer data are added.
 4. Documentation is updated when needed.
 5. The final report identifies any manual setup still required.
+
+
+## Task 1.2 local-only operating constraints
+
+- Follow docs/10-local-operations-mvp.md, docs/04-data-model.md, and docs/05-api-contract.md as the current source of truth for Task 1.2.
+- This milestone is a local offline customer/order/subscription manager, not a public online store.
+- Implement only OFFLINE_MANUAL orders. Do not implement online checkout, payment-provider APIs/webhooks, settlement, funds holding, or withdrawal.
+- Never send email in Task 1.2. Invitation links are generated for the admin to copy manually. No SMTP package, email outbox, or email worker.
+- The app must make clear that localhost invitation links cannot be opened by external customers.
+- Pending-activation customers may own orders and subscriptions. Do not gate admin operations on customer activation status.
+- Do not create fake orders/payment records for MANUAL_GRANT or HISTORICAL_IMPORT subscriptions.
+- Payment status must be based on recorded/confirmed PaymentTransaction rows. Fulfillment status is a separate dimension. Do not directly trust a browser-supplied status.
+- Offline refund is only recorded after private agreement; mark it confirmed only after the owner has actually returned funds externally. The application never moves money.
+- Keep the app bound to loopback during local development. Do not deploy or expose it publicly.
+- Do not add supplier cost, supplier transfer, merchant wallet, multi-merchant, or profit accounting features.
