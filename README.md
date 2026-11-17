@@ -2,7 +2,7 @@
 
 A private, independently operated storefront and order-management system for AI membership services and other digital services.
 
-**Project status:** Task 1.1 scaffold and local Mock UI prototype implemented. Task 1.2 has not started.
+**Project status:** Task 1.1 scaffold and local Mock UI prototype implemented and merged. Task 1.2 local offline operations is designed but not started.
 
 ## Operating model: single merchant
 
@@ -78,6 +78,7 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 7. docs/06-security-and-operations.md — security, privacy, and operational rules.
 8. docs/07-development-roadmap.md — phased implementation plan and acceptance criteria.
 9. docs/08-interface-specification.md — approved customer and owner/admin responsive UI specification.
+10. docs/10-local-operations-mvp.md — local-only customer, offline order, payment record, and subscription management milestone.
 
 ## Important launch gates
 
@@ -103,7 +104,9 @@ Before accepting real orders, the operator must verify that the supplier is auth
     ├── 05-api-contract.md
     ├── 06-security-and-operations.md
     ├── 07-development-roadmap.md
-    └── 08-interface-specification.md
+    ├── 08-interface-specification.md
+    ├── 09-task-1.1-report.md
+    └── 10-local-operations-mvp.md
 ```
 
 ## Local development — Task 1.1
@@ -173,3 +176,7 @@ Browser tests use installed **Microsoft Edge** via Playwright on desktop and at 
 The frontend tests cover checkout validation/snapshots, independent product controls, renewals, completion/refund transitions, duplicate actions and timezone-aware net receipts. Backend tests use an ephemeral HTTP port to check health JSON and absent business routes.
 
 Build artifacts: `frontend/dist/` and `backend/dist/`. To serve compiled output locally, use `npm run preview -w frontend` (default port 4173) and `npm start -w backend` in separate terminals. These commands are development previews, not production deployment configuration.
+
+## Current local operations milestone
+
+Task 1.2 is defined in [docs/10-local-operations-mvp.md](docs/10-local-operations-mvp.md). It will turn the Mock prototype into a local MySQL-backed tool for manually managed customers, offline WeChat/Alipay orders, recorded payments/refunds, and subscriptions. No online payment, SMTP, supplier API, or public deployment is included. Pending-activation customers may have subscriptions; invitations are copied manually and no email is sent. Task 1.2 will be implemented one reviewed subtask at a time, beginning with the Prisma/database foundation.
