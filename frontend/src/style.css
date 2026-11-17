@@ -339,6 +339,11 @@ strong,
   background: #3468ed;
   color: white;
 }
+.el-button.buy-button.is-disabled {
+  background: #f3f4f7;
+  border-color: #e9edf3;
+  color: #a0aabd;
+}
 .page-footer {
   font-size: 11px;
   color: #a4adbc;

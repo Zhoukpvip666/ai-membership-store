@@ -11,6 +11,8 @@
 - 商品分类筛选、添加/编辑、独立上下架/新购/续费开关。
 - 本地模拟下单、订单价格与商品信息快照、通知邮箱及商品配置所需的非敏感信息校验。新订单不声称已付款。
 - 订单搜索/状态筛选、详情/时间线；已付款待发货样例支持确认后模拟完成，以及退款申请 → 处理中 → 显式模拟成功/失败。重复和非法操作被拒绝。
+- PR #1 审查修复：付款单独展示，未付款订单在两端列表、详情、概览最近订单及订阅关联历史中显示“未付款”，履约为“未开始”，不匹配待发货筛选、不计入待发货统计。模拟退款成功将履约改为 CANCELLED（已取消），保留历史付款确认；申请中及失败不改变履约。
+- 商品开关语义：上架仅控制目录可见；新购关闭时已上架卡片保留并禁用购买；新购下单要求上架且允许新购；续费独立于前两者，仅由续费开关及订阅资格决定。关闭续费不影响允许的新购，各开关不改变已有订单与订阅权益。
 - 订阅筛选/详情、脱敏标识、初购/续费历史；续费新建独立模拟订单，不自动延长到期时间。下架不终止订阅，续费停用有说明。
 - 用户搜索/详情及对应订单/订阅链接；通知邮箱保存、演示账户退出/进入、安全入口提示；店铺名称/邮箱/时区/通知偏好本地设置。
 - 概览按业务时区计算模拟确认收款减去成功退款，显示订单及订阅汇总。
@@ -51,15 +53,15 @@ docker compose config --quiet
 docker compose up -d --wait mysql
 ```
 
-- 前端 7 项测试：购买校验与快照、商品开关独立性、续费归属/到期日保留、完成/退款状态转换、重复/失败操作、整数金额和业务时区净收款。
+- 前端 17 项测试：购买校验与快照、未付款展示及待发货统计、退款及样例履约一致性、全部 8 种商品开关组合、续费归属/到期日保留、完成/退款状态转换、重复/失败操作、整数金额和业务时区净收款。
 - 后端 2 项 HTTP 测试：健康 JSON 稳定且无需数据库；业务路由未暴露。
-- 浏览器 12 项：6 个用例分别运行于 Edge 桌面和移动尺寸，覆盖全部页面与响应式布局、购买、商品编辑/上下架、完成/退款、订阅续费、用户历史及设置。测试在没有后端的环境运行，业务 API 调用会使测试失败。
+- 浏览器 14 项：7 个用例分别运行于 Edge 桌面和移动尺寸，覆盖全部页面与响应式布局、新建未付款订单在用户/后台/概览中的展示与筛选、商品编辑及三个开关的独立效果、退款成功后的履约取消、退款样例、续费关联历史、用户历史及设置。测试在没有后端的环境运行，业务 API 调用会使测试失败。
 - 已实际启动前后端开发命令并取得页面 HTTP 200 和健康 JSON。
 - MySQL 8.4 容器通过健康检查；已执行版本查询及 `SHOW TABLES`，确认没有业务表。
 - 桌面/移动截图人工检查通过，输出在被 Git 忽略的 `test-results/`。
 - `@typescript-eslint/typescript-estree` 的开发依赖 `minimatch` 通过局部 npm override 升至 `^11.0.1`，规避审计报告中的旧版依赖；锁文件与 lint 共同验证兼容性。
 
-最终结果：干净安装、格式检查、类型检查、lint、前后端构建全部通过；基础测试 9/9、桌面/移动浏览器测试 12/12；依赖审计 0 项漏洞。测试结束后停止本次启动的应用及 MySQL 容器，保留数据库卷和本地 `.env`。
+PR #1 审查修复后重新验证：格式检查、前后端及 E2E 类型检查、Lint、19/19 项单元/HTTP 测试、前后端构建、14/14 项桌面/移动尺寸 E2E 全部通过；新截图已复核。首次交付的干净安装、0 漏洞依赖审计和 MySQL 空业务库验证结果保留，本次未重复安装或启动数据库。未修改后端或数据库，未启动 Task 1.2。
 
 移动测试为浏览器视口仿真，未在真实 iOS/Android 设备验收。健康接口只报告 API 进程健康，不表示数据库连接已就绪。
 
@@ -78,11 +80,35 @@ Task 1.1 的原型范围已实现。以下内容按范围留待后续任务：
 
 ## 文件清单
 
+PR #1 审查修复修改的 16 个文件：
+
+```text
+README.md
+docs/08-interface-specification.md
+docs/09-task-1.1-report.md
+e2e/prototype.spec.ts
+frontend/src/types/index.ts
+frontend/src/stores/format.ts
+frontend/src/stores/mock.ts
+frontend/src/stores/fixtures.ts
+frontend/src/stores/mock.test.ts
+frontend/src/components/OrderDialog.vue
+frontend/src/style.css
+frontend/src/views/account/Orders.vue
+frontend/src/views/account/Subscriptions.vue
+frontend/src/views/admin/Overview.vue
+frontend/src/views/admin/Products.vue
+frontend/src/views/storefront/Catalog.vue
+```
+
+以下为 Task 1.1 累计文件清单。
+
 修改已有文件：
 
 ```text
 README.md
 docs/07-development-roadmap.md
+docs/08-interface-specification.md
 ```
 
 新增文件：

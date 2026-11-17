@@ -2,7 +2,15 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { mock } from '../stores/mock'
-import { date, money, orderLabels, refundLabels } from '../stores/format'
+import {
+  date,
+  money,
+  orderLabels,
+  orderDisplayStatus,
+  paymentLabel,
+  fulfillmentLabels,
+  refundLabels,
+} from '../stores/format'
 import type { Order } from '../types'
 
 const props = defineProps<{ order?: Order; admin?: boolean }>()
@@ -59,11 +67,11 @@ const fmt = (value: string) => date(value, mock.state.settings.timezone)
             'badge',
             order.status === 'COMPLETED'
               ? 'green'
-              : order.status === 'REFUNDED'
+              : !order.paid || order.status === 'REFUNDED'
                 ? 'gray'
                 : 'amber',
           ]"
-          >{{ orderLabels[order.status] }}</span
+          >{{ orderLabels[orderDisplayStatus(order)] }}</span
         >
       </div>
       <dl class="detail-grid">
@@ -91,19 +99,11 @@ const fmt = (value: string) => date(value, mock.state.settings.timezone)
         </div>
         <div>
           <dt>付款状态（模拟）</dt>
-          <dd>{{ order.paid ? '已确认（演示数据）' : '未确认付款' }}</dd>
+          <dd>{{ paymentLabel(order) }}</dd>
         </div>
-        <div v-if="admin">
+        <div>
           <dt>履约状态（模拟）</dt>
-          <dd>
-            {{
-              {
-                NOT_STARTED: '未开始',
-                PROCESSING: '处理中',
-                COMPLETED: '已完成',
-              }[order.fulfillment]
-            }}
-          </dd>
+          <dd>{{ fulfillmentLabels[order.fulfillment] }}</dd>
         </div>
         <div v-if="admin">
           <dt>退款状态（模拟）</dt>

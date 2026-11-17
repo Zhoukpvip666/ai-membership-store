@@ -9,6 +9,7 @@ import {
   mask,
   subscriptionLabels,
   orderLabels,
+  orderDisplayStatus,
 } from '../../stores/format'
 import type { Subscription } from '../../types'
 import CheckoutDialog from '../../components/CheckoutDialog.vue'
@@ -234,7 +235,7 @@ const fmt = (value: string) => date(value, mock.state.settings.timezone)
           <button class="text-button mono" @click="linkedOrderId = order.id">
             {{ order.id }}</button><span
             >{{ order.kind === 'RENEWAL' ? '续费' : '首次购买' }} ·
-            {{ orderLabels[order.status] }}</span
+            {{ orderLabels[orderDisplayStatus(order)] }}</span
           >
         </div>
         <p v-if="!linkedOrders.length" class="muted">

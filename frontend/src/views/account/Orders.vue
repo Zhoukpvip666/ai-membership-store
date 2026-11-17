@@ -8,6 +8,8 @@ import {
   mask,
   money,
   orderLabels,
+  orderDisplayStatus,
+  paymentLabel,
   refundLabels,
 } from '../../stores/format'
 import type { Order } from '../../types'
@@ -22,7 +24,7 @@ const orders = computed(() =>
     (o) =>
       (props.admin || (mock.state.signedIn && o.userId === CURRENT_USER)) &&
       (!props.admin || !route.query.user || o.userId === route.query.user) &&
-      (status.value === 'ALL' || o.status === status.value) &&
+      (status.value === 'ALL' || orderDisplayStatus(o) === status.value) &&
       (
         o.id +
         o.productName +
@@ -83,7 +85,8 @@ const orders = computed(() =>
               <th v-if="admin">客户</th>
               <th>下单时间</th>
               <th>金额</th>
-              <th>状态</th>
+              <th>付款状态</th>
+              <th>订单状态</th>
               <th v-if="admin">退款</th>
               <th class="align-right">操作</th>
             </tr>
@@ -104,17 +107,18 @@ const orders = computed(() =>
               </td>
               <td>{{ date(order.createdAt, mock.state.settings.timezone) }}</td>
               <td class="strong">{{ money(order.amountFen) }}</td>
+              <td>{{ paymentLabel(order) }}</td>
               <td>
                 <span
                   :class="[
                     'badge',
                     order.status === 'COMPLETED'
                       ? 'green'
-                      : order.status === 'REFUNDED'
+                      : !order.paid || order.status === 'REFUNDED'
                         ? 'gray'
                         : 'amber',
                   ]"
-                  >{{ orderLabels[order.status] }}</span
+                  >{{ orderLabels[orderDisplayStatus(order)] }}</span
                 >
               </td>
               <td v-if="admin">{{ refundLabels[order.refund] }}</td>

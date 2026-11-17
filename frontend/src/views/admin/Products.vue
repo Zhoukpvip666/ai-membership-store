@@ -158,7 +158,7 @@ function save() {
       <div v-if="!products.length" class="empty-state">未找到商品</div>
       <div class="table-footer">
         共 {{ products.length }} 条 ·
-        上架、新购、续费独立控制，历史订单及订阅保留
+        上架控制目录可见，新购控制购买按钮，续费控制已有订阅续费。历史订单及订阅保留。
       </div>
     </div>
     <ElDialog
@@ -211,19 +211,25 @@ function save() {
               value="NONE" /></ElSelect
         ></ElFormItem>
         <div class="toggle-row">
-          <span>商品上架</span
-          ><ElSwitch v-model="form.listed" aria-label="商品上架" />
+          <div><span>商品上架</span><small>仅控制商品目录是否可见</small></div>
+          <ElSwitch v-model="form.listed" aria-label="商品上架" />
         </div>
         <div class="toggle-row">
-          <span>允许新客户购买</span
-          ><ElSwitch
+          <div>
+            <span>允许新客户购买</span
+            ><small>关闭后仍展示已上架商品，购买按钮不可用</small>
+          </div>
+          <ElSwitch
             v-model="form.purchaseEnabled"
             aria-label="允许新客户购买"
           />
         </div>
         <div v-if="form.type === 'SUBSCRIPTION'" class="toggle-row">
-          <span>允许已有订阅续费</span
-          ><ElSwitch
+          <div>
+            <span>允许已有订阅续费</span
+            ><small>独立于上架和新购，不改变当前订阅权益</small>
+          </div>
+          <ElSwitch
             v-model="form.renewalEnabled"
             aria-label="允许已有订阅续费"
           />

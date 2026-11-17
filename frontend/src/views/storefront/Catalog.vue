@@ -9,10 +9,7 @@ const category = ref('ALL')
 const selected = ref<Product>()
 const products = computed(() =>
   mock.state.products.filter(
-    (p) =>
-      p.listed &&
-      p.purchaseEnabled &&
-      (category.value === 'ALL' || p.type === category.value),
+    (p) => p.listed && (category.value === 'ALL' || p.type === category.value),
   ),
 )
 const filters = [
@@ -75,14 +72,20 @@ const filters = [
             }}
           </p>
         </div>
-        <ElButton class="buy-button" type="primary" @click="selected = product"
-          >立即购买 <ArrowRight :size="16"
-        /></ElButton>
+        <ElButton
+          class="buy-button"
+          type="primary"
+          :disabled="!mock.canPurchase(product)"
+          @click="selected = product"
+        >
+          {{ product.purchaseEnabled ? '立即购买' : '暂不可购买' }}
+          <ArrowRight v-if="product.purchaseEnabled" :size="16" />
+        </ElButton>
       </article>
     </div>
     <div v-else class="empty-state">
       <PackageOpen :size="32" />
-      <p>暂无可购买商品</p>
+      <p>暂无上架商品</p>
     </div>
     <CheckoutDialog :product="selected" @close="selected = undefined" />
   </section>

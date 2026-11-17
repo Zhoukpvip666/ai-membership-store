@@ -69,7 +69,18 @@ test('catalog filters and local checkout create an unpaid snapshot', async ({
   page.on('request', (r) => {
     if (/\/api\//.test(r.url())) apiRequests.push(r.url())
   })
-  await page.goto('/')
+  await page.goto('/admin')
+  const pendingMetric = page
+    .locator('.metric-card')
+    .filter({ hasText: '待发货订单' })
+  await expect(pendingMetric.locator('strong')).toHaveText('2')
+  await expect(
+    page
+      .locator('.metric-card')
+      .filter({ hasText: '累计订单' })
+      .locator('strong'),
+  ).toHaveText('8')
+  await page.getByRole('link', { name: /返回商店/ }).click()
   await page.getByRole('button', { name: '一次性服务', exact: true }).click()
   await expect(page.locator('.product-card')).toHaveCount(2)
   await page.getByRole('button', { name: '订阅服务', exact: true }).click()
@@ -85,12 +96,68 @@ test('catalog filters and local checkout create an unpaid snapshot', async ({
   await dialog.getByRole('button', { name: '创建模拟订单' }).click()
   await expect(page).toHaveURL('/orders')
   await expect(page.locator('tbody tr')).toHaveCount(6)
+  const unpaidRow = page.locator('tbody tr').first()
+  const orderNo = (await unpaidRow.locator('.mono').innerText()).trim()
+  await expect(unpaidRow.locator('.badge')).toHaveText('未付款')
+  await expect(unpaidRow).not.toContainText('待发货')
+  await page.getByRole('button', { name: '待发货', exact: true }).click()
+  await expect(page.locator('tbody tr')).toHaveCount(1)
+  await expect(page.locator('tbody')).not.toContainText(orderNo)
+  await page.getByRole('button', { name: '未付款', exact: true }).click()
+  await expect(page.locator('tbody tr')).toHaveCount(1)
   await page
     .locator('tbody tr')
     .first()
     .getByRole('button', { name: '查看详情' })
     .click()
-  await expect(page.getByRole('dialog')).toContainText('未确认付款')
+  const detail = page.getByRole('dialog', { name: '订单详情', exact: true })
+  await expect(detail.locator('.badge')).toHaveText('未付款')
+  await expect(
+    detail
+      .locator('.detail-grid > div')
+      .filter({ hasText: '付款状态（模拟）' })
+      .locator('dd'),
+  ).toHaveText('未付款')
+  await expect(
+    detail
+      .locator('.detail-grid > div')
+      .filter({ hasText: '履约状态（模拟）' })
+      .locator('dd'),
+  ).toHaveText('未开始')
+  await detail.getByRole('button', { name: 'Close this dialog' }).click()
+  await page.getByRole('link', { name: /管理控制台/ }).click()
+  await expect(pendingMetric.locator('strong')).toHaveText('2')
+  await expect(
+    page
+      .locator('.metric-card')
+      .filter({ hasText: '累计订单' })
+      .locator('strong'),
+  ).toHaveText('9')
+  const recent = page.locator('tbody tr').filter({ hasText: orderNo })
+  await expect(recent.locator('.badge')).toHaveText('未付款')
+  await expect(recent).not.toContainText('待发货')
+  await page.getByRole('link', { name: '全部订单', exact: true }).click()
+  await page.getByRole('button', { name: '待发货', exact: true }).click()
+  await expect(page.locator('tbody tr')).toHaveCount(2)
+  await expect(page.locator('tbody')).not.toContainText(orderNo)
+  await page.getByRole('button', { name: '未付款', exact: true }).click()
+  await expect(page.locator('tbody tr')).toHaveCount(2)
+  const adminRow = page.locator('tbody tr').filter({ hasText: orderNo })
+  await expect(adminRow.locator('.badge')).toHaveText('未付款')
+  await adminRow.getByRole('button', { name: '查看详情' }).click()
+  await expect(detail.locator('.badge')).toHaveText('未付款')
+  await expect(
+    detail
+      .locator('.detail-grid > div')
+      .filter({ hasText: '履约状态（模拟）' })
+      .locator('dd'),
+  ).toHaveText('未开始')
+  await expect(
+    detail.getByRole('button', { name: '模拟确认已完成' }),
+  ).toHaveCount(0)
+  await expect(
+    detail.getByRole('button', { name: '模拟申请退款' }),
+  ).toHaveCount(0)
   expect(apiRequests).toEqual([])
 })
 
@@ -184,6 +251,13 @@ test('paid completion and refund require explicit simulation steps', async ({
   await expect(
     page.getByRole('dialog', { name: '订单详情', exact: true }),
   ).toContainText('模拟退款失败')
+  await expect(
+    page
+      .getByRole('dialog', { name: '订单详情', exact: true })
+      .locator('.detail-grid > div')
+      .filter({ hasText: '履约状态（模拟）' })
+      .locator('dd'),
+  ).toHaveText('处理中')
   await page.getByRole('button', { name: '模拟申请退款', exact: true }).click()
   await page
     .getByRole('dialog', { name: '模拟申请退款', exact: true })
@@ -195,9 +269,41 @@ test('paid completion and refund require explicit simulation steps', async ({
       .getByRole('dialog', { name: '订单详情', exact: true })
       .locator('.badge'),
   ).toHaveText('已退款')
+  const refundedDetail = page.getByRole('dialog', {
+    name: '订单详情',
+    exact: true,
+  })
+  await expect(
+    refundedDetail
+      .locator('.detail-grid > div')
+      .filter({ hasText: '付款状态（模拟）' })
+      .locator('dd'),
+  ).toHaveText('已确认付款')
+  await expect(
+    refundedDetail
+      .locator('.detail-grid > div')
+      .filter({ hasText: '履约状态（模拟）' })
+      .locator('dd'),
+  ).toHaveText('已取消')
   await expect(
     page.getByRole('button', { name: '模拟申请退款', exact: true }),
   ).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: '模拟确认已完成', exact: true }),
+  ).toHaveCount(0)
+  await refundedDetail
+    .getByRole('button', { name: 'Close this dialog' })
+    .click()
+  await page
+    .getByRole('textbox', { name: '搜索订单', exact: true })
+    .fill('1005')
+  await page.getByRole('button', { name: '查看详情', exact: true }).click()
+  await expect(
+    refundedDetail
+      .locator('.detail-grid > div')
+      .filter({ hasText: '履约状态（模拟）' })
+      .locator('dd'),
+  ).toHaveText('已取消')
 })
 
 test('subscriptions filter and delisted product can renew without extending expiry', async ({
@@ -224,6 +330,14 @@ test('subscriptions filter and delisted product can renew without extending expi
   await card.getByRole('button', { name: '续费', exact: true }).click()
   await page.getByRole('button', { name: '创建模拟订单' }).click()
   await expect(page.locator('tbody tr').first()).toContainText('续费')
+  const renewalOrderNo = (
+    await page.locator('tbody tr').first().locator('.mono').innerText()
+  )
+    .split('·')[0]!
+    .trim()
+  await expect(page.locator('tbody tr').first().locator('.badge')).toHaveText(
+    '未付款',
+  )
   await page
     .getByRole('navigation', { name: /用户导航/ })
     .getByRole('link', { name: /订阅/ })
@@ -235,6 +349,17 @@ test('subscriptions filter and delisted product can renew without extending expi
       .locator('.subscription-bottom strong')
       .first(),
   ).toHaveText(expiry!)
+  await card.getByRole('button', { name: '详情', exact: true }).click()
+  await expect(
+    page
+      .getByRole('dialog', { name: '订阅详情' })
+      .locator('.linked-row')
+      .filter({ hasText: renewalOrderNo }),
+  ).toContainText('未付款')
+  await page
+    .getByRole('dialog', { name: '订阅详情' })
+    .getByRole('button', { name: 'Close this dialog' })
+    .click()
   const disabled = page
     .locator('.subscription-card')
     .filter({ hasText: 'AI 创作工具' })
@@ -242,6 +367,108 @@ test('subscriptions filter and delisted product can renew without extending expi
   await expect(
     disabled.getByRole('button', { name: '续费', exact: true }),
   ).toHaveCount(0)
+})
+
+test('listing visibility, new purchases and existing renewals work independently', async ({
+  page,
+}) => {
+  test.setTimeout(60000)
+  const name = 'AI 编程助手 · 月度会员'
+  const row = page.locator('tbody tr').filter({ hasText: name })
+  const product = page.locator('.product-card').filter({ hasText: name })
+  const subscription = page
+    .locator('.subscription-card')
+    .filter({ hasText: name })
+    .first()
+  const openAdminProducts = async () => {
+    await page.getByRole('link', { name: /管理控制台/ }).click()
+    await page.getByRole('link', { name: '商品管理', exact: true }).click()
+  }
+  const openSubscriptions = async () => {
+    await page
+      .getByRole('navigation', { name: /用户导航/ })
+      .getByRole('link', { name: /订阅/ })
+      .click()
+    await expect(subscription.locator('.subscription-top .badge')).toHaveText(
+      '有效',
+    )
+  }
+  await page.goto('/admin/products')
+  await row
+    .getByRole('switch', { name: name + '新购', exact: true })
+    .locator('..')
+    .click()
+  await expect(
+    row.getByRole('switch', { name: name + '上架', exact: true }),
+  ).toBeChecked()
+  await expect(
+    row.getByRole('switch', { name: name + '续费', exact: true }),
+  ).toBeChecked()
+  await page.getByRole('link', { name: /返回商店/ }).click()
+  await expect(product).toBeVisible()
+  await expect(
+    product.getByRole('button', { name: '暂不可购买' }),
+  ).toBeDisabled()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await openSubscriptions()
+  const expiry = await subscription
+    .locator('.subscription-bottom strong')
+    .first()
+    .innerText()
+  await expect(
+    subscription.getByRole('button', { name: '续费', exact: true }),
+  ).toBeEnabled()
+
+  await openAdminProducts()
+  await row
+    .getByRole('switch', { name: name + '上架', exact: true })
+    .locator('..')
+    .click()
+  await expect(
+    row.getByRole('switch', { name: name + '新购', exact: true }),
+  ).not.toBeChecked()
+  await expect(
+    row.getByRole('switch', { name: name + '续费', exact: true }),
+  ).toBeChecked()
+  await page.getByRole('link', { name: /返回商店/ }).click()
+  await expect(product).toHaveCount(0)
+  await openSubscriptions()
+  await subscription.getByRole('button', { name: '续费', exact: true }).click()
+  await page.getByRole('button', { name: '创建模拟订单', exact: true }).click()
+  await expect(page.locator('tbody tr').first()).toContainText('续费')
+  await expect(page.locator('tbody tr').first().locator('.badge')).toHaveText(
+    '未付款',
+  )
+
+  await openAdminProducts()
+  await row
+    .getByRole('switch', { name: name + '上架', exact: true })
+    .locator('..')
+    .click()
+  await row
+    .getByRole('switch', { name: name + '新购', exact: true })
+    .locator('..')
+    .click()
+  await row
+    .getByRole('switch', { name: name + '续费', exact: true })
+    .locator('..')
+    .click()
+  await expect(
+    row.getByRole('switch', { name: name + '上架', exact: true }),
+  ).toBeChecked()
+  await expect(
+    row.getByRole('switch', { name: name + '新购', exact: true }),
+  ).toBeChecked()
+  await page.getByRole('link', { name: /返回商店/ }).click()
+  await expect(product.getByRole('button', { name: '立即购买' })).toBeEnabled()
+  await openSubscriptions()
+  await expect(subscription).toContainText('暂不支持续费')
+  await expect(
+    subscription.getByRole('button', { name: '续费', exact: true }),
+  ).toHaveCount(0)
+  await expect(
+    subscription.locator('.subscription-bottom strong').first(),
+  ).toHaveText(expiry)
 })
 
 test('user history links and settings are usable', async ({ page }) => {

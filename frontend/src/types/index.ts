@@ -32,7 +32,7 @@ export interface Order {
   verifiedAt?: string
   paid: boolean
   status: OrderStatus
-  fulfillment: 'NOT_STARTED' | 'PROCESSING' | 'COMPLETED'
+  fulfillment: 'NOT_STARTED' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED'
   refund: RefundStatus
   refundedAt?: string
   timeline: { label: string; at: string }[]

@@ -145,9 +145,11 @@ export function createFixtures(now = new Date()) {
         fulfillment:
           status === 'COMPLETED'
             ? 'COMPLETED'
-            : paid
-              ? 'PROCESSING'
-              : 'NOT_STARTED',
+            : status === 'REFUNDED'
+              ? 'CANCELLED'
+              : paid
+                ? 'PROCESSING'
+                : 'NOT_STARTED',
         refund: status === 'REFUNDED' ? 'SUCCESS' : 'NONE',
         refundedAt: status === 'REFUNDED' ? createdAt : undefined,
         timeline: [
@@ -159,7 +161,12 @@ export function createFixtures(now = new Date()) {
             ? [{ label: '模拟服务已完成', at: createdAt }]
             : []),
           ...(status === 'REFUNDED'
-            ? [{ label: '模拟退款成功 · 无真实资金变动', at: createdAt }]
+            ? [
+                {
+                  label: '模拟退款成功 · 履约已取消 · 无真实资金变动',
+                  at: createdAt,
+                },
+              ]
             : []),
         ],
       }

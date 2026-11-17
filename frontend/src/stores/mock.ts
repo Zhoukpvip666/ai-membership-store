@@ -21,6 +21,7 @@ export function createMockStore() {
   const customer = (id: string) =>
     state.customers.find((user) => user.id === id)
   const product = (id: string) => state.products.find((item) => item.id === id)
+  const canPurchase = (item: Product) => item.listed && item.purchaseEnabled
   const order = (id: string) => {
     const value = state.orders.find((item) => item.id === id)
     if (!value) throw new Error('订单不存在')
@@ -78,7 +79,7 @@ export function createMockStore() {
         ? !subscription ||
           subscription.productId !== productId ||
           !canRenew(subscription)
-        : !item.listed || !item.purchaseEnabled
+        : !canPurchase(item)
     )
       throw new Error('该商品暂不可购买或续费')
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
@@ -157,11 +158,12 @@ export function createMockStore() {
     item.refund = success ? 'SUCCESS' : 'FAILED'
     if (success) {
       item.status = 'REFUNDED'
+      item.fulfillment = 'CANCELLED'
       item.refundedAt = timestamp()
     }
     item.timeline.push({
       label: success
-        ? '模拟退款成功 · 无真实资金变动'
+        ? '模拟退款成功 · 履约已取消 · 无真实资金变动'
         : '模拟退款失败 · 可重试',
       at: timestamp(),
     })
@@ -170,6 +172,7 @@ export function createMockStore() {
     state,
     customer,
     product,
+    canPurchase,
     canRenew,
     saveProduct,
     checkout,

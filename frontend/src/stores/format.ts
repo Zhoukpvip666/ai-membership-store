@@ -25,9 +25,24 @@ export const mask = (value: string) => {
     : value.slice(0, 2) + '***'
 }
 export const orderLabels = {
+  UNPAID: '未付款',
   PENDING: '待发货',
   COMPLETED: '已完成',
   REFUNDED: '已退款',
+}
+// Payment is independent of fulfillment. UNPAID is a display/filter value,
+// not a new persisted order or payment state.
+export const orderDisplayStatus = (order: Order): keyof typeof orderLabels =>
+  !order.paid && order.status === 'PENDING' ? 'UNPAID' : order.status
+export const paymentLabel = (order: Order) =>
+  order.paid ? '已确认付款' : '未付款'
+export const isAwaitingDelivery = (order: Order) =>
+  order.paid && order.status === 'PENDING'
+export const fulfillmentLabels: Record<Order['fulfillment'], string> = {
+  NOT_STARTED: '未开始',
+  PROCESSING: '处理中',
+  COMPLETED: '已完成',
+  CANCELLED: '已取消',
 }
 export const subscriptionLabels = {
   ACTIVE: '有效',
@@ -67,6 +82,6 @@ export function overview(orders: Order[], timezone: string, now = new Date()) {
     today: net(today),
     month: net(today.slice(0, 7)),
     total: orders.length,
-    pending: orders.filter((o) => o.status === 'PENDING').length,
+    pending: orders.filter(isAwaitingDelivery).length,
   }
 }

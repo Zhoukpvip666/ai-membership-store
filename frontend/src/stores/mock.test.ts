@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { createMockStore } from './mock'
-import { overview, parsePrice } from './format'
+import {
+  isAwaitingDelivery,
+  orderDisplayStatus,
+  orderLabels,
+  overview,
+  parsePrice,
+} from './format'
 
 describe('local prototype behavior', () => {
   it('checkout snapshots the configured price without claiming payment', () => {
@@ -13,6 +19,9 @@ describe('local prototype behavior', () => {
     expect(result.amountFen).toBe(12900)
     expect(result.paid).toBe(false)
     expect(result.status).toBe('PENDING')
+    expect(result.fulfillment).toBe('NOT_STARTED')
+    expect(orderLabels[orderDisplayStatus(result)]).toBe('未付款')
+    expect(isAwaitingDelivery(result)).toBe(false)
     store.state.products[0]!.priceFen = 100
     expect(result.amountFen).toBe(12900)
     expect(() => store.complete(result.id)).toThrow()
@@ -76,17 +85,108 @@ describe('local prototype behavior', () => {
     store.requestRefund(order.id)
     expect(order.status).toBe('PENDING')
     expect(order.refund).toBe('PROCESSING')
+    expect(order.fulfillment).toBe('PROCESSING')
     expect(() => store.requestRefund(order.id)).toThrow()
     expect(() => store.complete(order.id)).toThrow()
     store.resolveRefund(order.id, false)
     expect(order.status).toBe('PENDING')
     expect(order.refund).toBe('FAILED')
+    expect(order.fulfillment).toBe('PROCESSING')
+    const verifiedAt = order.verifiedAt
     store.requestRefund(order.id)
     store.resolveRefund(order.id, true)
     expect(order.status).toBe('REFUNDED')
     expect(order.refund).toBe('SUCCESS')
+    expect(order.fulfillment).toBe('CANCELLED')
+    expect(order.paid).toBe(true)
+    expect(order.verifiedAt).toBe(verifiedAt)
+    expect(isAwaitingDelivery(order)).toBe(false)
+    expect(() => store.complete(order.id)).toThrow()
     expect(() => store.resolveRefund(order.id, true)).toThrow()
     expect(() => store.requestRefund(order.id)).toThrow()
+  })
+  it('only confirmed paid pending orders enter the delivery queue', () => {
+    const store = createMockStore()
+    const stats = () => overview(store.state.orders, 'Asia/Shanghai')
+    expect(stats().pending).toBe(2)
+    const originalTotal = stats().total
+    const unpaid = store.checkout(
+      'p1',
+      'demo@example.com',
+      'target@example.com',
+    )
+    expect(stats().total).toBe(originalTotal + 1)
+    expect(stats().pending).toBe(2)
+    expect(orderDisplayStatus(unpaid)).toBe('UNPAID')
+    expect(
+      orderDisplayStatus(store.state.orders.find((o) => o.id === 'MOCK-1008')!),
+    ).toBe('PENDING')
+    store.complete('MOCK-1008')
+    expect(stats().pending).toBe(1)
+    store.requestRefund('MOCK-1007')
+    expect(stats().pending).toBe(1)
+    store.resolveRefund('MOCK-1007', false)
+    expect(stats().pending).toBe(1)
+    store.requestRefund('MOCK-1007')
+    store.resolveRefund('MOCK-1007', true)
+    expect(stats().pending).toBe(0)
+    expect(unpaid.paid).toBe(false)
+    expect(unpaid.fulfillment).toBe('NOT_STARTED')
+  })
+  it('keeps refunded fixtures consistent with cancelled fulfillment', () => {
+    const store = createMockStore()
+    const refunded = store.state.orders.filter((o) => o.status === 'REFUNDED')
+    expect(refunded.length).toBeGreaterThan(0)
+    for (const order of refunded) {
+      expect(order.refund).toBe('SUCCESS')
+      expect(order.fulfillment).toBe('CANCELLED')
+      expect(order.paid).toBe(true)
+      expect(orderDisplayStatus(order)).toBe('REFUNDED')
+      expect(isAwaitingDelivery(order)).toBe(false)
+    }
+  })
+  it.each(
+    [false, true].flatMap((listed) =>
+      [false, true].flatMap((purchaseEnabled) =>
+        [false, true].map((renewalEnabled) => ({
+          listed,
+          purchaseEnabled,
+          renewalEnabled,
+        })),
+      ),
+    ),
+  )('independent product flags: %j', (flags) => {
+    const store = createMockStore()
+    const subscription = store.state.subscriptions[0]!
+    const product = store.product(subscription.productId)!
+    const existingOrders = JSON.stringify(store.state.orders)
+    const existingSubscriptions = JSON.stringify(store.state.subscriptions)
+    store.saveProduct({ ...product, ...flags }, product.id)
+    const saved = store.product(product.id)!
+    expect(saved.listed).toBe(flags.listed)
+    expect(store.canPurchase(saved)).toBe(flags.listed && flags.purchaseEnabled)
+    expect(store.canRenew(subscription)).toBe(flags.renewalEnabled)
+    expect(JSON.stringify(store.state.orders)).toBe(existingOrders)
+    expect(JSON.stringify(store.state.subscriptions)).toBe(
+      existingSubscriptions,
+    )
+    const buy = () =>
+      store.checkout(saved.id, 'demo@example.com', 'target@example.com')
+    if (flags.listed && flags.purchaseEnabled)
+      expect(buy().kind).toBe('INITIAL')
+    else expect(buy).toThrow()
+    const renew = () =>
+      store.checkout(
+        saved.id,
+        'demo@example.com',
+        subscription.target,
+        subscription.id,
+      )
+    const expiry = subscription.expiresAt
+    if (flags.renewalEnabled) expect(renew().kind).toBe('RENEWAL')
+    else expect(renew).toThrow()
+    expect(subscription.status).toBe('ACTIVE')
+    expect(subscription.expiresAt).toBe(expiry)
   })
   it('requires whole minor-unit prices and required subscription fields', () => {
     expect(parsePrice('9.09')).toBe(909)

@@ -8,7 +8,14 @@ import {
   ArrowRight,
 } from '@lucide/vue'
 import { mock } from '../../stores/mock'
-import { date, money, orderLabels, overview } from '../../stores/format'
+import {
+  date,
+  money,
+  orderLabels,
+  orderDisplayStatus,
+  paymentLabel,
+  overview,
+} from '../../stores/format'
 import type { Order } from '../../types'
 import OrderDialog from '../../components/OrderDialog.vue'
 const stats = computed(() =>
@@ -69,7 +76,9 @@ const metrics = computed(() => [
         <strong>{{ metric.value }}</strong><small>{{
           metric.name.includes('收款')
             ? '模拟已确认付款 − 模拟成功退款'
-            : '全部本地演示记录'
+            : metric.name === '待发货订单'
+              ? '仅统计已确认付款的待履约订单'
+              : '全部本地演示记录'
         }}</small>
       </article>
     </div>
@@ -87,7 +96,8 @@ const metrics = computed(() => [
               <th>商品 / 订单号</th>
               <th>客户</th>
               <th>金额</th>
-              <th>状态</th>
+              <th>付款状态</th>
+              <th>订单状态</th>
               <th class="align-right">操作</th>
             </tr>
           </thead>
@@ -100,17 +110,18 @@ const metrics = computed(() => [
               </td>
               <td>{{ mock.customer(order.userId)?.name }}</td>
               <td class="strong">{{ money(order.amountFen) }}</td>
+              <td>{{ paymentLabel(order) }}</td>
               <td>
                 <span
                   :class="[
                     'badge',
                     order.status === 'COMPLETED'
                       ? 'green'
-                      : order.status === 'REFUNDED'
+                      : !order.paid || order.status === 'REFUNDED'
                         ? 'gray'
                         : 'amber',
                   ]"
-                  >{{ orderLabels[order.status] }}</span
+                  >{{ orderLabels[orderDisplayStatus(order)] }}</span
                 >
               </td>
               <td class="align-right">
