@@ -22,7 +22,7 @@ const isPrismaError = (code: string) => (error: unknown) =>
     error.code === code,
   )
 
-test('migration creates exactly eleven domain tables and two migration records', async () => {
+test('migration creates exactly eleven domain tables and three migration records', async () => {
   const tables = await db.$queryRaw<{ name: string }[]>`
     SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()`
   assert.deepEqual(
@@ -52,7 +52,7 @@ test('migration creates exactly eleven domain tables and two migration records',
   assert.equal(zones[0]!.zone, '+00:00')
   const migrations = await db.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*) AS count FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`
-  assert.equal(Number(migrations[0]!.count), 2)
+  assert.equal(Number(migrations[0]!.count), 3)
   assert.equal(await db.user.count(), 0)
 })
 
@@ -75,6 +75,19 @@ test('schema keeps documented types, unique/index keys, singleton and restrictiv
       assert.equal(Number(column.datePrecision), 3)
     assert.ok(!/supplier|wallet|withdrawal|profit|rawToken/i.test(column.name))
   }
+  assert(
+    !columns.some(
+      (column) =>
+        column.tableName === 'Product' &&
+        ['purchaseEnabled', 'renewalEnabled'].includes(column.name),
+    ),
+  )
+  for (const name of ['listed', 'archivedAt', 'formSchema', 'sortOrder'])
+    assert(
+      columns.some(
+        (column) => column.tableName === 'Product' && column.name === name,
+      ),
+    )
   assert.equal(
     columns.find((c) => c.tableName === 'User' && c.name === 'passwordHash')
       ?.isNullable,
@@ -104,6 +117,7 @@ test('schema keeps documented types, unique/index keys, singleton and restrictiv
       `Missing unique key: ${tableName}.${fields}`,
     )
   for (const [tableName, fields] of [
+    ['Product', 'archivedAt,sortOrder,createdAt'],
     ['Order', 'userId,createdAt'],
     ['Order', 'paymentStatus,createdAt'],
     ['Order', 'fulfillmentStatus,createdAt'],
@@ -237,8 +251,6 @@ test('pending customers can hold multiple manual/import entitlements without fak
       termLabel: 'Supplier-confirmed term',
       targetField: 'EMAIL',
       listed: true,
-      purchaseEnabled: false,
-      renewalEnabled: true,
     },
   })
   productId = product.id

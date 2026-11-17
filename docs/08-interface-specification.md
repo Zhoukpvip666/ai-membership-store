@@ -1,6 +1,6 @@
 # Interface Specification
 
-Task 1.2.3 persistence update: product management and settings use local ADMIN APIs, alongside persistent customer management. Product dialogs add description, sort order and a responsive field editor/preview for eight supported types; archive replaces deletion. Every field has a fixed read-only ID, editable label/hint/required/default, optional choices and move/delete controls. Schema limits/errors are visible before saving. Preview input is ephemeral and has no submission action. Existing order/subscription/overview screens remain explicitly Mock. The catalog shows persisted listed/unarchived products only to ADMIN as a preview; public/customers see a not-yet-open notice. All purchasing and renewal creation are disabled in this stage, and no public product API is added. The desktop/mobile layout baseline below remains applicable. See [13-products-settings-forms.md](13-products-settings-forms.md).
+Task 1.2.3 persistence update: product management and settings use local ADMIN APIs, alongside persistent customer management. Product dialogs add description, sort order and a responsive field editor/preview for eight supported types; archive replaces deletion, immediately unlists and cannot be reversed. Only listed/archivedAt represent product state; there are no separate purchase or renewal switches. Every field has a fixed read-only ID, editable label/hint/required/default, optional choices and move/delete controls. Schema limits/errors are visible before saving. Preview input is ephemeral and has no submission action. Existing order/subscription/overview screens remain explicitly Mock. The catalog shows persisted listed/unarchived products only to ADMIN as a preview; public/customers see a not-yet-open notice. All purchasing and renewal creation are disabled in this stage, and no public product API is added. The desktop/mobile layout baseline below remains applicable. See [13-products-settings-forms.md](13-products-settings-forms.md).
 
 This document is the approved first-version UI baseline for the customer storefront and the single-owner management console. It is intentionally simple and should be implemented before real payment, supplier, or database workflows.
 
@@ -52,7 +52,7 @@ The same Vue application may serve both surfaces with route-level layouts and au
 ### 3.3 Customer pages
 
 **商品**
-- Show listed products and simple category filters. Listing alone determines catalog visibility; a listed product remains visible when new purchases are disabled, with a disabled 暂不可购买 button.
+- Show only listed=true and archivedAt=null products with simple category filters. In Task 1.2.3 this is an ADMIN preview with a disabled 暂未开放线上购买 button; public/customer catalog access remains unavailable.
 - Subscription and one-time products are visually distinguishable.
 - Product prices and terms come from product configuration.
 
@@ -66,7 +66,7 @@ The same Vue application may serve both surfaces with route-level layouts and au
 **我的订阅**
 - Show subscription product, masked target identifier, status, expiry date, renewal price, and renewal action when allowed.
 - A product being delisted does not itself terminate an existing subscription.
-- If renewals are disabled, show the current entitlement/expiry but hide or disable renewal action with a clear short explanation.
+- Archived products retain current entitlements/expiry and historical details, but cannot start new renewals. In Task 1.2.3 all renewal creation remains unavailable with a short explanation; no separate renewal switch exists.
 
 **我的订单**
 - Customer-facing primary order statuses are only 待发货 and 已完成.
@@ -122,13 +122,11 @@ No merchant registration, merchant onboarding, merchant wallet, merchant balance
 **商品管理**
 - List products with name, type, selling price, renewal price where applicable, and listing state.
 - Add/edit product.
-- Separate controls:
-  - Whether the product is listed/visible.
-  - Whether new customers can purchase.
-  - Whether existing subscribers can renew.
-- Listing controls catalog visibility only. Disabling new purchases keeps a listed card visible with a disabled purchase button; new checkout requires both listing and new-purchase permission. Renewal depends only on the renewal switch and subscription eligibility, independently of listing/new-purchase switches. Closing renewal does not prevent new purchases when they remain enabled.
+- Show one listing switch and an archive action. Listing only controls public visibility.
+- Unlisted/unarchived products remain editable and available to ADMIN for future offline orders. Future manual subscription grants/imports may select any unarchived SUBSCRIPTION product, regardless of listing.
+- Archive confirmation explicitly states that it immediately unlists, cannot be reversed, and prevents edits/relisting. Archived rows/details remain readable, their listing switches are off/disabled, and edit/archive actions are hidden. Future new orders, renewals and subscription creation must reject archived products.
 - Delisting must not delete historical orders or subscriptions.
-- Disabling new purchases or renewals must not automatically terminate existing subscriptions.
+- Archiving must preserve existing subscription entitlements and historical orders.
 - No supplier cost field in the first-version UI.
 
 **订单管理**
@@ -169,8 +167,8 @@ No merchant registration, merchant onboarding, merchant wallet, merchant balance
 The first implementation is a frontend prototype using mock data:
 - Navigation between all customer and management pages works.
 - Product filters work.
-- Product add/edit/listing and purchase/renewal toggles work locally.
-- The eight combinations of listing/new-purchase/renewal switches preserve independent visibility, checkout and renewal behavior without changing historical orders or current entitlement dates.
+- Product add/edit/listing and irreversible archive persist through the local ADMIN API.
+- Unlisted/unarchived products remain manageable; archived products are unlisted, cannot be edited/relisted, and retain readable details. Product changes never rewrite historical orders or current entitlement dates. Dynamic form configuration and preview remain available.
 - Order list filters and detail view work.
 - Mock 确认已完成 updates the local mock order state.
 - Mock 申请退款 shows a confirmation and a clearly labelled simulated result; it must not call a real provider or claim real money moved.

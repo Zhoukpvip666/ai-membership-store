@@ -218,16 +218,12 @@ test('create stores all field types with safe defaults, independent schema, inte
   const p = created.body.product
   productId = p.id
   assert.deepEqual(
-    [
-      p.priceFen,
-      p.renewalPriceFen,
-      p.listed,
-      p.purchaseEnabled,
-      p.renewalEnabled,
-      p.targetField,
-    ],
-    [1234, 999, false, false, false, 'NONE'],
+    [p.priceFen, p.renewalPriceFen, p.listed, p.targetField],
+    [1234, 999, false, 'NONE'],
   )
+  assert.equal(p.archivedAt, null)
+  assert(!('purchaseEnabled' in p))
+  assert(!('renewalEnabled' in p))
   assert.equal(p.formSchema.fields.length, 8)
   assert.match(p.slug, /^product-/)
   const other = await request('/admin/products', 'POST', {
@@ -310,6 +306,10 @@ test('server rejects invalid prices, types, fields, options, defaults, IDs and q
     },
     { targetField: 'EMAIL' },
     { archivedAt: new Date().toISOString() },
+    { purchaseEnabled: false },
+    { purchaseEnabled: true },
+    { renewalEnabled: false },
+    { renewalEnabled: true },
   ])
     assert.equal(
       (await request('/admin/products', 'POST', { ...original, ...patch }))
@@ -362,35 +362,52 @@ test('server rejects invalid prices, types, fields, options, defaults, IDs and q
     400,
   )
 })
-test('three switches persist all eight combinations independently and list visibility is separate', async () => {
-  for (const listed of [false, true])
-    for (const purchaseEnabled of [false, true])
-      for (const renewalEnabled of [false, true]) {
-        const value = { listed, purchaseEnabled, renewalEnabled }
-        assert.equal(
-          (await request('/admin/products/' + productId, 'PATCH', value))
-            .status,
-          200,
+test('listing controls catalog visibility while unlisted unarchived products remain available to administrators', async () => {
+  const orders = await db.order.count(),
+    subscriptions = await db.subscription.count()
+  for (const listed of [false, true, false]) {
+    const updated = await request('/admin/products/' + productId, 'PATCH', {
+      listed,
+    })
+    assert.equal(updated.status, 200)
+    assert.equal(updated.body.product.listed, listed)
+    const p = (await request('/admin/products/' + productId)).body.product
+    assert.equal(p.listed, listed)
+    assert.equal(p.archivedAt, null)
+    const catalog = await request(
+      '/admin/products?listed=true&archived=ACTIVE&search=Persisted',
+    )
+    assert.equal(catalog.body.total, listed ? 1 : 0)
+    // Future ADMIN offline selectors must not filter on listed; no order/subscription writes here.
+    for (const type of ['', '&type=SUBSCRIPTION']) {
+      const available = await request(
+        '/admin/products?archived=ACTIVE&search=Persisted' + type,
+      )
+      assert(
+        available.body.items.some(
+          (item: { id: string }) => item.id === productId,
+        ),
+      )
+      if (type)
+        assert(
+          available.body.items.every(
+            (item: { type: string }) => item.type === 'SUBSCRIPTION',
+          ),
         )
-        const p = (await request('/admin/products/' + productId)).body.product
-        assert.deepEqual(
-          {
-            listed: p.listed,
-            purchaseEnabled: p.purchaseEnabled,
-            renewalEnabled: p.renewalEnabled,
-          },
-          value,
-        )
-        const list = await request(
-          '/admin/products?listed=true&archived=ACTIVE&search=Persisted',
-        )
-        assert.equal(list.body.total, listed ? 1 : 0)
-      }
-  const p = (
-    await request('/admin/products/' + productId, 'PATCH', { listed: false })
-  ).body.product
-  assert.equal(p.purchaseEnabled, true)
-  assert.equal(p.renewalEnabled, true)
+    }
+  }
+  for (const field of ['purchaseEnabled', 'renewalEnabled'])
+    for (const value of [false, true])
+      assert.equal(
+        (
+          await request('/admin/products/' + productId, 'PATCH', {
+            [field]: value,
+          })
+        ).status,
+        400,
+      )
+  assert.equal(await db.order.count(), orders)
+  assert.equal(await db.subscription.count(), subscriptions)
 })
 test('editing configuration and archiving preserve accounts, invitations, sessions and immutable order/subscription history', async () => {
   const users = await db.user.findMany(),
@@ -426,20 +443,51 @@ test('editing configuration and archiving preserve accounts, invitations, sessio
   const result = await request('/admin/products/' + productId, 'PATCH', {
     name: 'Changed current name',
     priceFen: 5678,
+    listed: true,
     formSchema: { version: 1, fields: [...formSchema.fields].reverse() },
   })
   assert.equal(result.status, 200)
   assert.equal(result.body.product.formSchema.fields[0].id, 'date_id')
-  const beforeArchive = result.body.product
-  for (let i = 0; i < 2; i++)
-    assert.equal(
-      (await request('/admin/products/' + productId + '/archive', 'POST', {}))
-        .status,
-      200,
-    )
+  const firstArchive = await request(
+    '/admin/products/' + productId + '/archive',
+    'POST',
+    {},
+  )
+  assert.equal(firstArchive.status, 200)
+  const repeatedArchive = await request(
+    '/admin/products/' + productId + '/archive',
+    'POST',
+    {},
+  )
+  assert.equal(repeatedArchive.status, 200)
+  assert.equal(
+    repeatedArchive.body.product.archivedAt,
+    firstArchive.body.product.archivedAt,
+  )
   const archived = (await request('/admin/products/' + productId)).body.product
-  assert.equal(archived.purchaseEnabled, beforeArchive.purchaseEnabled)
-  assert.equal(archived.renewalEnabled, beforeArchive.renewalEnabled)
+  assert.equal(archived.listed, false)
+  assert(archived.archivedAt)
+  const archiveAudit = await db.adminAuditLog.findFirstOrThrow({
+    where: { entityId: productId, action: 'PRODUCT_ARCHIVED' },
+  })
+  assert.deepEqual(archiveAudit.beforeJson, { listed: true, archivedAt: null })
+  assert.deepEqual(archiveAudit.afterJson, {
+    listed: false,
+    archivedAt: archived.archivedAt,
+  })
+  assert.equal(
+    (await request('/admin/products/' + productId, 'PATCH', { listed: true }))
+      .status,
+    409,
+  )
+  assert.equal(
+    (
+      await request('/admin/products/' + productId, 'PATCH', {
+        archivedAt: null,
+      })
+    ).status,
+    400,
+  )
   assert.equal(
     await db.adminAuditLog.count({
       where: { entityId: productId, action: 'PRODUCT_ARCHIVED' },
@@ -485,6 +533,45 @@ test('editing configuration and archiving preserve accounts, invitations, sessio
   assert.deepEqual(await db.user.findMany(), users)
   assert.deepEqual(await db.session.findMany(), sessions)
   assert.deepEqual(await db.invitationToken.findMany(), invitations)
+})
+test('archive is atomic with its audit and concurrent duplicate archives keep the same timestamp', async () => {
+  for (const listed of [false, true]) {
+    const created = await request('/admin/products', 'POST', {
+      ...original,
+      listed,
+    })
+    assert.equal(created.status, 201)
+    const id = created.body.product.id
+    await assert.rejects(
+      productService(db).archive(id, adminId, 'x'.repeat(100)),
+    )
+    const unchanged = (await request('/admin/products/' + id)).body.product
+    assert.equal(unchanged.listed, listed)
+    assert.equal(unchanged.archivedAt, null)
+    const results = await Promise.all([
+      request('/admin/products/' + id + '/archive', 'POST', {}),
+      request('/admin/products/' + id + '/archive', 'POST', {}),
+    ])
+    for (const result of results) {
+      assert.equal(result.status, 200)
+      assert.equal(result.body.product.listed, false)
+      assert.equal(
+        result.body.product.archivedAt,
+        results[0]!.body.product.archivedAt,
+      )
+    }
+    assert.equal(
+      await db.adminAuditLog.count({
+        where: { entityId: id, action: 'PRODUCT_ARCHIVED' },
+      }),
+      1,
+    )
+    assert.equal(
+      (await request('/admin/products/' + id, 'PATCH', { listed: true }))
+        .status,
+      409,
+    )
+  }
 })
 test('settings persist only allowed fields, leave admin identity unchanged and audit writes roll back atomically', async () => {
   const admin = await db.user.findUniqueOrThrow({ where: { id: adminId } })

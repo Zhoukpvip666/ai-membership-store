@@ -101,11 +101,9 @@ onMounted(load)
             </p>
             <p class="product-description">{{ product.description }}</p>
           </div>
-          <ElButton class="buy-button" type="primary" disabled>{{
-            product.purchaseEnabled ? '暂未开放线上购买' : '暂不可购买'
-          }}</ElButton><ElButton
-            class="preview-button"
-            @click="selected = product"
+          <ElButton class="buy-button" type="primary" disabled
+            >暂未开放线上购买</ElButton
+          ><ElButton class="preview-button" @click="selected = product"
             >预览表单</ElButton
           >
         </article>

@@ -9,67 +9,15 @@ import {
 } from './format'
 
 describe('local prototype behavior', () => {
-  it('checkout snapshots the configured price without claiming payment', () => {
+  it('unpaid history remains unpaid and cannot be fulfilled or refunded', () => {
     const store = createMockStore()
-    const result = store.checkout(
-      'p1',
-      'demo@example.com',
-      'target@example.com',
-    )
-    expect(result.amountFen).toBe(12900)
-    expect(result.paid).toBe(false)
+    const result = store.state.orders.find((item) => !item.paid)!
     expect(result.status).toBe('PENDING')
     expect(result.fulfillment).toBe('NOT_STARTED')
     expect(orderLabels[orderDisplayStatus(result)]).toBe('未付款')
     expect(isAwaitingDelivery(result)).toBe(false)
-    store.state.products[0]!.priceFen = 100
-    expect(result.amountFen).toBe(12900)
     expect(() => store.complete(result.id)).toThrow()
     expect(() => store.requestRefund(result.id)).toThrow()
-  })
-  it('rejects invalid forms, signed-out checkout, and disabled purchasing', () => {
-    const store = createMockStore()
-    expect(() =>
-      store.checkout('p1', 'invalid', 'target@example.com'),
-    ).toThrow()
-    expect(() => store.checkout('p1', 'demo@example.com', '')).toThrow()
-    store.state.products[0]!.purchaseEnabled = false
-    expect(() =>
-      store.checkout('p1', 'demo@example.com', 'target@example.com'),
-    ).toThrow()
-    store.state.signedIn = false
-    expect(() =>
-      store.checkout('p2', 'demo@example.com', 'target@example.com'),
-    ).toThrow()
-  })
-  it('keeps listing, purchase, and renewal controls independent', () => {
-    const store = createMockStore()
-    const sub = store.state.subscriptions[0]!
-    const product = store.product(sub.productId)!
-    product.listed = false
-    product.purchaseEnabled = false
-    expect(store.canRenew(sub)).toBe(true)
-    const expiry = sub.expiresAt
-    const oldIds = [...sub.orderIds]
-    const renewal = store.checkout(
-      product.id,
-      'demo@example.com',
-      sub.target,
-      sub.id,
-    )
-    expect(renewal.kind).toBe('RENEWAL')
-    expect(renewal.amountFen).toBe(product.renewalPriceFen)
-    expect(sub.expiresAt).toBe(expiry)
-    expect(sub.orderIds).toEqual([...oldIds, renewal.id])
-    product.renewalEnabled = false
-    expect(store.canRenew(sub)).toBe(false)
-    expect(sub.status).toBe('ACTIVE')
-    expect(() =>
-      store.checkout(product.id, 'demo@example.com', sub.target, sub.id),
-    ).toThrow()
-    expect(() =>
-      store.checkout('p1', 'demo@example.com', 'x@example.com', 'SUB-1005'),
-    ).toThrow()
   })
   it('completes a paid pending order once without inferred entitlements', () => {
     const store = createMockStore()
@@ -109,13 +57,7 @@ describe('local prototype behavior', () => {
     const store = createMockStore()
     const stats = () => overview(store.state.orders, 'Asia/Shanghai')
     expect(stats().pending).toBe(2)
-    const originalTotal = stats().total
-    const unpaid = store.checkout(
-      'p1',
-      'demo@example.com',
-      'target@example.com',
-    )
-    expect(stats().total).toBe(originalTotal + 1)
+    const unpaid = store.state.orders.find((item) => !item.paid)!
     expect(stats().pending).toBe(2)
     expect(orderDisplayStatus(unpaid)).toBe('UNPAID')
     expect(
@@ -145,50 +87,7 @@ describe('local prototype behavior', () => {
       expect(isAwaitingDelivery(order)).toBe(false)
     }
   })
-  it.each(
-    [false, true].flatMap((listed) =>
-      [false, true].flatMap((purchaseEnabled) =>
-        [false, true].map((renewalEnabled) => ({
-          listed,
-          purchaseEnabled,
-          renewalEnabled,
-        })),
-      ),
-    ),
-  )('independent product flags: %j', (flags) => {
-    const store = createMockStore()
-    const subscription = store.state.subscriptions[0]!
-    const product = store.product(subscription.productId)!
-    const existingOrders = JSON.stringify(store.state.orders)
-    const existingSubscriptions = JSON.stringify(store.state.subscriptions)
-    store.saveProduct({ ...product, ...flags }, product.id)
-    const saved = store.product(product.id)!
-    expect(saved.listed).toBe(flags.listed)
-    expect(store.canPurchase(saved)).toBe(flags.listed && flags.purchaseEnabled)
-    expect(store.canRenew(subscription)).toBe(flags.renewalEnabled)
-    expect(JSON.stringify(store.state.orders)).toBe(existingOrders)
-    expect(JSON.stringify(store.state.subscriptions)).toBe(
-      existingSubscriptions,
-    )
-    const buy = () =>
-      store.checkout(saved.id, 'demo@example.com', 'target@example.com')
-    if (flags.listed && flags.purchaseEnabled)
-      expect(buy().kind).toBe('INITIAL')
-    else expect(buy).toThrow()
-    const renew = () =>
-      store.checkout(
-        saved.id,
-        'demo@example.com',
-        subscription.target,
-        subscription.id,
-      )
-    const expiry = subscription.expiresAt
-    if (flags.renewalEnabled) expect(renew().kind).toBe('RENEWAL')
-    else expect(renew).toThrow()
-    expect(subscription.status).toBe('ACTIVE')
-    expect(subscription.expiresAt).toBe(expiry)
-  })
-  it('requires whole minor-unit prices and required subscription fields', () => {
+  it('parses whole minor-unit prices within the database range', () => {
     expect(parsePrice('9.09')).toBe(909)
     expect(parsePrice('0.01')).toBe(1)
     expect(parsePrice('0')).toBe(0)
@@ -196,12 +95,6 @@ describe('local prototype behavior', () => {
     expect(() => parsePrice('21474836.48')).toThrow()
     expect(() => parsePrice('-1')).toThrow()
     expect(() => parsePrice('9.009')).toThrow()
-    const store = createMockStore()
-    const input = { ...store.state.products[0]!, priceFen: 1.1 }
-    expect(() => store.saveProduct(input)).toThrow()
-    expect(() =>
-      store.saveProduct({ ...input, priceFen: 100, renewalPriceFen: null }),
-    ).toThrow()
   })
   it('net receipts include verified payments minus confirmed refunds in business timezone', () => {
     const store = createMockStore()

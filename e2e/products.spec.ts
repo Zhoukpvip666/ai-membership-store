@@ -174,71 +174,107 @@ test('real product editor saves all eight field types, stable IDs, defaults, reo
   await expect(separate.locator('.form-field-editor')).toHaveCount(0)
   await separate.getByRole('button', { name: '取消', exact: true }).click()
 })
-test('listing, purchase and renewal persist independently; archive removes catalog item without deleting record', async ({
+test('unlisted products remain manageable; archive unlists irreversibly and retains detail', async ({
   page,
 }) => {
-  test.setTimeout(60000)
-  const name = 'Flags-' + randomUUID(),
-    dialog = await create(page, name)
-  for (const label of ['商品上架', '允许新购', '允许续费'])
-    await dialog
-      .getByRole('switch', { name: label, exact: true })
-      .locator('..')
-      .click()
+  test.setTimeout(90000)
+  const name = 'Listing-' + randomUUID()
+  const dialog = await create(page, name)
+  await expect(dialog.getByRole('switch')).toHaveCount(1)
+  await expect(
+    dialog.getByRole('switch', { name: '商品上架', exact: true }),
+  ).not.toBeChecked()
   await save(page, dialog)
+  const headers = {
+    origin: env.APP_BASE_URL,
+    'x-requested-with': 'MembershipStore',
+  }
+  const query =
+    '/api/v1/admin/products?archived=ACTIVE&type=SUBSCRIPTION&search=' +
+    encodeURIComponent(name)
+  const available = await page.request.get(query)
+  expect(available.status()).toBe(200)
+  const product = (await available.json()).items[0]
+  expect(product.listed).toBe(false)
+  expect(product.archivedAt).toBeNull()
+  expect(product).not.toHaveProperty('purchaseEnabled')
+  expect(product).not.toHaveProperty('renewalEnabled')
+  const path = '/api/v1/admin/products/' + product.id
   await page.getByRole('textbox', { name: '搜索商品', exact: true }).fill(name)
   await page.getByRole('button', { name: '查询', exact: true }).click()
   const row = page.locator('tbody tr').filter({ hasText: name })
-  for (const suffix of ['新购', '上架', '续费']) {
-    const response = page.waitForResponse(
-      (r) =>
-        r.request().method() === 'PATCH' &&
-        r.url().includes('/admin/products/'),
-    )
-    await row
-      .getByRole('switch', { name: name + suffix, exact: true })
-      .locator('..')
-      .click()
-    expect((await response).status()).toBe(200)
-    await expect(
-      row.getByRole('switch', { name: name + suffix, exact: true }),
-    ).not.toBeChecked()
-  }
+  await expect(row.getByRole('switch')).toHaveCount(1)
+  await row.getByRole('button', { name: '编辑', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: '编辑商品', exact: true })
+  await expect(editor).toBeVisible()
+  await editor.getByRole('button', { name: '取消', exact: true }).click()
+  await page.goto('/')
+  const card = page.locator('.product-card').filter({ hasText: name })
+  await expect(card).toHaveCount(0)
+  await page.goto('/admin/products')
+  const listing = row.getByRole('switch', { name: name + '上架', exact: true })
+  const updated = page.waitForResponse(
+    (r) =>
+      r.request().method() === 'PATCH' && new URL(r.url()).pathname === path,
+  )
+  await listing.locator('..').click()
+  expect((await updated).status()).toBe(200)
+  await expect(listing).toBeChecked()
   await page.reload()
-  await expect(
-    row.getByRole('switch', { name: name + '上架', exact: true }),
-  ).not.toBeChecked()
-  await row
-    .getByRole('switch', { name: name + '上架', exact: true })
-    .locator('..')
-    .click()
-  await expect(
-    row.getByRole('switch', { name: name + '上架', exact: true }),
-  ).toBeChecked()
-  await expect(
-    row.getByRole('switch', { name: name + '新购', exact: true }),
-  ).not.toBeChecked()
-  await expect(
-    row.getByRole('switch', { name: name + '续费', exact: true }),
-  ).not.toBeChecked()
+  await expect(listing).toBeChecked()
   await page.goto('/')
   await page.getByRole('button', { name: '订阅服务', exact: true }).click()
-  const card = page.locator('.product-card').filter({ hasText: name })
   await expect(card).toBeVisible()
   await expect(
-    card.getByRole('button', { name: '暂不可购买', exact: true }),
+    card.getByRole('button', { name: '暂未开放线上购买', exact: true }),
   ).toBeDisabled()
   await page.goto('/admin/products')
   await row.getByRole('button', { name: '归档', exact: true }).click()
+  await expect(
+    page.getByRole('dialog', { name: '归档商品', exact: true }),
+  ).toContainText('不可撤销')
   await page.getByRole('button', { name: '确认归档', exact: true }).click()
   await expect(row).toContainText('已归档')
+  await expect(listing).not.toBeChecked()
+  await expect(listing).toBeDisabled()
   await expect(
     row.getByRole('button', { name: '编辑', exact: true }),
   ).toHaveCount(0)
-  await row.getByRole('button', { name: '详情', exact: true }).click()
   await expect(
-    page.getByRole('dialog', { name: '商品详情', exact: true }),
-  ).toContainText(name)
+    row.getByRole('button', { name: '归档', exact: true }),
+  ).toHaveCount(0)
+  const archived = (await (await page.request.get(path)).json()).product
+  expect(archived.listed).toBe(false)
+  expect(archived.archivedAt).toBeTruthy()
+  const repeat = await page.request.post(path + '/archive', {
+    headers,
+    data: {},
+  })
+  expect(repeat.status()).toBe(200)
+  expect((await repeat.json()).product.archivedAt).toBe(archived.archivedAt)
+  expect(
+    (
+      await page.request.patch(path, { headers, data: { listed: true } })
+    ).status(),
+  ).toBe(409)
+  expect(
+    (
+      await page.request.patch(path, { headers, data: { name: 'Forbidden' } })
+    ).status(),
+  ).toBe(409)
+  expect((await (await page.request.get(query)).json()).total).toBe(0)
+  await page.reload()
+  await choose(
+    page,
+    page.getByRole('combobox', { name: '归档状态', exact: true }),
+    '已归档',
+  )
+  await expect(row).toContainText('已归档')
+  await row.getByRole('button', { name: '详情', exact: true }).click()
+  const detail = page.getByRole('dialog', { name: '商品详情', exact: true })
+  await expect(detail).toContainText(name)
+  await expect(detail).toContainText('未上架')
+  await expect(detail).toContainText('已归档')
   await page.goto('/')
   await expect(card).toHaveCount(0)
 })

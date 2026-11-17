@@ -21,8 +21,6 @@ const select = {
   termLabel: true,
   targetField: true,
   listed: true,
-  purchaseEnabled: true,
-  renewalEnabled: true,
   sortOrder: true,
   formSchema: true,
   archivedAt: true,
@@ -35,16 +33,12 @@ const snapshot = (product: {
   priceFen: number
   renewalPriceFen: number | null
   listed: boolean
-  purchaseEnabled: boolean
-  renewalEnabled: boolean
   sortOrder: number
 }) => ({
   type: product.type,
   priceFen: product.priceFen,
   renewalPriceFen: product.renewalPriceFen,
   listed: product.listed,
-  purchaseEnabled: product.purchaseEnabled,
-  renewalEnabled: product.renewalEnabled,
   sortOrder: product.sortOrder,
 })
 function audit(
@@ -142,8 +136,6 @@ export function productService(database: PrismaClient) {
           renewalPriceFen: current.renewalPriceFen,
           termLabel: current.termLabel,
           listed: current.listed,
-          purchaseEnabled: current.purchaseEnabled,
-          renewalEnabled: current.renewalEnabled,
           sortOrder: current.sortOrder,
           formSchema: current.formSchema,
           ...input,
@@ -172,12 +164,18 @@ export function productService(database: PrismaClient) {
         if (current.archivedAt) return current
         const product = await tx.product.update({
           where: { id },
-          data: { archivedAt: new Date() },
+          data: { listed: false, archivedAt: new Date() },
           select,
         })
-        await audit(tx, actorId, requestId, 'PRODUCT_ARCHIVED', id, {
-          archivedAt: product.archivedAt!.toISOString(),
-        })
+        await audit(
+          tx,
+          actorId,
+          requestId,
+          'PRODUCT_ARCHIVED',
+          id,
+          { listed: false, archivedAt: product.archivedAt!.toISOString() },
+          { listed: current.listed, archivedAt: null },
+        )
         return product
       })
     },

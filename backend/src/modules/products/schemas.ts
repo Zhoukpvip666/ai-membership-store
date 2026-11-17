@@ -12,8 +12,6 @@ const fields = {
   renewalPriceFen: price.nullable(),
   termLabel: z.string().trim().min(1).max(40),
   listed: z.boolean(),
-  purchaseEnabled: z.boolean(),
-  renewalEnabled: z.boolean(),
   sortOrder: z.number().int().min(0).max(2147483647),
   formSchema: productFormSchema,
 }
@@ -25,7 +23,6 @@ const validateType = (
   value: {
     type: 'SUBSCRIPTION' | 'ONE_TIME'
     renewalPriceFen: number | null
-    renewalEnabled: boolean
   },
   ctx: z.RefinementCtx,
 ) => {
@@ -35,14 +32,11 @@ const validateType = (
       path: ['renewalPriceFen'],
       message: '订阅商品必须设置续费价格',
     })
-  if (
-    value.type === 'ONE_TIME' &&
-    (value.renewalPriceFen !== null || value.renewalEnabled)
-  )
+  if (value.type === 'ONE_TIME' && value.renewalPriceFen !== null)
     ctx.addIssue({
       code: 'custom',
       path: ['renewalPriceFen'],
-      message: '一次性商品不能设置续费价格或启用续费',
+      message: '一次性商品不能设置续费价格',
     })
 }
 export const completeProduct = z.strictObject(fields).superRefine(validateType)
@@ -51,8 +45,6 @@ export const createProduct = z
     ...fields,
     description: fields.description.default(null),
     listed: fields.listed.default(false),
-    purchaseEnabled: fields.purchaseEnabled.default(false),
-    renewalEnabled: fields.renewalEnabled.default(false),
     sortOrder: fields.sortOrder.default(0),
     formSchema: fields.formSchema.default(emptyFormSchema),
   })

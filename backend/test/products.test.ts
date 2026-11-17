@@ -183,6 +183,14 @@ test('product requests validate integer fen, type constraints, unknown propertie
   )
   assert.equal(editProduct.safeParse({}).success, false)
   assert.equal(editProduct.safeParse({ archivedAt: null }).success, false)
+  for (const field of ['purchaseEnabled', 'renewalEnabled'])
+    for (const value of [false, true]) {
+      assert.equal(
+        createProduct.safeParse({ ...valid, [field]: value }).success,
+        false,
+      )
+      assert.equal(editProduct.safeParse({ [field]: value }).success, false)
+    }
   assert.equal(
     completeProduct.safeParse({ ...parsed, type: 'ONE_TIME' }).success,
     false,

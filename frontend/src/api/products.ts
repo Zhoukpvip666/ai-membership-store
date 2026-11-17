@@ -16,8 +16,6 @@ export interface Product {
   termLabel: string
   targetField: 'EMAIL' | 'TEXT' | 'NONE'
   listed: boolean
-  purchaseEnabled: boolean
-  renewalEnabled: boolean
   sortOrder: number
   formSchema: ProductFormSchema
   archivedAt: string | null

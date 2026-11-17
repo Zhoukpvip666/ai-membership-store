@@ -12,8 +12,7 @@ export function createFixtures(now = new Date()) {
       renewalPriceFen: 11900,
       term: '1 个月',
       listed: true,
-      purchaseEnabled: true,
-      renewalEnabled: true,
+      archivedAt: null,
       targetField: 'EMAIL',
     },
     {
@@ -24,8 +23,7 @@ export function createFixtures(now = new Date()) {
       renewalPriceFen: 8900,
       term: '1 个月',
       listed: true,
-      purchaseEnabled: true,
-      renewalEnabled: true,
+      archivedAt: null,
       targetField: 'EMAIL',
     },
     {
@@ -36,8 +34,7 @@ export function createFixtures(now = new Date()) {
       renewalPriceFen: 55900,
       term: '1 年',
       listed: true,
-      purchaseEnabled: true,
-      renewalEnabled: false,
+      archivedAt: null,
       targetField: 'EMAIL',
     },
     {
@@ -48,8 +45,7 @@ export function createFixtures(now = new Date()) {
       renewalPriceFen: null,
       term: '单次服务',
       listed: true,
-      purchaseEnabled: true,
-      renewalEnabled: false,
+      archivedAt: null,
       targetField: 'TEXT',
     },
     {
@@ -60,8 +56,7 @@ export function createFixtures(now = new Date()) {
       renewalPriceFen: null,
       term: '单次服务',
       listed: true,
-      purchaseEnabled: true,
-      renewalEnabled: false,
+      archivedAt: null,
       targetField: 'NONE',
     },
     {
@@ -72,8 +67,7 @@ export function createFixtures(now = new Date()) {
       renewalPriceFen: 23900,
       term: '3 个月',
       listed: true,
-      purchaseEnabled: true,
-      renewalEnabled: true,
+      archivedAt: null,
       targetField: 'EMAIL',
     },
     {
@@ -84,8 +78,7 @@ export function createFixtures(now = new Date()) {
       renewalPriceFen: 4900,
       term: '1 个月',
       listed: false,
-      purchaseEnabled: false,
-      renewalEnabled: true,
+      archivedAt: null,
       targetField: 'EMAIL',
     },
   ]

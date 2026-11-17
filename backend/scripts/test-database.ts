@@ -110,6 +110,33 @@ try {
       ['test/integration/upgrade.ts', 'before', upgradeSnapshot],
       env,
     )
+    run(
+      process.execPath,
+      [
+        'scripts/prisma.ts',
+        'db',
+        'execute',
+        '--file',
+        'prisma/migrations/20261117010000_product_form_schema/migration.sql',
+      ],
+      env,
+    )
+    run(
+      process.execPath,
+      [
+        'scripts/prisma.ts',
+        'migrate',
+        'resolve',
+        '--applied',
+        '20261117010000_product_form_schema',
+      ],
+      env,
+    )
+    run(
+      process.execPath,
+      ['test/integration/upgrade.ts', 'forms', upgradeSnapshot],
+      env,
+    )
   }
   run(process.execPath, ['scripts/prisma.ts', 'migrate', 'deploy'], env)
   if (!browserMode) {

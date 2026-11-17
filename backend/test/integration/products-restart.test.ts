@@ -71,6 +71,9 @@ async function verifyApiRestart() {
       const list = await response.json()
       assert.equal(list.items[0].slug, 'restart-persistence')
       assert.deepEqual(list.items[0].formSchema, { version: 1, fields: [] })
+      assert.equal(list.items[0].listed, false)
+      assert(!('purchaseEnabled' in list.items[0]))
+      assert(!('renewalEnabled' in list.items[0]))
       const settings = await fetch(origin + '/api/v1/admin/settings', {
         headers: { cookie },
       })
@@ -98,6 +101,7 @@ test('real MySQL restart retains product JSON, archive state, settings and all e
     const archived = await db.product.findFirstOrThrow({
       where: { name: 'Changed current name' },
     })
+    assert.equal(archived.listed, false)
     assert(archived.archivedAt)
     assert.equal(archived.priceFen, 5678)
     assert.equal(

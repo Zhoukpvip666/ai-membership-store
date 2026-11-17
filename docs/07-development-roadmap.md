@@ -100,18 +100,20 @@ Acceptance:
 **Status: Implemented for owner review.** See [13-products-settings-forms.md](13-products-settings-forms.md). Stop after this PR; do not start Task 1.2.4.
 
 - Replace product Mock state with database-backed CRUD.
-- Persist listed, purchaseEnabled, and renewalEnabled independently.
-- Add archive instead of hard delete.
+- Persist only listed (catalog visibility) and archivedAt (irreversible archive) as product state. Unlisted/unarchived products remain ADMIN-selectable for future offline operations.
+- Add archive instead of hard delete; atomically set listed=false, prohibit edits/relisting, preserve historical orders and existing entitlements.
 - Persist storeName, ownerEmail, and timezone.
 - Configure/preview eight dynamic field types with stable IDs, server validation and safe JSON defaults.
-- Apply an additive migration preserving all eleven business tables and existing records.
+- Keep the committed additive form migration and add a versioned follow-up removing obsolete permission columns and unlisting archived rows; preserve all eleven business tables, saved forms and remaining data.
 - Verify real admin product/settings UI at desktop and mobile sizes using isolated MySQL fixtures.
 
 Acceptance:
 - Product edits survive refresh/restart.
-- Listing/new-purchase/renewal semantics match docs/08-interface-specification.md.
+- Listing/archive semantics match docs/08-interface-specification.md; no separate purchase or renewal controls remain.
 - Historical snapshots remain unchanged after product edits.
 - No supplier cost fields.
+
+Future order selection must allow unlisted/unarchived products and reject archived products, including renewal orders. Future manual subscription grants/imports must allow unlisted/unarchived SUBSCRIPTION products and reject archived or ONE_TIME products. These rules document later tasks only; Task 1.2.3 adds no order/subscription writes.
 
 #### Task 1.2.4 — Offline orders, payments, refunds, and fulfillment
 

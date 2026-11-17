@@ -34,8 +34,6 @@ const form = reactive({
   termLabel: '1 个月',
   sortOrder: 0,
   listed: false,
-  purchaseEnabled: false,
-  renewalEnabled: false,
   formSchema: { version: 1, fields: [] } as ProductFormSchema,
 })
 async function load() {
@@ -93,8 +91,6 @@ async function open(product?: Product) {
             termLabel: '1 个月',
             sortOrder: 0,
             listed: false,
-            purchaseEnabled: false,
-            renewalEnabled: false,
             formSchema: { version: 1, fields: [] },
           },
     )
@@ -131,8 +127,6 @@ async function save() {
       termLabel: form.termLabel,
       sortOrder: form.sortOrder,
       listed: form.listed,
-      purchaseEnabled: form.purchaseEnabled,
-      renewalEnabled: form.type === 'SUBSCRIPTION' && form.renewalEnabled,
       formSchema: schema.data,
     }
     await api<Product>(
@@ -149,11 +143,7 @@ async function save() {
     busy.value = false
   }
 }
-async function toggle(
-  product: Product,
-  key: 'listed' | 'purchaseEnabled' | 'renewalEnabled',
-  value: unknown,
-) {
+async function toggleListed(product: Product, value: unknown) {
   if (busy.value) return
   busy.value = true
   try {
@@ -161,7 +151,7 @@ async function toggle(
       await api<{ product: Product }>(
         '/admin/products/' + product.id,
         'PATCH',
-        { [key]: Boolean(value) },
+        { listed: Boolean(value) },
       )
     ).product
     products.value = products.value.map((item) =>
@@ -176,7 +166,7 @@ async function toggle(
 async function archive(product: Product) {
   try {
     await ElMessageBox.confirm(
-      '归档后商品将不再进入目录预览且不能编辑，历史订单与订阅保留。',
+      '归档会立即下架且不可撤销，商品不能编辑或重新上架。历史订单与已有订阅保留。',
       '归档商品',
       {
         confirmButtonText: '确认归档',
@@ -249,8 +239,6 @@ onMounted(load)
               <th>类型</th>
               <th>售价 / 续费价</th>
               <th>上架</th>
-              <th>新购</th>
-              <th>续费</th>
               <th class="align-right">操作</th>
             </tr>
           </thead>
@@ -287,31 +275,8 @@ onMounted(load)
                   :model-value="p.listed"
                   :disabled="busy || Boolean(p.archivedAt)"
                   :aria-label="p.name + '上架'"
-                  @update:model-value="
-                    (value: string) => toggle(p, 'listed', value)
-                  "
+                  @update:model-value="toggleListed(p, $event)"
                 />
-              </td>
-              <td>
-                <ElSwitch
-                  :model-value="p.purchaseEnabled"
-                  :disabled="busy || Boolean(p.archivedAt)"
-                  :aria-label="p.name + '新购'"
-                  @update:model-value="
-                    (value: string) => toggle(p, 'purchaseEnabled', value)
-                  "
-                />
-              </td>
-              <td>
-                <ElSwitch
-                  v-if="p.type === 'SUBSCRIPTION'"
-                  :model-value="p.renewalEnabled"
-                  :disabled="busy || Boolean(p.archivedAt)"
-                  :aria-label="p.name + '续费'"
-                  @update:model-value="
-                    (value: string) => toggle(p, 'renewalEnabled', value)
-                  "
-                /><span v-else class="muted">—</span>
               </td>
               <td class="align-right">
                 <ElButton link type="primary" @click="showDetail(p)"
@@ -341,7 +306,7 @@ onMounted(load)
       </div>
       <div class="table-footer">
         共 {{ total }} 条 ·
-        排序值越小越靠前。上架控制目录可见，新购与续费分别控制对应资格，三个开关独立保存。
+        排序值越小越靠前。上架仅控制商城展示；未上架且未归档商品仍可供管理员后续线下业务使用。归档会下架且不可撤销。
       </div>
       <ElPagination
         v-model:current-page="page"
@@ -406,21 +371,9 @@ onMounted(load)
         <div class="toggle-row">
           <div>
             <span>商品上架</span
-            ><small>仅控制目录可见；不改变新购和续费设置</small>
+            ><small>仅控制商城展示；未上架且未归档仍可用于后续线下业务</small>
           </div>
           <ElSwitch v-model="form.listed" aria-label="商品上架" />
-        </div>
-        <div class="toggle-row">
-          <div>
-            <span>允许新购</span><small>独立保存；本阶段不开放下单</small>
-          </div>
-          <ElSwitch v-model="form.purchaseEnabled" aria-label="允许新购" />
-        </div>
-        <div v-if="form.type === 'SUBSCRIPTION'" class="toggle-row">
-          <div>
-            <span>允许续费</span><small>独立于上架和新购；不修改已有订阅</small>
-          </div>
-          <ElSwitch v-model="form.renewalEnabled" aria-label="允许续费" />
         </div>
         <ProductFormEditor v-model="form.formSchema" />
         <div class="dialog-actions">
@@ -469,6 +422,10 @@ onMounted(load)
           <div>
             <dt>创建日期</dt>
             <dd>{{ date(detail.createdAt, settings.state.value.timezone) }}</dd>
+          </div>
+          <div>
+            <dt>商城展示</dt>
+            <dd>{{ detail.listed ? '已上架' : '未上架' }}</dd>
           </div>
           <div>
             <dt>归档</dt>

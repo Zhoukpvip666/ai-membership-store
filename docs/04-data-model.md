@@ -72,15 +72,13 @@ Only one unexpired, unused invitation should remain active per user. Enforce by 
 | renewalPriceFen | Int?, nullable | Required for SUBSCRIPTION; null for ONE_TIME |
 | termLabel | VarChar(40) | Human-readable service term |
 | targetField | EMAIL / TEXT / NONE | Non-sensitive target information needed |
-| listed | Boolean | Catalog visibility |
-| purchaseEnabled | Boolean | New-purchase permission |
-| renewalEnabled | Boolean | Existing-subscription renewal permission |
+| listed | Boolean | Public catalog visibility only; default false |
 | sortOrder | Int, default 0 | Nonnegative display order; ties use createdAt then id |
 | formSchema | JSON, default `{"version":1,"fields":[]}` | Versioned non-sensitive product form configuration; see docs/13-products-settings-forms.md |
-| archivedAt | DateTime?, nullable | Soft archive |
+| archivedAt | DateTime?, nullable | Irreversible soft archive; default null |
 | createdAt / updatedAt | DateTime(3) | Timestamps |
 
-Do not add supplierCost. Product API never hard-deletes any product. Archive retains flags and history and prevents editing. New slugs are server-generated and stable. The legacy targetField column remains unchanged for old records; new products use NONE and formSchema. Form configuration edits never rewrite orders or subscriptions. Future order work must snapshot any relevant schema and field labels rather than read mutable product configuration for historical display; no order field or submission storage is added in Task 1.2.3.
+Do not add supplierCost. Product API never hard-deletes any product. Product has only listed and archivedAt as state fields; type remains the product classification. Archive atomically sets listed=false and archivedAt once, retains history, and prevents editing or relisting. There is no restore path. Public catalog eligibility is listed=true AND archivedAt=null. Future ADMIN offline orders may use any unarchived product even if unlisted; future manual grants/imports require an unarchived SUBSCRIPTION product regardless of listed. Archived products cannot be selected for new orders, renewals or new subscriptions; existing entitlements and history are preserved. These future writes are not implemented in Task 1.2.3. New slugs are server-generated and stable. The legacy targetField column remains unchanged for old records; new products use NONE and formSchema. Form configuration edits never rewrite orders or subscriptions. Future order work must snapshot any relevant schema and field labels rather than read mutable product configuration for historical display; no order field or submission storage is added in Task 1.2.3.
 
 ### Order
 

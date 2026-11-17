@@ -183,8 +183,6 @@ model Product {
   termLabel       String         @db.VarChar(40)
   targetField     TargetField    @default(NONE)
   listed          Boolean        @default(false)
-  purchaseEnabled Boolean        @default(false)
-  renewalEnabled  Boolean        @default(false)
   sortOrder       Int            @default(0)
   formSchema      Json           @default("{\"version\":1,\"fields\":[]}")
   archivedAt      DateTime?      @db.DateTime(3)
