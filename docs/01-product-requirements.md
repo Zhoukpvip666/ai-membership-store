@@ -15,6 +15,19 @@ The first release deliberately supports manual operations. It must be useful bef
 - The application may display the owner's order-level payment, refund, and settlement records returned by the provider. It does not hold customer funds or independently custody/transfer money.
 - If the selected provider offers a compliant order-level delayed-settlement, split, or refund-from-held-funds product, it may be integrated only after the owner confirms provider eligibility and contract terms. The application cannot freeze funds merely by keeping an order in a pending state.
 
+
+## 1.2 Current implementation milestone: local offline operations
+
+The owner has approved a local-only first operational version focused on existing customers and offline sales. The scope and data model are defined in [10-local-operations-mvp.md](10-local-operations-mvp.md).
+
+- The owner manually creates customer accounts; customers are not publicly self-registered in this milestone.
+- Customers may remain PENDING_ACTIVATION while the administrator creates orders and subscriptions for them.
+- The administrator copies invitation links manually. No email is sent to pending customers; in this milestone, no customer email is sent at all.
+- The administrator records offline WeChat/Alipay/other payments and manually verifies them against the actual external account.
+- The administrator records refund outcomes after privately handling the refund outside the application. The application does not move money.
+- The administrator manually creates subscriptions, imports historical subscriptions, grants entitlements, and records supplier-confirmed renewal expiry dates.
+- The app runs locally and is not deployed. Online checkout, payment APIs, SMTP, supplier APIs, and public customer access are out of scope.
+
 ## 2. Goals
 
 - Present subscription services and one-time services with clear prices and terms.
