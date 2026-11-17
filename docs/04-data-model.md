@@ -1,219 +1,233 @@
-# Initial Data Model
+# Local Operations Data Model (Task 1.2)
 
-Logical model for MVP. Codex may refine column names and Prisma relations but must preserve domain rules and historical snapshots.
+This is the approved data model for the first persistent, local-only operating version. It supersedes the earlier conceptual model where it conflicts with this document. Full workflow and scope rules are in [10-local-operations-mvp.md](10-local-operations-mvp.md).
 
-## 1. Core entities
+## 1. Design boundaries
 
-### Single-merchant configuration
+- Single merchant: the site owner is the only ADMIN and seller. There is no Merchant, CustomerWallet, merchant balance, withdrawal, or sub-merchant model.
+- A customer is a User with role CUSTOMER. There is no separate customers table.
+- Customers may have orders and subscriptions while their account status is PENDING_ACTIVATION.
+- Task 1.2 records offline transactions only. Order source is OFFLINE_MANUAL. Online payment is not implemented.
+- Payment transactions record customer money received/refunded outside the app. The app never moves money.
+- No supplier costs, supplier transfers, supplier fulfillment, email outbox, SMTP, or payment-provider credentials in this schema.
 
-There is no `merchants` table and no per-customer payment account. The MVP has one owner/admin account and one payment-provider merchant configuration supplied through deployment secrets or provider-approved configuration. Do not model customer balances, merchant wallets, withdrawable balances, or sub-merchant accounts. If provider settlement reporting is integrated later, store provider transaction/settlement references as records for the single owner merchant, not as user-owned wallets.
+## 2. Prisma models
 
-### users
-Customer and administrator accounts.
+### User
 
-| Field | Meaning |
-|---|---|
-| id | Primary key |
-| email | Unique login email |
-| password_hash | Password hash only |
-| display_name | Optional display name |
-| role | CUSTOMER or ADMIN |
-| status | ACTIVE or DISABLED |
-| email_verified_at | Optional verification timestamp |
-| created_at / updated_at | Audit timestamps |
+| Field | Type / rule | Meaning |
+|---|---|---|
+| id | String PK, CUID/UUID | Internal ID |
+| displayName | VarChar(80) | Customer/admin display name |
+| loginEmail | VarChar(254), unique, normalized lowercase | Login identity |
+| notificationEmail | VarChar(254), nullable | Notification/contact email; defaults to loginEmail when omitted |
+| passwordHash | VarChar(255), nullable | Null until invitation activation |
+| role | ADMIN / CUSTOMER | One owner admin; ordinary customers |
+| status | PENDING_ACTIVATION / ACTIVE / DISABLED | Account access state |
+| activatedAt | DateTime?, nullable | Activation timestamp |
+| createdByAdminId | String?, FK User | Admin who created the customer |
+| createdAt / updatedAt | DateTime(3) UTC | Audit timestamps |
 
-Never store plaintext password or session token.
+A pending customer can have orders and subscriptions. Never require ACTIVE status to create them.
 
-### products
-Sellable subscription or one-time services.
+### Session
 
-| Field | Meaning |
-|---|---|
-| id | Primary key |
-| slug | Unique public identifier |
-| name | Display name |
-| description | Customer-facing description |
-| product_type | SUBSCRIPTION or ONE_TIME |
-| initial_price_fen | Initial selling price |
-| renewal_price_fen | Renewal price; nullable for one-time products |
-| term_label | Human-readable term, e.g. 1 month |
-| term_days | Optional duration; avoid assuming calendar-month arithmetic |
-| supplier_cost_fen | Internal cost reference |
-| status | DRAFT, ACTIVE, or ARCHIVED |
-| sort_order | Catalog ordering |
-| created_at / updated_at | Timestamps |
+| Field | Type / rule | Meaning |
+|---|---|---|
+| id | String PK | Internal ID |
+| userId | String FK User, indexed | Session owner |
+| tokenHash | VarChar(64), unique | Hash of opaque random session token; never store raw token |
+| expiresAt | DateTime(3), indexed | Expiry |
+| lastSeenAt | DateTime(3)? | Last activity |
+| revokedAt | DateTime(3)? | Logout/revocation |
+| createdAt | DateTime(3) | Creation time |
 
-Prices are integer fen. Supplier cost is never returned by public product APIs.
+### InvitationToken
 
-### product_form_fields
-Configurable non-sensitive fields for a product.
+| Field | Type / rule | Meaning |
+|---|---|---|
+| id | String PK | Internal ID |
+| userId | String FK User, indexed | Invited customer |
+| tokenHash | VarChar(64), unique | SHA-256 hash of random token; raw token is returned once only |
+| expiresAt | DateTime(3), indexed | Default 7-day expiry |
+| usedAt | DateTime(3)? | One-time activation timestamp |
+| revokedAt | DateTime(3)? | Reissue/admin revocation |
+| createdByAdminId | String FK User | Issuing admin |
+| createdAt | DateTime(3) | Creation time |
 
-| Field | Meaning |
-|---|---|
-| id | Primary key |
-| product_id | Parent product |
-| field_key | Stable key within product |
-| label | Customer-facing label |
-| field_type | TEXT, EMAIL, TEXTAREA, SELECT, CHECKBOX |
-| required | Whether required |
-| options_json | SELECT options |
-| validation_json | Length/pattern constraints |
-| help_text | Customer guidance |
-| sort_order | Display order |
-| active | Whether field is used |
+Only one unexpired, unused invitation should remain active per user. Enforce by transactionally revoking prior invitations before issuing a new one. No email is sent.
 
-Do not support PASSWORD, OTP, 2FA, RECOVERY_CODE, SESSION_COOKIE, or payment credential field types in MVP.
+### Product
 
-### orders
-One row per customer purchase or renewal.
+| Field | Type / rule | Meaning |
+|---|---|---|
+| id | String PK | Internal ID |
+| slug | VarChar(100), unique | Stable product key |
+| name | VarChar(120) | Product name |
+| description | Text?, nullable | Optional description |
+| type | SUBSCRIPTION / ONE_TIME | Product type |
+| priceFen | Int | Initial/one-time selling price in CNY fen |
+| renewalPriceFen | Int?, nullable | Required for SUBSCRIPTION; null for ONE_TIME |
+| termLabel | VarChar(40) | Human-readable service term |
+| targetField | EMAIL / TEXT / NONE | Non-sensitive target information needed |
+| listed | Boolean | Catalog visibility |
+| purchaseEnabled | Boolean | New-purchase permission |
+| renewalEnabled | Boolean | Existing-subscription renewal permission |
+| archivedAt | DateTime?, nullable | Soft archive |
+| createdAt / updatedAt | DateTime(3) | Timestamps |
 
-| Field | Meaning |
-|---|---|
-| id | Primary key |
-| order_no | Unique public order number |
-| user_id | Customer |
-| product_id | Product reference |
-| subscription_id | Existing subscription for renewal; nullable otherwise |
-| order_kind | INITIAL, RENEWAL, or ONE_TIME |
-| product_snapshot_json | Immutable name, type, term, description |
-| form_snapshot_json | Submitted approved non-sensitive values |
-| selling_price_fen | Immutable customer price |
-| supplier_cost_snapshot_fen | Internal cost snapshot |
-| renewal_price_snapshot_fen | Renewal price snapshot when relevant |
-| customer_payment_status | UNPAID, PENDING_VERIFICATION, PAID, REFUND_PENDING, REFUNDED, FAILED |
-| supplier_payment_status | NOT_REQUIRED, PENDING, RECORDED, EXCEPTION |
-| fulfillment_status | NOT_STARTED, REQUEST_QUEUED, PROCESSING, COMPLETED, FAILED, CANCELLED |
-| created_at / updated_at | Timestamps |
+Do not add supplierCost. Do not hard-delete products referenced by orders/subscriptions.
 
-Server calculates amounts and statuses; never trust browser values.
+### Order
 
-### payment_records
-Records external customer payments and supplier transfers.
+| Field | Type / rule | Meaning |
+|---|---|---|
+| id | String PK | Internal ID |
+| orderNo | VarChar(40), unique | Server-generated order number |
+| userId | String FK User, indexed with createdAt | Customer, including pending-activation users |
+| productId | String FK Product | Product reference; deletion restricted |
+| subscriptionId | String?, FK Subscription | Required for RENEWAL; null for initial/one-time |
+| kind | INITIAL / RENEWAL / ONE_TIME | Order purpose |
+| source | OFFLINE_MANUAL | Only supported source in Task 1.2 |
+| productNameSnapshot | VarChar(120) | Immutable product name |
+| productTypeSnapshot | SUBSCRIPTION / ONE_TIME | Immutable product type |
+| termSnapshot | VarChar(40) | Immutable term |
+| amountFen | Int | Agreed order amount in CNY fen |
+| renewalPriceSnapshotFen | Int?, nullable | Renewal price snapshot where applicable |
+| contactEmailSnapshot | VarChar(254) | Contact email at order creation |
+| targetIdentifier | VarChar(254), nullable | Service target identifier; never a password/token |
+| paymentStatus | UNPAID / PENDING_VERIFICATION / PAID / REFUND_PENDING / REFUNDED | Summary derived from transaction records and updated transactionally |
+| fulfillmentStatus | NOT_STARTED / PROCESSING / COMPLETED / FAILED / CANCELLED | Service progress |
+| internalNote | Text?, nullable | Admin-only note |
+| createdByAdminId | String FK User | Creating admin |
+| createdAt / updatedAt | DateTime(3) | Timestamps |
 
-| Field | Meaning |
-|---|---|
-| id | Primary key |
-| order_id | Related order |
-| direction | CUSTOMER_INBOUND or SUPPLIER_OUTBOUND |
-| amount_fen | Amount |
-| method | Manual method/provider label |
-| external_reference | Transaction reference if available |
-| status | PENDING, VERIFIED, FAILED, REFUNDED |
-| verified_by | Administrator |
-| verified_at | Verification timestamp |
-| note | Non-sensitive operator note |
-| created_at | Timestamp |
+Payment and fulfillment are independent. A newly created unpaid order is not “待发货”. Only paid pending orders enter the fulfillment queue. Admin may change fulfillment with a required reason and audit record. Only paid orders may be completed.
 
-This is a record of external transaction, not a transfer API.
+### PaymentTransaction
 
-### supplier_fulfillments
-Supplier request and fulfillment details.
+| Field | Type / rule | Meaning |
+|---|---|---|
+| id | String PK | Internal ID |
+| orderId | String FK Order, indexed | Related order |
+| kind | PAYMENT / REFUND | Customer inbound or refund |
+| channel | WECHAT / ALIPAY / CASH / BANK_TRANSFER / OTHER | Actual offline channel |
+| amountFen | Int | Transaction amount in CNY fen |
+| status | PENDING / CONFIRMED / FAILED | Manual verification/result |
+| externalReference | VarChar(120)?, nullable | Transaction reference if available |
+| occurredAt | DateTime(3) | Actual payment/refund time |
+| confirmedAt | DateTime(3)?, nullable | Admin confirmation time |
+| createdByAdminId | String FK User | Admin who recorded it |
+| confirmedByAdminId | String?, FK User | Admin who verified it |
+| note | VarChar(500)?, nullable | Admin-only explanation |
+| createdAt / updatedAt | DateTime(3) | Timestamps |
 
-| Field | Meaning |
-|---|---|
-| id | Primary key |
-| order_id | Unique order relation in MVP |
-| supplier_name | Supplier snapshot |
-| supplier_email | Recipient snapshot |
-| request_email_status | NOT_QUEUED, QUEUED, SENT, FAILED |
-| request_email_id | Related outbox record |
-| supplier_order_reference | Optional supplier reference |
-| supplier_accepted_at | Optional timestamp |
-| completed_at | Supplier completion confirmation |
-| result_note | Non-sensitive internal note |
-| created_at / updated_at | Timestamps |
+This table records customer money only, not supplier transfers. In Task 1.2, payment is manually verified and refund is manually recorded after external action. Support full-order refunds only; no partial payments or partial refunds. The order paymentStatus summary must be recomputed in the same database transaction whenever a transaction changes.
 
-### subscriptions
-Customer membership/entitlement records.
+### Subscription
 
-| Field | Meaning |
-|---|---|
-| id | Primary key |
-| user_id | Customer |
-| product_id | Product |
-| account_identifier | Masked target identifier |
-| status | PENDING, ACTIVE, EXPIRED, SUSPENDED, CANCELLED |
-| started_at | Confirmed service start |
-| expires_at | Confirmed service expiry |
-| renewal_price_fen | Current renewal price snapshot |
-| last_order_id | Most recent successful order |
-| created_at / updated_at | Timestamps |
+| Field | Type / rule | Meaning |
+|---|---|---|
+| id | String PK | Internal ID |
+| userId | String FK User, indexed | Owner; may be PENDING_ACTIVATION |
+| productId | String FK Product | Product |
+| sourceType | ORDER / MANUAL_GRANT / HISTORICAL_IMPORT | Why the entitlement exists |
+| sourceOrderId | String?, unique FK Order | Required for ORDER source; null for manual grant/import unless a real historical order is recorded |
+| targetIdentifier | VarChar(254) | Actual service target, separate from login email |
+| startedAt | DateTime(3) | Confirmed service start |
+| expiresAt | DateTime(3), indexed | Confirmed expiry |
+| renewalPriceFen | Int | Current renewal price snapshot |
+| status | ACTIVE / SUSPENDED / TERMINATED | Stored state |
+| createdByAdminId | String FK User | Admin who created it |
+| createdAt / updatedAt | DateTime(3) | Timestamps |
 
-Expiry is recorded from supplier confirmation. Do not infer renewal stacking rules.
+Display EXPIRED when status is ACTIVE and expiresAt is in the past; do not require a scheduled job to calculate the display state. A subscription can exist without an order for MANUAL_GRANT or HISTORICAL_IMPORT. No uniqueness constraint on userId + productId: a customer may have multiple entitlements for the same product/target.
 
-### subscription_events
-History of activation, renewal, expiry changes, suspension, and corrections.
+### SubscriptionEvent
 
-| Field | Meaning |
-|---|---|
-| id | Primary key |
-| subscription_id | Related subscription |
-| order_id | Related order, nullable for admin event |
-| event_type | ACTIVATED, RENEWED, EXPIRY_UPDATED, EXPIRED, SUSPENDED, NOTE |
-| old_expires_at | Previous expiry |
-| new_expires_at | New expiry |
-| actor_user_id | Admin or system actor |
-| note | Non-sensitive explanation |
-| created_at | Timestamp |
+| Field | Type / rule | Meaning |
+|---|---|---|
+| id | String PK | Internal ID |
+| subscriptionId | String FK Subscription, indexed with createdAt | Related entitlement |
+| orderId | String?, FK Order | Related initial/renewal order when applicable |
+| eventType | CREATED / ACTIVATED / RENEWED / EXPIRY_ADJUSTED / MANUAL_GRANT / HISTORICAL_IMPORT / SUSPENDED / RESUMED / TERMINATED / NOTE | Change type |
+| oldStartedAt / newStartedAt | DateTime?, nullable | Start-date change |
+| oldExpiresAt / newExpiresAt | DateTime?, nullable | Expiry-date change |
+| actorAdminId | String FK User | Admin actor |
+| reason | VarChar(500)?, nullable | Required for manual correction/termination |
+| createdAt | DateTime(3) | Event time |
 
-### email_outbox
-Durable queue and delivery history.
+### OrderEvent
 
-| Field | Meaning |
-|---|---|
-| id | Primary key |
-| idempotency_key | Unique logical email event |
-| related_order_id | Optional order |
-| recipient | Email recipient |
-| cc | Optional CC |
-| template_key | Template identifier |
-| payload_json | Sanitized template data |
-| status | PENDING, SENDING, SENT, FAILED |
-| attempt_count | Attempts |
-| next_attempt_at | Retry time |
-| last_error | Sanitized error |
-| sent_at | Successful send time |
-| created_at / updated_at | Timestamps |
+| Field | Type / rule | Meaning |
+|---|---|---|
+| id | String PK | Internal ID |
+| orderId | String FK Order, indexed with createdAt | Related order |
+| eventType | ORDER_CREATED / PAYMENT_RECORDED / PAYMENT_CONFIRMED / REFUND_RECORDED / REFUND_CONFIRMED / FULFILLMENT_CHANGED / COMPLETED / NOTE | Timeline event |
+| actorAdminId | String FK User | Admin actor |
+| fromStateJson / toStateJson | Json?, nullable | Safe status snapshots |
+| note | VarChar(500)?, nullable | Operator explanation |
+| createdAt | DateTime(3) | Event time |
 
-No SMTP credentials or authentication secrets in payload.
+Do not place raw invitation tokens, passwords, authentication cookies, or secrets in event metadata.
 
-### admin_audit_logs
-Important administrator action history.
+### AdminAuditLog
 
-| Field | Meaning |
-|---|---|
-| id | Primary key |
-| actor_user_id | Administrator |
-| action | Action identifier |
-| entity_type | Order, product, subscription, user, setting |
-| entity_id | Affected entity |
-| before_json / after_json | Sanitized state changes |
-| request_id | Optional correlation ID |
-| created_at | Timestamp |
+| Field | Type / rule | Meaning |
+|---|---|---|
+| id | String PK | Internal ID |
+| actorAdminId | String FK User, indexed with createdAt | Admin actor |
+| action | VarChar(80) | Action key |
+| entityType | VarChar(40) | User/Product/Order/PaymentTransaction/Subscription/Settings |
+| entityId | VarChar(40) | Target ID |
+| beforeJson / afterJson | Json?, nullable | Sanitized change snapshots |
+| reason | VarChar(500)?, nullable | Required for sensitive manual correction |
+| requestId | VarChar(64)?, nullable | Correlation |
+| createdAt | DateTime(3) | Audit timestamp |
 
-Never copy passwords, OTPs, tokens, or secrets into audit logs.
+### AppSettings
 
-## 2. Relationships
+Singleton row, initialized with id = 1.
 
-- One user has many orders.
-- One product has many orders and form-field definitions.
-- One order has zero or one supplier fulfillment record in MVP.
-- One order has multiple payment records because customer payment and supplier transfer are distinct.
-- One user can have many subscriptions.
-- One subscription has many renewal orders and subscription events.
-- One order can create multiple email outbox events.
-- Admin actions create audit entries.
+| Field | Type / rule | Meaning |
+|---|---|---|
+| id | Int PK, fixed value 1 | Singleton key |
+| storeName | VarChar(80) | Store display name |
+| ownerEmail | VarChar(254) | Owner/notification address |
+| timezone | VarChar(64) | Default Asia/Shanghai |
+| updatedAt | DateTime(3) | Last update |
 
-## 3. Historical consistency
+No SMTP or payment credentials belong in AppSettings.
 
-- Snapshot product name, type, term, selling price, renewal price, supplier cost on order creation.
-- Product edits do not alter existing orders.
-- Submitted form values are order snapshots and are not overwritten by later form changes.
-- Renewal creates a new order and subscription event; it does not overwrite old orders.
-- Subscription expiry changes have event records.
+## 3. Relationships
 
-## 4. Indexes and constraints
+- User has many orders, subscriptions, sessions, invitation tokens, and admin audit actions.
+- Product has many orders and subscriptions.
+- Order has many payment transactions and order events.
+- A renewal Order references one existing Subscription.
+- An initial subscription Order may be referenced by Subscription.sourceOrderId after fulfillment.
+- Subscription has many renewal orders and subscription events.
+- Pending-activation users may own orders/subscriptions exactly like active users.
+- ADMIN and CUSTOMER are User roles; there is one owner/admin account.
 
-- Unique: users.email, products.slug, orders.order_no, product_form_fields(product_id, field_key), email_outbox.idempotency_key.
-- Index: orders(user_id, created_at), orders(customer_payment_status, created_at), orders(fulfillment_status, created_at), subscriptions(user_id, status), subscriptions(expires_at, status), payment_records(order_id, direction).
-- Use foreign keys and appropriate delete restrictions. Do not cascade-delete financial/order history when user or product is disabled.
+## 4. State and transaction invariants
+
+- Order.paymentStatus is a summary of PaymentTransaction records, not a free-form editable field:
+  - no recorded payment: UNPAID;
+  - payment awaiting admin verification: PENDING_VERIFICATION;
+  - confirmed payment: PAID;
+  - refund awaiting external completion: REFUND_PENDING;
+  - confirmed full refund: REFUNDED;
+  - failed refund returns the summary to PAID if the original payment remains confirmed.
+- Order.fulfillmentStatus is independent. Only PAID orders can become COMPLETED. A confirmed full refund before completion sets fulfillment to CANCELLED; a refund after completion does not erase the historical completion.
+- Confirming payment, confirming refund, completing an order, and applying a renewal date update must use database transactions and append the corresponding OrderEvent/SubscriptionEvent/AdminAuditLog atomically.
+- Renewal expiry is entered from supplier-confirmed information; never infer by adding a fixed number of days.
+- Manual grant and historical import create subscription/event records, not fake order/payment rows.
+- All money uses integer fen. All timestamps are stored in UTC and displayed in configured business timezone.
+
+## 5. Indexes and deletion rules
+
+- Unique: User.loginEmail, Session.tokenHash, InvitationToken.tokenHash, Product.slug, Order.orderNo, Subscription.sourceOrderId.
+- Index: Order(userId, createdAt), Order(paymentStatus, createdAt), Order(fulfillmentStatus, createdAt), Order(subscriptionId, createdAt), PaymentTransaction(orderId, kind, status), Subscription(userId, status), Subscription(expiresAt, status), SubscriptionEvent(subscriptionId, createdAt), OrderEvent(orderId, createdAt), AdminAuditLog(actorAdminId, createdAt).
+- Use restrictive foreign keys for orders, payments, subscriptions, and events. Disable users and archive products; do not cascade-delete business history.
+- Prisma migrations are the only schema-change mechanism. Never use destructive schema push against the local data volume.
