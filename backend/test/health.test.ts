@@ -6,9 +6,13 @@ import { createApp } from '../src/app.ts'
 
 let server: Server
 let baseUrl: string
+let databaseReady = true
 
 before(async () => {
-  server = createApp().listen(0, '127.0.0.1')
+  server = createApp(async () => {
+    if (!databaseReady)
+      throw new Error('mysql://test:do-not-expose@localhost/private')
+  }).listen(0, '127.0.0.1')
   await once(server, 'listening')
   const address = server.address()
   assert(address && typeof address !== 'string')
@@ -21,7 +25,7 @@ after(async () => {
   )
 })
 
-test('health returns stable JSON without a database', async () => {
+test('health reports database readiness on both aliases', async () => {
   for (const path of ['/health', '/api/v1/health']) {
     const response = await fetch(baseUrl + path)
     assert.equal(response.status, 200)
@@ -29,14 +33,41 @@ test('health returns stable JSON without a database', async () => {
       response.headers.get('content-type') ?? '',
       /^application\/json/,
     )
-    assert.deepEqual(await response.json(), { status: 'ok' })
+    assert.deepEqual(await response.json(), { status: 'ok', database: 'ready' })
   }
 })
 
+test('database errors return sanitized 503 and recovery is checked again', async () => {
+  databaseReady = false
+  try {
+    for (const path of ['/health', '/api/v1/health']) {
+      const response = await fetch(baseUrl + path)
+      assert.equal(response.status, 503)
+      assert.deepEqual(await response.json(), {
+        status: 'degraded',
+        database: 'unavailable',
+      })
+    }
+  } finally {
+    databaseReady = true
+  }
+  assert.equal((await fetch(baseUrl + '/api/v1/health')).status, 200)
+})
+
 test('business routes are not exposed by this scaffold', async () => {
-  const response = await fetch(baseUrl + '/api/v1/admin/products')
-  assert.equal(response.status, 404)
-  assert.deepEqual(await response.json(), {
-    error: { code: 'NOT_FOUND', message: 'Route not found.' },
-  })
+  for (const path of [
+    '/admin/products',
+    '/admin/users',
+    '/admin/orders',
+    '/auth/login',
+    '/auth/activate',
+  ]) {
+    for (const method of ['GET', 'POST']) {
+      const response = await fetch(baseUrl + '/api/v1' + path, { method })
+      assert.equal(response.status, 404)
+      assert.deepEqual(await response.json(), {
+        error: { code: 'NOT_FOUND', message: 'Route not found.' },
+      })
+    }
+  }
 })

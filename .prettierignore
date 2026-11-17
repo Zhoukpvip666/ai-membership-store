@@ -7,3 +7,5 @@ test-results
 .env
 AGENTS.md
 docs
+backend/src/generated
+backend/prisma/migrations

@@ -32,7 +32,7 @@
 
 ## Phase 1 — Repository scaffold and local operations
 
-**Status: Task 1.1 complete; Task 1.2 designed, not started**
+**Status: Task 1.1 complete; Task 1.2.1 implemented for owner review; Task 1.2.2 not started**
 
 ### Task 1.1 — Responsive Mock UI prototype
 
@@ -47,13 +47,15 @@
 
 ### Task 1.2 — Local offline customer and order management
 
-**Status: Design baseline documented; implementation not started.**
+**Status: Database foundation implemented for owner review. Remaining subtasks have not started.**
 
 Use [10-local-operations-mvp.md](10-local-operations-mvp.md) as the scope and implementation source of truth. Use [04-data-model.md](04-data-model.md) for the database model and [05-api-contract.md](05-api-contract.md) for API boundaries.
 
 The target is a usable local application for managing existing customers who pay offline. It is not deployed and is not an online store yet.
 
 #### Task 1.2.1 — Prisma and local database foundation
+
+**Status: Implemented for owner review.** Schema, commands, verification and known boundaries: [11-database-foundation.md](11-database-foundation.md). Stop here until owner approval.
 
 - Add Prisma and a MySQL datasource.
 - Implement all 11 models in docs/04-data-model.md.

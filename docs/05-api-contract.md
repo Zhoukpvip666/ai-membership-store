@@ -2,6 +2,10 @@
 
 Base path: /api/v1. All payloads are JSON. Timestamps are UTC ISO-8601. Money is integer CNY fen. Validate all input with Zod or an equivalent schema validator. This contract covers the local-only offline operations milestone; online payment and supplier/email APIs are deliberately absent.
 
+## Task 1.2.1 implemented surface
+
+Only `GET /api/v1/health` and its `/health` alias are implemented. Each request probes MySQL through Prisma. Successful connectivity returns HTTP 200 with `{"status":"ok","database":"ready"}`. Connection/query failure returns HTTP 503 with `{"status":"degraded","database":"unavailable"}`; driver errors and credentials are never returned. This does not verify migration currency: use the local `db:status` command. All business/authentication endpoints below remain unimplemented in Task 1.2.1.
+
 ## 1. Conventions
 
 - Single merchant and one owner ADMIN account.

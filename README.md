@@ -2,7 +2,7 @@
 
 A private, independently operated storefront and order-management system for AI membership services and other digital services.
 
-**Project status:** Task 1.1 scaffold and local Mock UI prototype implemented and merged. Task 1.2 local offline operations is designed but not started.
+**Project status:** Task 1.1 is merged. Task 1.2.1 database foundation is implemented for owner review; Task 1.2.2 and business CRUD have not started. The frontend remains the independent Task 1.1 Mock prototype.
 
 ## Operating model: single merchant
 
@@ -79,6 +79,7 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 8. docs/07-development-roadmap.md — phased implementation plan and acceptance criteria.
 9. docs/08-interface-specification.md — approved customer and owner/admin responsive UI specification.
 10. docs/10-local-operations-mvp.md — local-only customer, offline order, payment record, and subscription management milestone.
+11. docs/11-database-foundation.md — Task 1.2.1 schema, local migration/seed instructions, tests and implementation report.
 
 ## Important launch gates
 
@@ -92,7 +93,7 @@ Before accepting real orders, the operator must verify that the supplier is auth
 ├── README.md
 ├── package.json             # npm workspaces and common checks
 ├── frontend/                # Vue 3 / TypeScript / Vite / Element Plus
-├── backend/                 # Node.js 24 / TypeScript / Express health API
+├── backend/                 # Node.js 24 / Express + Prisma database foundation
 ├── e2e/                     # desktop and mobile browser checks
 ├── compose.yaml             # development-only MySQL 8.4
 ├── .env.example
@@ -106,10 +107,11 @@ Before accepting real orders, the operator must verify that the supplier is auth
     ├── 07-development-roadmap.md
     ├── 08-interface-specification.md
     ├── 09-task-1.1-report.md
-    └── 10-local-operations-mvp.md
+    ├── 10-local-operations-mvp.md
+    └── 11-database-foundation.md
 ```
 
-## Local development — Task 1.1
+## Local development — Task 1.2.1
 
 Prerequisites: Node.js **24.x**, npm, and Docker with Compose. Run all commands from the repository root. On PowerShell, use `npm.cmd` if the local execution policy blocks `npm.ps1`.
 
@@ -118,17 +120,22 @@ npm ci
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-For a fresh clone, replace the two password placeholders in your local `.env` before starting MySQL. Preserve an existing `.env` so that its credentials continue to match the initialized database volume. Never commit `.env`. The application database user is separate from root. The default host port is **3307**, to avoid a common local MySQL conflict; change `MYSQL_PORT` if needed.
+For a fresh clone, replace the database and administrator password placeholders in your local `.env`. Set `DATABASE_URL` to match `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_PORT` and `MYSQL_DATABASE`; percent-encode reserved characters in its credentials. Set `ADMIN_EMAIL` and a 12–128 character `ADMIN_PASSWORD`. Keep `APP_BASE_URL` on loopback (default `http://localhost:5173`). Existing `.env` files must be preserved: add missing keys manually and retain the database passwords that match the initialized volume. Never commit `.env`. The default host port is **3307**; update both `MYSQL_PORT` and `DATABASE_URL` if changed.
+
+`npm ci` generates the Prisma client without needing local secrets. The API and seed validate all application variables; migration/status commands validate `DATABASE_URL`. Configuration errors list field names without values.
 
 ```powershell
 docker compose config --quiet
 docker compose up -d --wait mysql
+npm run db:migrate
+npm run db:status
+npm run db:seed
 npm run dev
 ```
 
 - Storefront: [http://localhost:5173](http://localhost:5173)
 - Unified owner/admin console: [http://localhost:5173/admin](http://localhost:5173/admin)
-- Health: [http://127.0.0.1:3000/api/v1/health](http://127.0.0.1:3000/api/v1/health), returns `{"status":"ok"}`. `/health` is an alias. This is a process-health check, not a database-readiness check.
+- Health: [http://127.0.0.1:3000/api/v1/health](http://127.0.0.1:3000/api/v1/health); `/health` is an alias. A database probe returns HTTP 200 with `{"status":"ok","database":"ready"}`, or HTTP 503 with `{"status":"degraded","database":"unavailable"}`. It checks connectivity, not migration currency; use `npm run db:status` for that.
 - MySQL: `127.0.0.1:3307`, database/user from `.env`; named volume `mysql-data` preserves development data.
 
 Frontend and backend can also run separately in two terminals:
@@ -138,7 +145,9 @@ npm run dev:web
 npm run dev:api
 ```
 
-The frontend works with the API and MySQL stopped. There are **no business API calls or database connections** in this prototype.
+The frontend still works with the API and MySQL stopped and makes **no business API calls**. The backend connects through Prisma only for database readiness; the explicit seed initializes one ADMIN, one settings row and one sanitized bootstrap audit record. Re-running seed preserves the existing password, profile and settings. Changing `ADMIN_PASSWORD` does not reset an existing password; changing `ADMIN_EMAIL` conflicts rather than creating a second ADMIN. No login endpoint exists yet.
+
+The migration contains the approved 11 domain tables plus Prisma's `_prisma_migrations` bookkeeping table. Use versioned migrations only; no `db push` or reset is required. Full schema, conflict handling and local setup details are in [the database foundation guide](docs/11-database-foundation.md).
 
 To stop development, press Ctrl+C in the application terminal and run `docker compose stop mysql`. To remove the development container while retaining its data, use `docker compose down`; do not add `--volumes` unless you intend to delete the local database.
 
@@ -156,24 +165,26 @@ To stop development, press Ctrl+C in the application terminal and run `docker co
 
 All fixture names, products, contacts (`example.com`), orders and metrics are fictitious. State is shared between the two surfaces **only in the same browser tab**, held in memory, and reset on refresh; there is no localStorage persistence. No payment, refund, funds transfer, settlement, SMTP, supplier service or network integration is configured. Both application surfaces are deliberately accessible for demo navigation; **no real authentication or authorization exists yet**. Do not enter real customer information.
 
-The backend exposes health and JSON 404 responses only. Prisma, database schemas/migrations, shared environment validation, request logging, authentication, server-side authorization, business APIs, entitlement changes, subscription date correction/termination, email workers and production deployment remain future tasks. No business tables are created in Task 1.1.
+The backend exposes database-aware health and JSON 404 responses only. Task 1.2.1 adds the schema, migration, environment validation and administrator seed; it does not connect the Mock UI to database records. Authentication, sessions/invitation behavior, business CRUD, payment/fulfillment state machines and customer activation remain future subtasks. No SMTP, outbound email, online payment or supplier integration is implemented. Services bind to loopback.
 
 ## Checks
 
-See [the Task 1.1 implementation report](docs/09-task-1.1-report.md) for implemented behavior, verification coverage, remaining scope, and the complete changed-file list.
+See [the Task 1.1 implementation report](docs/09-task-1.1-report.md) for the UI and [the Task 1.2.1 report](docs/11-database-foundation.md) for database coverage and the complete changed-file list.
 
 ```powershell
 npm run typecheck
 npm run lint
 npm run format:check
+npm run db:validate
 npm test
+npm run test:db
 npm run build
 npm run test:e2e
 ```
 
 Browser tests use installed **Microsoft Edge** via Playwright on desktop and at an iPhone-sized viewport. Install Edge first if it is unavailable; the tests do not require downloading Playwright's browser bundle. Mobile viewport emulation is not a physical iOS-device test. Playwright builds and serves the frontend automatically on loopback port 4175, without the backend, and fails on business API calls. Screenshots and failure traces are written to ignored `test-results/`.
 
-The frontend tests cover checkout validation/snapshots, independent product controls, renewals, completion/refund transitions, duplicate actions and timezone-aware net receipts. Backend tests use an ephemeral HTTP port to check health JSON and absent business routes.
+The frontend tests cover the existing Mock behavior. Backend unit/HTTP tests cover environment validation, sanitized startup failures, readiness responses/recovery and absent business routes. `npm run test:db` requires Docker and creates a uniquely named isolated MySQL 8.4 project with a fresh named volume and random loopback port/credentials. It migrates twice, verifies the schema and idempotent/concurrent seed, stops/restarts its own database to verify readiness and persistence, then removes only its own test resources. It does not load `.env` or touch the development volume.
 
 Build artifacts: `frontend/dist/` and `backend/dist/`. To serve compiled output locally, use `npm run preview -w frontend` (default port 4173) and `npm start -w backend` in separate terminals. These commands are development previews, not production deployment configuration.
 
