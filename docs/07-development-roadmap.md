@@ -4,9 +4,9 @@
 
 - Implement one task at a time.
 - Do not skip acceptance criteria.
-- Do not implement future payment or supplier integrations during MVP.
+- Do not implement online payment, supplier API, SMTP, or deployment during the local offline operations milestone.
 - Keep docs synchronized with implementation.
-- Owner reviews each milestone before next substantial milestone.
+- Owner reviews each milestone/PR before the next substantial task.
 
 ## Architecture decision — single merchant
 
@@ -23,231 +23,145 @@
 **Status: Complete**
 
 - [x] Record business model and manual fulfillment workflow.
-- [x] Define customer pages and one unified owner/admin console (not separate merchant and administrator portals).
+- [x] Define customer pages and one unified owner/admin console.
 - [x] Define subscription versus one-time product behavior.
 - [x] Define proposed stack and modular-monolith architecture.
 - [x] Define initial domain model and API contract.
 - [x] Define security boundaries and launch gates.
 - [x] Create roadmap and Codex instructions.
 
-## Phase 1 — Repository scaffold and foundation
+## Phase 1 — Repository scaffold and local operations
 
-**Status: In progress — Task 1.1 implemented; Task 1.2 not started**
+**Status: Task 1.1 complete; Task 1.2 designed, not started**
 
-### Task 1.1 — Scaffold the application and implement the first UI prototype
+### Task 1.1 — Responsive Mock UI prototype
 
-**Status: Complete — scaffold, Mock UI and validation passed.** See [implementation report](09-task-1.1-report.md).
+**Status: Complete.** See [Task 1.1 implementation report](09-task-1.1-report.md).
 
-Scope updated by the owner's explicit Task 1.1 instruction: include the local Mock UI in docs/08-interface-specification.md. This supersedes the original scaffold-only restriction; backend business features remain excluded.
+- Vue 3 + TypeScript + Vite frontend.
+- Node.js 24 + TypeScript + Express health API.
+- MySQL 8.4 Docker Compose development service.
+- Customer storefront and unified owner/admin console with Mock data.
+- Responsive desktop/mobile layouts and local interactions.
+- No business database, authentication, payment, email, or supplier integration.
 
-- Create agreed repository structure.
-- Initialize Vue 3 + TypeScript + Vite frontend.
-- Initialize Node.js + TypeScript + Express backend.
-- Add formatting, lint, type-check, and basic test scripts.
-- Add .gitignore and .env.example.
-- Add health endpoint.
-- Add Docker Compose for local MySQL.
-- Implement all four customer sections and six unified owner/admin sections with local Mock data only.
-- Implement responsive navigation, product filters/add/edit/toggles, local checkout, order filtering/detail/simulated completion/refund, subscription filtering/detail/renewal, and user/settings/profile prototype interactions.
-- Do not implement business APIs, Prisma, migrations, real authentication, or payment/refund/settlement/SMTP/supplier integrations.
+### Task 1.2 — Local offline customer and order management
 
-Acceptance:
-- Frontend starts locally.
-- Backend starts locally.
-- Health endpoint returns stable JSON.
-- MySQL starts with Docker Compose.
-- No secrets committed.
-- README includes exact setup commands.
-- Desktop/mobile layout and local interactions follow docs/08-interface-specification.md.
-- Build, type checks, lint, formatting, unit tests and available browser tests pass.
-- Only Task 1.1 is implemented; stop for owner review before Task 1.2.
+**Status: Design baseline documented; implementation not started.**
 
-### Task 1.2 — Database and shared configuration
+Use [10-local-operations-mvp.md](10-local-operations-mvp.md) as the scope and implementation source of truth. Use [04-data-model.md](04-data-model.md) for the database model and [05-api-contract.md](05-api-contract.md) for API boundaries.
 
-- Add Prisma and MySQL.
-- Add initial migration for users/admin role only.
-- Add environment validation.
-- Add request ID and structured logging with sensitive-data redaction.
+The target is a usable local application for managing existing customers who pay offline. It is not deployed and is not an online store yet.
+
+#### Task 1.2.1 — Prisma and local database foundation
+
+- Add Prisma and a MySQL datasource.
+- Implement all 11 models in docs/04-data-model.md.
+- Add an initial migration and migration scripts.
+- Add environment validation for DATABASE_URL, APP_BASE_URL, ADMIN_EMAIL, and ADMIN_PASSWORD.
+- Add database readiness to the health endpoint.
+- Add an idempotent seed for exactly one ADMIN account. Do not overwrite an existing admin password on each seed run.
+- Keep services bound to loopback for local use.
+- Do not implement business CRUD, customer activation UI, online checkout, email, or payment/supplier integrations in this subtask.
 
 Acceptance:
-- Migration runs on clean local DB.
-- Missing/invalid required env vars fail clearly.
-- Logs contain no passwords/cookies/secrets.
+- Migration succeeds against a clean MySQL 8.4 volume.
+- Re-running migration/seed is safe.
+- Seed creates one ADMIN with a hashed password from local env configuration.
+- Database health is reported accurately; API health does not claim DB-ready when DB is unavailable.
+- Environment errors fail clearly without printing secrets.
+- Format, typecheck, lint, tests, build pass.
+- Stop and wait for owner review.
 
-### Task 1.3 — Authentication and authorization
+#### Task 1.2.2 — Authentication, customers, and invitations
 
-- Implement customer register/login/logout.
-- Implement server-side session cookie.
-- Implement one ADMIN role for the site owner.
-- Protect the unified owner/admin console and all its APIs with the ADMIN role.
-- Add a minimal protected management-console route.
-
-Acceptance:
-- Customer can register/login/logout.
-- Customer cannot access admin APIs.
-- Unauthenticated user cannot access protected customer APIs.
-- Passwords are hashed.
-- Authentication endpoints rate-limited.
-
-## Phase 2 — Product catalog and product forms
-
-**Status: Not started**
-
-### Task 2.1 — Product data and admin CRUD
-
-- Implement products and product form-field configuration.
-- Support SUBSCRIPTION and ONE_TIME.
-- Support initial price, renewal price, term, supplier cost reference, status, sort order.
-- Add admin product CRUD.
+- Implement admin login/logout/me with server-side sessions.
+- Implement admin customer creation/edit/disable.
+- Create customers as PENDING_ACTIVATION with nullable passwordHash.
+- Generate/reissue/revoke one-time invitation links; store only token hashes.
+- Add customer activation page and login.
+- Allow subscriptions/orders to reference pending customers.
+- No email sending of any kind.
 
 Acceptance:
-- Admin can create/edit/archive products.
-- Subscription products require renewal price and term.
-- One-time products do not show renewal UI by default.
-- Public APIs never expose supplier cost.
+- Admin APIs reject unauthenticated/non-admin requests.
+- Invitation is one-time, expires after 7 days, and reissue revokes prior unused token.
+- Admin can copy the raw invitation URL once.
+- Pending customer can own order/subscription records.
+- No email is sent.
+- Localhost-link reachability limitation is shown.
 
-### Task 2.2 — Storefront catalog and detail
+#### Task 1.2.3 — Product and settings persistence
 
-- Build responsive catalog and detail pages.
-- Display price, term, renewal price, and service conditions.
-- Render configured non-sensitive form fields.
-
-Acceptance:
-- Only active products are public.
-- Product type is visually distinguishable.
-- Required fields validated on client and server.
-- Visual design follows owner-approved direction.
-
-## Phase 3 — Orders and manual customer-payment verification
-
-**Status: Not started**
-
-### Task 3.1 — Order creation and snapshots
-
-- Implement order creation.
-- Calculate price on server.
-- Snapshot product, price, term, and approved form values.
-- Add customer order list/detail.
+- Replace product Mock state with database-backed CRUD.
+- Persist listed, purchaseEnabled, and renewalEnabled independently.
+- Add archive instead of hard delete.
+- Persist storeName, ownerEmail, and timezone.
 
 Acceptance:
-- Customer sees only own orders.
-- Historical product/price data does not change after product edits.
-- Duplicate submissions do not create unintended duplicate orders.
+- Product edits survive refresh/restart.
+- Listing/new-purchase/renewal semantics match docs/08-interface-specification.md.
+- Historical snapshots remain unchanged after product edits.
+- No supplier cost fields.
 
-### Task 3.2 — Manual payment workflow
+#### Task 1.2.4 — Offline orders, payments, refunds, and fulfillment
 
-- Add configurable payment instructions.
-- Add customer payment-submitted action.
-- Add admin verification queue/action.
-- Record verifier and transaction reference.
-
-Acceptance:
-- Customer claim does not mark order paid.
-- Only admin verification changes payment status to PAID.
-- Supplier email cannot be queued for unpaid/unverified order.
-
-## Phase 4 — Supplier email and manual fulfillment
-
-**Status: Not started**
-
-### Task 4.1 — Email outbox and supplier request
-
-- Configure SMTP via environment.
-- Add templates and DB-backed outbox.
-- Queue supplier request email after payment verification.
-- Support operator CC and safe retry.
+- Admin creates OFFLINE_MANUAL INITIAL, RENEWAL, and ONE_TIME orders.
+- Record payment channel, amount, actual time, reference, and note.
+- Admin confirms actual offline payment after checking the external account.
+- Record full refunds as pending/confirmed/failed after private customer discussion; application never sends money.
+- Admin updates fulfillment status with a reason.
+- Add order events and audit logs.
 
 Acceptance:
-- Supplier request contains correct order snapshot and approved non-sensitive fields.
-- No prohibited secret is emailed.
-- Retry does not create duplicate supplier fulfillment.
-- Delivery attempts/failures visible to admin.
+- Payment and fulfillment states are independent.
+- Unpaid/unverified orders are not counted as paid or awaiting fulfillment.
+- Payment summary reconciles with transaction records.
+- Only paid orders can complete.
+- Refund is marked successful only after external refund is actually sent.
+- Refund and fulfillment transitions are atomic and audited.
 
-### Task 4.2 — Supplier transfer and fulfillment console
+#### Task 1.2.5 — Subscriptions and renewals
 
-- Add manual supplier transfer record.
-- Add fulfillment progress and exception handling.
-- Add admin completion/failure actions.
-- Queue customer completion email after confirmed completion.
-
-Acceptance:
-- Supplier transfer is recorded, not initiated.
-- Order cannot complete before valid transitions.
-- Customer email sent only after admin completion.
-- Important actions audited.
-
-## Phase 5 — Subscriptions and renewals
-
-**Status: Not started**
-
-### Task 5.1 — Subscription records
-
-- Create subscription on successful initial fulfillment.
-- Store customer, product, target identifier, start, expiry, renewal price.
-- Add customer My Subscriptions.
-- Add admin subscription management.
+- Admin creates subscriptions from completed orders, manual grants, or historical imports.
+- Pending-activation customers may own subscriptions.
+- Admin enters actual start/expiry dates and renewal price.
+- Renewal creates a separate offline order linked to the subscription.
+- On renewal fulfillment, admin enters supplier-confirmed expiry; update subscription and append event atomically.
+- Add suspension, resumption, termination, and date correction with reasons.
 
 Acceptance:
-- Subscription not active before supplier completion.
-- Customer sees renewal price and expiry.
-- Customer cannot view another user's subscription.
+- Manual grant/history import creates no fake order/payment.
+- Each renewal creates a new order.
+- Product edits do not rewrite existing subscription renewal price snapshots.
+- Expiry is not auto-extended by guessed durations.
+- Subscription event history is preserved.
 
-### Task 5.2 — Renewal orders
+#### Task 1.2.6 — Dashboard and customer read-only portal
 
-- Add renewal action from subscription.
-- Create new order linked to existing subscription.
-- Snapshot renewal price.
-- On supplier completion, operator records actual new expiry date.
-- Preserve event history.
-
-Acceptance:
-- Renewal creates separate order.
-- Old orders/events remain unchanged.
-- Expiry updated only from supplier-confirmed information.
-- No automatic charge.
-
-### Task 5.3 — Expiry reminders
-
-- Add scheduled reminder worker.
-- Support configurable 7/3/1-day offsets.
-- Add reminder idempotency and delivery history.
+- Replace overview Mock metrics with database-backed metrics.
+- Customer can activate/login and view only their own orders/subscriptions.
+- Keep online catalog purchase/checkout disabled.
+- Add E2E tests for complete local offline workflows.
+- Document local start, backup, and reset procedures.
 
 Acceptance:
-- No duplicate reminder for same subscription, expiry date, and offset.
-- Failed reminders can be retried.
-- Expired subscriptions are not described as active.
+- Dashboard reconciles with confirmed transaction records.
+- Customer cannot access another user's data or admin APIs.
+- Data survives refresh and service/container restart.
+- No online payment, supplier, or email calls occur.
+- All checks pass and owner reviews the milestone.
 
-## Phase 6 — Customer account and operations
+## Future phases — not authorized by Task 1.2
 
-- Complete profile and password change.
-- Add user administration.
-- Add dashboard metrics and operational queues.
-- Add order/subscription search and filters.
-- Add email outbox and audit-log views.
-- Add documented manual refund record workflow.
+These remain future work and must not be pulled into Task 1.2:
 
-Acceptance:
-- Customer/admin permissions enforced server-side.
-- Dashboard figures reconcile with order/payment records.
-- Internal costs/notes never exposed to customers.
-
-## Phase 7 — Hardening and deployment
-
-- Add integration and end-to-end tests for critical workflows.
-- Add backup/restore procedure.
-- Add production deployment configuration.
-- Add HTTPS/reverse-proxy guidance.
-- Add monitoring/log rotation.
-- Run security/dependency checks.
-- Complete launch checklist.
-
-Acceptance:
-- Clean deployment reproducible from docs.
-- Database restore tested.
-- Critical state transitions tested.
-- No secrets in repository history or runtime responses.
-- Owner signs off supplier authorization, service terms, payment eligibility, and customer policies.
+- Public online checkout and payment provider integration.
+- Supplier email/API and automated fulfillment.
+- SMTP notifications and expiry reminders.
+- Production deployment, public access, and external customer invitation links.
+- Advanced accounting, supplier costs, or multi-merchant features.
 
 ## First Codex task
 
-Task 1.1 now includes the owner-authorized Mock UI prototype following docs/08-interface-specification.md. Review the prototype and verification results before authorizing Task 1.2. Do not start subsequent database or business implementation automatically.
+After owner approval, execute **Task 1.2.1 only**. Read AGENTS.md and docs/10-local-operations-mvp.md first. Do not begin Task 1.2.2 or implement business CRUD until the owner reviews the database foundation.
