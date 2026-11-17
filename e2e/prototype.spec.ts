@@ -4,8 +4,30 @@ test.beforeEach(async ({ page }) => {
   page.on('pageerror', (error) => {
     throw error
   })
-  await page.route('**/api/**', () => {
-    throw new Error('Mock UI must work without business APIs')
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/v1/auth/me')
+      return route.fulfill({
+        json: {
+          user: {
+            id: '00000000-0000-4000-8000-000000000001',
+            displayName: 'Prototype admin',
+            loginEmail: 'owner@example.com',
+            notificationEmail: null,
+            role: 'ADMIN',
+            status: 'ACTIVE',
+            activatedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+          },
+        },
+      })
+    if (path === '/api/v1/admin/users' && route.request().method() === 'GET')
+      return route.fulfill({
+        json: { items: [], total: 0, page: 1, pageSize: 20 },
+      })
+    throw new Error(
+      'Prototype pages must not call product/order/subscription APIs',
+    )
   })
 })
 
@@ -67,7 +89,8 @@ test('catalog filters and local checkout create an unpaid snapshot', async ({
 }) => {
   const apiRequests: string[] = []
   page.on('request', (r) => {
-    if (/\/api\//.test(r.url())) apiRequests.push(r.url())
+    if (/\/api\//.test(r.url()) && !r.url().includes('/api/v1/auth/me'))
+      apiRequests.push(r.url())
   })
   await page.goto('/admin')
   const pendingMetric = page
@@ -471,17 +494,8 @@ test('listing visibility, new purchases and existing renewals work independently
   ).toHaveText(expiry)
 })
 
-test('user history links and settings are usable', async ({ page }) => {
-  await page.goto('/admin/users')
-  await page
-    .getByRole('textbox', { name: '搜索用户', exact: true })
-    .fill('陈予')
-  await expect(page.locator('tbody tr')).toHaveCount(1)
-  await page.getByRole('button', { name: '查看详情' }).click()
-  await page.getByRole('link', { name: '查看该用户订单' }).click()
-  await expect(page).toHaveURL('/admin/orders?user=u2')
-  await expect(page.locator('tbody tr')).toHaveCount(2)
-  await page.getByRole('link', { name: '系统设置' }).click()
+test('remaining settings prototype is usable', async ({ page }) => {
+  await page.goto('/admin/settings')
   await page
     .getByRole('textbox', { name: '店铺名称', exact: true })
     .fill('本地测试商店')

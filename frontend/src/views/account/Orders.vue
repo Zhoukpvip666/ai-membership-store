@@ -14,6 +14,7 @@ import {
 } from '../../stores/format'
 import type { Order } from '../../types'
 import OrderDialog from '../../components/OrderDialog.vue'
+import { auth } from '../../stores/auth'
 const props = defineProps<{ admin?: boolean }>()
 const route = useRoute()
 const search = ref('')
@@ -37,7 +38,7 @@ const orders = computed(() =>
 )
 </script>
 <template>
-  <section>
+  <section v-if="auth.state.user?.role !== 'CUSTOMER'">
     <div class="page-heading">
       <div>
         <span class="eyebrow">{{ admin ? 'ORDERS' : 'MY ORDERS' }}</span>
@@ -148,5 +149,11 @@ const orders = computed(() =>
       :admin="admin"
       @close="selected = undefined"
     />
+  </section>
+  <section v-else>
+    <div class="page-heading"><h1>我的订单</h1></div>
+    <div class="panel empty-state">
+      真实订单历史将在后续任务接入，此处不会展示其他客户或演示账户的数据。
+    </div>
   </section>
 </template>

@@ -32,7 +32,7 @@
 
 ## Phase 1 — Repository scaffold and local operations
 
-**Status: Task 1.1 complete; Task 1.2.1 implemented for owner review; Task 1.2.2 not started**
+**Status: Tasks 1.1 and 1.2.1 complete; Task 1.2.2 implemented for owner review. Task 1.2.3 has not started.**
 
 ### Task 1.1 — Responsive Mock UI prototype
 
@@ -47,7 +47,7 @@
 
 ### Task 1.2 — Local offline customer and order management
 
-**Status: Database foundation implemented for owner review. Remaining subtasks have not started.**
+**Status: Database foundation complete; authentication/customers/invitations implemented for owner review. Remaining subtasks have not started.**
 
 Use [10-local-operations-mvp.md](10-local-operations-mvp.md) as the scope and implementation source of truth. Use [04-data-model.md](04-data-model.md) for the database model and [05-api-contract.md](05-api-contract.md) for API boundaries.
 
@@ -55,7 +55,7 @@ The target is a usable local application for managing existing customers who pay
 
 #### Task 1.2.1 — Prisma and local database foundation
 
-**Status: Implemented for owner review.** Schema, commands, verification and known boundaries: [11-database-foundation.md](11-database-foundation.md). Stop here until owner approval.
+**Status: Complete, reviewed before Task 1.2.2 was authorized.** Historical schema/verification report: [11-database-foundation.md](11-database-foundation.md).
 
 - Add Prisma and a MySQL datasource.
 - Implement all 11 models in docs/04-data-model.md.
@@ -76,6 +76,8 @@ Acceptance:
 - Stop and wait for owner review.
 
 #### Task 1.2.2 — Authentication, customers, and invitations
+
+**Status: Implemented for owner review.** See [12-authentication-customers-invitations.md](12-authentication-customers-invitations.md). Stop after this PR; Task 1.2.3 is not authorized.
 
 - Implement admin login/logout/me with server-side sessions.
 - Implement admin customer creation/edit/disable.
@@ -164,6 +166,6 @@ These remain future work and must not be pulled into Task 1.2:
 - Production deployment, public access, and external customer invitation links.
 - Advanced accounting, supplier costs, or multi-merchant features.
 
-## First Codex task
+## Current review boundary
 
-After owner approval, execute **Task 1.2.1 only**. Read AGENTS.md and docs/10-local-operations-mvp.md first. Do not begin Task 1.2.2 or implement business CRUD until the owner reviews the database foundation.
+Task 1.2.1 was reviewed before the owner authorized Task 1.2.2. This change stops after Task 1.2.2 and its PR. Wait for human review; do not begin Task 1.2.3 or any later business persistence work without a separate authorization.

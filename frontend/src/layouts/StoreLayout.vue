@@ -8,6 +8,7 @@ import {
   FlaskConical,
 } from '@lucide/vue'
 import Brand from '../components/Brand.vue'
+import { auth } from '../stores/auth'
 const nav = [
   { path: '/', text: '商品', short: '商品', icon: Store },
   {
@@ -37,16 +38,16 @@ const nav = [
         <div class="header-actions">
           <RouterLink class="console-link" to="/admin"
             >管理控制台 <ArrowUpRight :size="14" /></RouterLink
-          ><RouterLink to="/profile" class="avatar" aria-label="个人中心"
-            >林</RouterLink
-          >
+          ><RouterLink to="/profile" class="avatar" aria-label="个人中心">{{
+            auth.state.user?.displayName.slice(0, 1) || '我'
+          }}</RouterLink>
         </div>
       </div>
     </header>
     <main class="store-main">
       <div class="demo-notice">
         <FlaskConical :size="15" /><span
-          >交互原型 · 全部为模拟数据，操作仅在当前页面会话内生效</span
+          >本地管理工具 · 商品为 Mock 展示，暂未开放线上购买</span
         ><span class="demo-pill">MOCK</span>
       </div>
       <RouterView />

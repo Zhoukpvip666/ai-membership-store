@@ -65,9 +65,10 @@ test('business routes are not exposed by this scaffold', async () => {
     for (const method of ['GET', 'POST']) {
       const response = await fetch(baseUrl + '/api/v1' + path, { method })
       assert.equal(response.status, 404)
-      assert.deepEqual(await response.json(), {
-        error: { code: 'NOT_FOUND', message: 'Route not found.' },
-      })
+      const body = await response.json()
+      assert.equal(body.error.code, 'NOT_FOUND')
+      assert.equal(body.error.message, 'Route not found.')
+      assert.match(body.error.requestId, /^[a-f0-9-]{36}$/)
     }
   }
 })

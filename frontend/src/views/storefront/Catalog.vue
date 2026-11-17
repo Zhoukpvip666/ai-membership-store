@@ -5,6 +5,7 @@ import { mock } from '../../stores/mock'
 import { money } from '../../stores/format'
 import type { Product } from '../../types'
 import CheckoutDialog from '../../components/CheckoutDialog.vue'
+import { auth } from '../../stores/auth'
 const category = ref('ALL')
 const selected = ref<Product>()
 const products = computed(() =>
@@ -75,11 +76,22 @@ const filters = [
         <ElButton
           class="buy-button"
           type="primary"
-          :disabled="!mock.canPurchase(product)"
+          :disabled="
+            auth.state.user?.role !== 'ADMIN' || !mock.canPurchase(product)
+          "
           @click="selected = product"
         >
-          {{ product.purchaseEnabled ? '立即购买' : '暂不可购买' }}
-          <ArrowRight v-if="product.purchaseEnabled" :size="16" />
+          {{
+            auth.state.user?.role !== 'ADMIN'
+              ? '暂未开放线上购买'
+              : product.purchaseEnabled
+                ? '立即购买'
+                : '暂不可购买'
+          }}
+          <ArrowRight
+            v-if="auth.state.user?.role === 'ADMIN' && product.purchaseEnabled"
+            :size="16"
+          />
         </ElButton>
       </article>
     </div>

@@ -1,8 +1,25 @@
 import express from 'express'
+import { randomUUID } from 'node:crypto'
+import type { PrismaClient } from './generated/prisma/client.ts'
+import type { Environment } from './config/env.ts'
+import { applicationRoutes } from './http/routes.ts'
+import { ApiError, errors } from './http/errors.ts'
 
-export function createApp(checkDatabase: () => Promise<void>) {
+export function createApp(
+  checkDatabase: () => Promise<void>,
+  options?: { database: PrismaClient; env: Environment },
+) {
   const app = express()
   app.disable('x-powered-by')
+  app.use((_request, response, next) => {
+    response.locals.requestId = randomUUID()
+    response.setHeader('X-Request-Id', response.locals.requestId)
+    response.setHeader('Cache-Control', 'no-store')
+    response.setHeader('Referrer-Policy', 'no-referrer')
+    response.setHeader('X-Content-Type-Options', 'nosniff')
+    response.setHeader('X-Frame-Options', 'DENY')
+    next()
+  })
 
   app.get(['/health', '/api/v1/health'], async (_request, response) => {
     try {
@@ -14,11 +31,13 @@ export function createApp(checkDatabase: () => Promise<void>) {
     }
   })
 
-  app.use((_request, response) => {
-    response
-      .status(404)
-      .json({ error: { code: 'NOT_FOUND', message: 'Route not found.' } })
-  })
+  app.use(express.json({ limit: '16kb', strict: true }))
+  if (options)
+    app.use('/api/v1', applicationRoutes(options.database, options.env))
+  app.use((_request, _response, next) =>
+    next(new ApiError(404, 'NOT_FOUND', 'Route not found.')),
+  )
+  app.use(errors)
 
   return app
 }

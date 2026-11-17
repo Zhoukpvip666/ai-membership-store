@@ -2,7 +2,7 @@
 
 A private, independently operated storefront and order-management system for AI membership services and other digital services.
 
-**Project status:** Task 1.1 is merged. Task 1.2.1 database foundation is implemented for owner review; Task 1.2.2 and business CRUD have not started. The frontend remains the independent Task 1.1 Mock prototype.
+**Project status:** Task 1.2.1 is complete. Task 1.2.2 authentication, customers and invitations is implemented for owner review. Task 1.2.3 has not started. Authentication/customer management uses the local API; other management screens remain labelled Mock prototypes. See [the implementation report](docs/12-authentication-customers-invitations.md).
 
 ## Operating model: single merchant
 
@@ -80,6 +80,7 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 9. docs/08-interface-specification.md — approved customer and owner/admin responsive UI specification.
 10. docs/10-local-operations-mvp.md — local-only customer, offline order, payment record, and subscription management milestone.
 11. docs/11-database-foundation.md — Task 1.2.1 schema, local migration/seed instructions, tests and implementation report.
+12. docs/12-authentication-customers-invitations.md — Task 1.2.2 implementation, local operation, security boundaries and verification.
 
 ## Important launch gates
 
@@ -108,10 +109,11 @@ Before accepting real orders, the operator must verify that the supplier is auth
     ├── 08-interface-specification.md
     ├── 09-task-1.1-report.md
     ├── 10-local-operations-mvp.md
-    └── 11-database-foundation.md
+    ├── 11-database-foundation.md
+    └── 12-authentication-customers-invitations.md
 ```
 
-## Local development — Task 1.2.1
+## Local development — Task 1.2.2
 
 Prerequisites: Node.js **24.x**, npm, and Docker with Compose. Run all commands from the repository root. On PowerShell, use `npm.cmd` if the local execution policy blocks `npm.ps1`.
 
@@ -145,7 +147,7 @@ npm run dev:web
 npm run dev:api
 ```
 
-The frontend still works with the API and MySQL stopped and makes **no business API calls**. The backend connects through Prisma only for database readiness; the explicit seed initializes one ADMIN, one settings row and one sanitized bootstrap audit record. Re-running seed preserves the existing password, profile and settings. Changing `ADMIN_PASSWORD` does not reset an existing password; changing `ADMIN_EMAIL` conflicts rather than creating a second ADMIN. No login endpoint exists yet.
+Login and customer management require the API and MySQL. Open the frontend using exactly the origin configured in `APP_BASE_URL` (default `http://localhost:5173`); Vite proxies `/api` to the loopback API port. Login at `/admin/login` using the already-seeded administrator. Re-running seed preserves the existing password/profile/settings; changing `ADMIN_PASSWORD` does not reset it. Existing Task 1.2.1 databases need **no new migration or seed** for Task 1.2.2: keep the existing `.env` and start `npm run dev:api` and `npm run dev:web`. The migration/seed commands above are for a fresh database only.
 
 The migration contains the approved 11 domain tables plus Prisma's `_prisma_migrations` bookkeeping table. Use versioned migrations only; no `db push` or reset is required. Full schema, conflict handling and local setup details are in [the database foundation guide](docs/11-database-foundation.md).
 
@@ -157,15 +159,16 @@ To stop development, press Ctrl+C in the application terminal and run `docker co
 - Responsive desktop top navigation / mobile safe-area bottom navigation; desktop admin sidebar / horizontally scrollable tablet and mobile navigation; horizontally scrollable tables and mobile dialogs.
 - Product category filters, local add/edit, independent listing / new-purchase / renewal controls. Listing controls catalog visibility; disabling new purchases keeps a listed card visible with a disabled 暂不可购买 button. New checkout requires listing and new-purchase permission; eligible existing subscriptions can renew solely according to the renewal switch, even when delisted or closed to new purchases. Disabling renewal does not block permitted new purchases. These switches preserve historical orders and existing entitlement dates.
 - Checkout collects notification email plus a configured target email or project name where required. It creates an **unpaid local mock order**, without a payment operation. Prices are integer CNY fen; orders retain product and price snapshots.
-- Customer lists show only the fictitious demo customer's records. Renewal creates a separate order linked to the subscription and does not extend its expiry.
+- Administrator-only Mock account lists show the fictitious demo customer's records. Mock renewal creates a separate order linked to the subscription and does not extend its expiry.
 - Order search/status filters, details and timeline show payment independently: unpaid orders display 未付款 and fulfillment 未开始 in customer/admin lists, details, overview recent orders and linked subscription history. Only confirmed-paid pending orders match 待发货. Seeded paid pending orders support simulated completion and simulated refund. Refund request enters processing; an explicit simulated success/failure result is needed. Only success shows 已退款 and cancels fulfillment (已取消), retaining historical payment confirmation. Pending/failed refunds leave fulfillment unchanged and failed simulations can retry. Unpaid, completed, and refunded orders do not expose these pending-order actions.
 - Subscription filters/details include confirmed sample dates, masked identifiers and linked initial/renewal order history. Disabling renewal preserves the current entitlement and explains why renewal is unavailable.
-- User search/detail links to that customer's orders and subscriptions. Profile notification email, demo sign-out/re-entry, basic system settings and email preferences work locally.
+- User management is now persistent: create/search/filter/detail/edit, disable/restore, one-time invitation generation/copy/reissue/revocation. New customers remain PENDING_ACTIVATION without a password. Login email is immutable after creation; notification email falls back to login email. Customers set their own password on `/activate#<token>`, then log in at `/login`. The raw link is returned only on issuance and cannot be recovered by a read endpoint. Localhost links work only on this machine; no email is sent.
+- Real account profiles and logout use database sessions. A customer cannot enter admin screens or view the prototype's fictitious personal histories. Own real order/subscription reads remain Task 1.2.6; account pages explain this boundary. Product/order/subscription/settings prototypes remain available only to the authenticated administrator for demonstration, without business API calls.
 - Overview computes verified mock receipts minus confirmed mock refunds by event date in the configured business timezone (default Asia/Shanghai), plus total orders, confirmed-paid pending orders and active/expired subscriptions. Unpaid orders increase the total but not the delivery queue count.
 
-All fixture names, products, contacts (`example.com`), orders and metrics are fictitious. State is shared between the two surfaces **only in the same browser tab**, held in memory, and reset on refresh; there is no localStorage persistence. No payment, refund, funds transfer, settlement, SMTP, supplier service or network integration is configured. Both application surfaces are deliberately accessible for demo navigation; **no real authentication or authorization exists yet**. Do not enter real customer information.
+The remaining product/order/subscription/settings fixtures are fictitious and held only in browser memory. They are separate from persistent customers; database customer details show actual order/subscription counts and never link to Mock history. Public/customer catalog purchasing is disabled. Administrator-only demo interactions still simulate no money movement, email or supplier service. Never enter real customer information in Mock screens. Session tokens are in HttpOnly cookies, never localStorage.
 
-The backend exposes database-aware health and JSON 404 responses only. Task 1.2.1 adds the schema, migration, environment validation and administrator seed; it does not connect the Mock UI to database records. Authentication, sessions/invitation behavior, business CRUD, payment/fulfillment state machines and customer activation remain future subtasks. No SMTP, outbound email, online payment or supplier integration is implemented. Services bind to loopback.
+The backend implements health, login/logout/me/activation and authenticated ADMIN customer/invitation APIs. Every admin path is protected on the backend. Input validation, Origin/custom-header CSRF checks, authentication/admin mutation limits, hash-only tokens, fixed 12-hour sessions and sanitized audit records are included. No new migration, product/order/subscription/settings persistence, SMTP, online payment or supplier integration is added. Services bind to loopback.
 
 ## Checks
 
@@ -182,12 +185,12 @@ npm run build
 npm run test:e2e
 ```
 
-Browser tests use installed **Microsoft Edge** via Playwright on desktop and at an iPhone-sized viewport. Install Edge first if it is unavailable; the tests do not require downloading Playwright's browser bundle. Mobile viewport emulation is not a physical iOS-device test. Playwright builds and serves the frontend automatically on loopback port 4175, without the backend, and fails on business API calls. Screenshots and failure traces are written to ignored `test-results/`.
+Browser tests use installed **Microsoft Edge** on desktop and at an iPhone-sized viewport. `npm run test:e2e` creates its own randomly named MySQL 8.4 project/volume and temporary credentials, applies the committed migration, seeds a fixture ADMIN, starts an isolated API on a random loopback port, and builds/serves the frontend on 4175. It runs real auth/customer flows plus Mock regression tests. Only the Mock regression suite stubs identity; real auth tests use MySQL. The clipboard boundary is stubbed to avoid changing the desktop clipboard. Mobile viewport emulation is not a physical device test. Artifacts are ignored in `test-results/`. The runner closes its API and removes only its own test resources; it never loads the developer `.env`.
 
-The frontend tests cover the existing Mock behavior. Backend unit/HTTP tests cover environment validation, sanitized startup failures, readiness responses/recovery and absent business routes. `npm run test:db` requires Docker and creates a uniquely named isolated MySQL 8.4 project with a fresh named volume and random loopback port/credentials. It migrates twice, verifies the schema and idempotent/concurrent seed, stops/restarts its own database to verify readiness and persistence, then removes only its own test resources. It does not load `.env` or touch the development volume.
+Unit/HTTP tests cover the existing Mock behavior, config, readiness, password/token handling, strict input schemas, CSRF and rate limiting. `npm run test:db` uses a separate isolated MySQL project to verify foundation/schema/seed/restart behavior and real authentication/customer/invitation HTTP flows, including concurrent activation/reissue, session revocation, duplicate emails and audit rollback. It never loads `.env` or touches the development volume.
 
-Build artifacts: `frontend/dist/` and `backend/dist/`. To serve compiled output locally, use `npm run preview -w frontend` (default port 4173) and `npm start -w backend` in separate terminals. These commands are development previews, not production deployment configuration.
+Build artifacts: `frontend/dist/` and `backend/dist/`. To serve compiled output locally, use `npm run preview -w frontend` (default port 4173) and `npm start -w backend` in separate terminals. The preview origin must match the API's configured `APP_BASE_URL`; use the configured frontend port or adjust your local configuration before starting both processes. These commands are development previews, not production deployment configuration.
 
 ## Current local operations milestone
 
-Task 1.2 is defined in [docs/10-local-operations-mvp.md](docs/10-local-operations-mvp.md). It will turn the Mock prototype into a local MySQL-backed tool for manually managed customers, offline WeChat/Alipay orders, recorded payments/refunds, and subscriptions. No online payment, SMTP, supplier API, or public deployment is included. Pending-activation customers may have subscriptions; invitations are copied manually and no email is sent. Task 1.2 will be implemented one reviewed subtask at a time, beginning with the Prisma/database foundation.
+Task 1.2 is defined in [docs/10-local-operations-mvp.md](docs/10-local-operations-mvp.md). It will turn the Mock prototype into a local MySQL-backed tool for manually managed customers, offline WeChat/Alipay orders, recorded payments/refunds, and subscriptions. No online payment, SMTP, supplier API, or public deployment is included. Pending-activation customers may have subscriptions; invitations are copied manually and no email is sent. Task 1.2 is implemented one reviewed subtask at a time. This PR stops after Task 1.2.2; products/settings persistence is a separate future Task 1.2.3.

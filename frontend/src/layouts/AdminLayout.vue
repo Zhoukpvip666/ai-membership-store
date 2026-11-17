@@ -10,7 +10,20 @@ import {
   FlaskConical,
 } from '@lucide/vue'
 import Brand from '../components/Brand.vue'
-import { mock } from '../stores/mock'
+import { ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { auth } from '../stores/auth'
+const route = useRoute()
+const router = useRouter()
+const logoutError = ref('')
+async function logout() {
+  try {
+    await auth.logout()
+    await router.replace('/admin/login')
+  } catch {
+    logoutError.value = '退出失败，请检查本地 API 后重试'
+  }
+}
 const nav = [
   { path: '/admin', text: '经营概览', icon: LayoutDashboard },
   { path: '/admin/products', text: '商品管理', icon: Package },
@@ -29,7 +42,8 @@ const nav = [
       <div class="header-actions">
         <RouterLink class="console-link" to="/"
           >返回商店 <ArrowUpRight :size="14" /></RouterLink
-        ><span class="owner-email">{{ mock.state.settings.ownerEmail }}</span
+        ><span class="owner-email">{{ auth.state.user?.loginEmail }}</span
+        ><ElButton link @click="logout">退出登录</ElButton
         ><span class="avatar owner">管</span>
       </div>
     </header>
@@ -47,19 +61,27 @@ const nav = [
         >
       </nav>
       <div class="sidebar-bottom">
-        <span class="online-dot"></span> 本地原型环境
-        <small>v0.1 · Task 1.1</small>
+        <span class="online-dot"></span> 本地运行环境
+        <small>Task 1.2.2 · 仅限本机</small>
       </div>
     </aside>
     <main class="admin-main">
       <div class="demo-notice">
-        <FlaskConical :size="15" /><span
-          >Mock 演示 · 管理入口无真实鉴权，所有操作均为本地模拟</span
-        ><span class="demo-pill">MOCK</span>
+        <FlaskConical :size="15" /><span>{{
+          route.path === '/admin/users'
+            ? '客户资料保存至本地数据库 · 不发送邮件'
+            : '当前页面仍为 Mock 演示 · 仅用户管理已接入数据库'
+        }}</span
+        ><span class="demo-pill">{{
+          route.path === '/admin/users' ? 'LOCAL' : 'MOCK'
+        }}</span>
       </div>
+      <p v-if="logoutError" class="form-error" role="alert">
+        {{ logoutError }}
+      </p>
       <RouterView />
       <footer class="page-footer">
-        统一管理控制台 <span>·</span> 本地演示环境
+        统一管理控制台 <span>·</span> 仅限本机访问
       </footer>
     </main>
   </div>
