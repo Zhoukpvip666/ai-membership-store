@@ -26,6 +26,13 @@ enum ProductType {
   ONE_TIME
 }
 
+// DAY is a fixed number of days; MONTH/YEAR are calendar periods.
+enum ServicePeriodUnit {
+  DAY
+  MONTH
+  YEAR
+}
+
 enum TargetField {
   EMAIL
   TEXT
@@ -39,7 +46,9 @@ enum OrderKind {
 }
 
 enum OrderSource {
-  OFFLINE_MANUAL
+  USER
+  ADMIN
+  SYSTEM_RENEWAL
 }
 
 enum PaymentStatus {
@@ -80,6 +89,13 @@ enum TransactionStatus {
 enum SubscriptionSource {
   ADMIN
   SYSTEM
+  ORDER
+}
+
+enum OrderActorType {
+  USER
+  ADMIN
+  SYSTEM
 }
 
 enum ActorType {
@@ -101,13 +117,10 @@ enum OrderEventType {
   FULFILLMENT_CHANGED
   COMPLETED
   NOTE
+  CANCELLED
 }
 
 enum SubscriptionEventType {
-  UPDATED
-  PRICE_CHANGED
-  FORM_DATA_UPDATED
-  AUTO_TERMINATED
   CREATED
   ACTIVATED
   RENEWED
@@ -118,6 +131,10 @@ enum SubscriptionEventType {
   RESUMED
   TERMINATED
   NOTE
+  UPDATED
+  PRICE_CHANGED
+  FORM_DATA_UPDATED
+  AUTO_TERMINATED
 }
 
 model User {
@@ -141,11 +158,13 @@ model User {
   issuedInvitations     InvitationToken[]    @relation("InvitationCreator")
   orders                Order[]              @relation("OrderCustomer")
   createdOrders         Order[]              @relation("OrderCreator")
+  customerCreatedOrders Order[]              @relation("CustomerOrderCreator")
   recordedTransactions  PaymentTransaction[] @relation("TransactionCreator")
   confirmedTransactions PaymentTransaction[] @relation("TransactionConfirmer")
   subscriptions         Subscription[]       @relation("SubscriptionCustomer")
   createdSubscriptions  Subscription[]       @relation("SubscriptionCreator")
-  orderEvents           OrderEvent[]
+  orderEvents           OrderEvent[]         @relation("OrderAdminActor")
+  customerOrderEvents   OrderEvent[]         @relation("OrderUserActor")
   subscriptionEvents    SubscriptionEvent[]
   auditLogs             AdminAuditLog[]
   idempotencyRecords    IdempotencyRecord[]
@@ -182,61 +201,100 @@ model InvitationToken {
 }
 
 model Product {
-  id              String         @id @default(uuid()) @db.VarChar(36)
-  slug            String         @unique @db.VarChar(100)
-  name            String         @db.VarChar(120)
-  description     String?        @db.Text
-  type            ProductType
-  priceFen        Int
-  renewalPriceFen Int?
-  termLabel       String         @db.VarChar(40)
-  targetField     TargetField    @default(NONE)
-  listed          Boolean        @default(false)
-  sortOrder       Int            @default(0)
-  formSchema      Json           @default("{\"version\":1,\"fields\":[]}")
-  archivedAt      DateTime?      @db.DateTime(3)
-  createdAt       DateTime       @default(now()) @db.DateTime(3)
-  updatedAt       DateTime       @updatedAt @db.DateTime(3)
-  orders          Order[]
-  subscriptions   Subscription[]
+  id                 String             @id @default(uuid()) @db.VarChar(36)
+  slug               String             @unique @db.VarChar(100)
+  name               String             @db.VarChar(120)
+  description        String?            @db.Text
+  type               ProductType
+  priceFen           Int
+  renewalPriceFen    Int?
+  termLabel          String             @db.VarChar(40)
+  // NULL pair means an unknown legacy period; never infer from termLabel.
+  servicePeriodUnit  ServicePeriodUnit?
+  servicePeriodCount Int?
+  targetField        TargetField        @default(NONE)
+  listed             Boolean            @default(false)
+  sortOrder          Int                @default(0)
+  formSchema         Json               @default("{\"version\":1,\"fields\":[]}")
+  archivedAt         DateTime?          @db.DateTime(3)
+  createdAt          DateTime           @default(now()) @db.DateTime(3)
+  updatedAt          DateTime           @updatedAt @db.DateTime(3)
+  orders             Order[]
+  subscriptions      Subscription[]
 
   @@index([archivedAt, sortOrder, createdAt])
 }
 
 model Order {
-  id                      String               @id @default(uuid()) @db.VarChar(36)
-  orderNo                 String               @unique @db.VarChar(40)
-  userId                  String               @db.VarChar(36)
-  productId               String               @db.VarChar(36)
-  subscriptionId          String?              @db.VarChar(36)
-  kind                    OrderKind
-  source                  OrderSource          @default(OFFLINE_MANUAL)
-  productNameSnapshot     String               @db.VarChar(120)
-  productTypeSnapshot     ProductType
-  termSnapshot            String               @db.VarChar(40)
-  amountFen               Int
-  renewalPriceSnapshotFen Int?
-  contactEmailSnapshot    String               @db.VarChar(254)
-  targetIdentifier        String?              @db.VarChar(254)
-  paymentStatus           PaymentStatus        @default(UNPAID)
-  fulfillmentStatus       FulfillmentStatus    @default(NOT_STARTED)
-  internalNote            String?              @db.Text
-  createdByAdminId        String               @db.VarChar(36)
-  createdAt               DateTime             @default(now()) @db.DateTime(3)
-  updatedAt               DateTime             @updatedAt @db.DateTime(3)
-  user                    User                 @relation("OrderCustomer", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  product                 Product              @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  subscription            Subscription?        @relation("RenewalOrders", fields: [subscriptionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  createdByAdmin          User                 @relation("OrderCreator", fields: [createdByAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  sourcedSubscription     Subscription?        @relation("SubscriptionSourceOrder")
-  transactions            PaymentTransaction[]
-  events                  OrderEvent[]
-  subscriptionEvents      SubscriptionEvent[]
+  id                         String               @id @default(uuid()) @db.VarChar(36)
+  orderNo                    String               @unique @db.VarChar(40)
+  userId                     String               @db.VarChar(36)
+  productId                  String               @db.VarChar(36)
+  subscriptionId             String?              @db.VarChar(36)
+  kind                       OrderKind
+  // Nullable storage rejects implicit ENUM defaults; INSERT guard + CHECK require a source.
+  // Persisted identity is immutable; every order is protected from DELETE/REPLACE.
+  source                     OrderSource?
+  hidden                     Boolean              @default(false)
+  productNameSnapshot        String               @db.VarChar(120)
+  productDescriptionSnapshot String?              @db.Text
+  productTypeSnapshot        ProductType
+  priceSnapshotFen           Int?
+  termSnapshot               String               @db.VarChar(40)
+  servicePeriodUnitSnapshot  ServicePeriodUnit?
+  servicePeriodCountSnapshot Int?
+  // Immutable purchase target and eligibility cycle; NULL only for non-system/legacy orders.
+  renewalPeriodStartAt       DateTime?            @db.DateTime(3)
+  renewalPeriodEndAt         DateTime?            @db.DateTime(3)
+  renewalForPeriodStartAt    DateTime?            @db.DateTime(3)
+  billingAnchorSnapshotAt    DateTime?            @db.DateTime(3)
+  billingTimezoneSnapshot    String?              @db.VarChar(64)
+  billingRevisionSnapshot    Int?
+  renewalRequestKeyHash      String?              @unique(map: "Order_renewal_request_key_hash_key") @db.VarChar(64)
+  renewalRequestHash         String?              @db.VarChar(64)
+  // Historical values are unknown, not the product's current form/period.
+  formSchemaSnapshot         Json?
+  formData                   Json?
+  amountFen                  Int
+  renewalPriceSnapshotFen    Int?
+  contactEmailSnapshot       String               @db.VarChar(254)
+  targetIdentifier           String?              @db.VarChar(254)
+  paymentStatus              PaymentStatus        @default(UNPAID)
+  fulfillmentStatus          FulfillmentStatus    @default(NOT_STARTED)
+  // Actual full-payment occurrence; frozen copy of the confirmed PAYMENT's occurredAt.
+  paidAt                     DateTime?            @db.DateTime(3)
+  // Deprecated legacy entry timestamp. Preserve history; new flows never write/read it as paidAt.
+  paymentRecordedAt          DateTime?            @db.DateTime(3)
+  // When the administrator confirmed receipt, distinct from actual payment and row creation.
+  paymentConfirmedAt         DateTime?            @db.DateTime(3)
+  // Actual fulfillment completion time.
+  fulfilledAt                DateTime?            @db.DateTime(3)
+  cancelledAt                DateTime?            @db.DateTime(3)
+  cancellationReason         String?              @db.VarChar(500)
+  internalNote               String?              @db.Text
+  createdByAdminId           String?              @db.VarChar(36)
+  createdByUserId            String?              @db.VarChar(36)
+  createdAt                  DateTime             @default(now()) @db.DateTime(3)
+  updatedAt                  DateTime             @updatedAt @db.DateTime(3)
+  user                       User                 @relation("OrderCustomer", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  product                    Product              @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  subscription               Subscription?        @relation("RenewalOrders", fields: [subscriptionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdByAdmin             User?                @relation("OrderCreator", fields: [createdByAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdByUser              User?                @relation("CustomerOrderCreator", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourcedSubscription        Subscription?        @relation("SubscriptionSourceOrder")
+  earlyRenewedSubscription   Subscription?        @relation("EarlyRenewalOrder")
+  transactions               PaymentTransaction[]
+  events                     OrderEvent[]
+  subscriptionEvents         SubscriptionEvent[]
 
+  // New system orders are created only on successful payment, in the fulfillment transaction.
+  @@unique([subscriptionId, billingRevisionSnapshot, renewalForPeriodStartAt], map: "Order_renewal_eligibility_key")
+  @@unique([subscriptionId, billingRevisionSnapshot, renewalPeriodStartAt], map: "Order_renewal_target_key")
   @@index([userId, createdAt])
   @@index([paymentStatus, createdAt])
   @@index([fulfillmentStatus, createdAt])
   @@index([subscriptionId, createdAt])
+  @@index([source, hidden, createdAt])
 }
 
 model PaymentTransaction {
@@ -247,11 +305,13 @@ model PaymentTransaction {
   amountFen          Int
   status             TransactionStatus @default(PENDING)
   externalReference  String?           @db.VarChar(120)
+  // External occurrence; for the confirmed full PAYMENT this equals Order.paidAt.
   occurredAt         DateTime          @db.DateTime(3)
   confirmedAt        DateTime?         @db.DateTime(3)
   createdByAdminId   String            @db.VarChar(36)
   confirmedByAdminId String?           @db.VarChar(36)
   note               String?           @db.VarChar(500)
+  // Database entry time, not the external payment occurrence.
   createdAt          DateTime          @default(now()) @db.DateTime(3)
   updatedAt          DateTime          @updatedAt @db.DateTime(3)
   order              Order             @relation(fields: [orderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -265,13 +325,16 @@ model OrderEvent {
   id            String         @id @default(uuid()) @db.VarChar(36)
   orderId       String         @db.VarChar(36)
   eventType     OrderEventType
-  actorAdminId  String         @db.VarChar(36)
+  actorAdminId  String?        @db.VarChar(36)
+  actorUserId   String?        @db.VarChar(36)
+  actorType     OrderActorType @default(ADMIN)
   fromStateJson Json?
   toStateJson   Json?
   note          String?        @db.VarChar(500)
   createdAt     DateTime       @default(now()) @db.DateTime(3)
   order         Order          @relation(fields: [orderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  actorAdmin    User           @relation(fields: [actorAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorAdmin    User?          @relation("OrderAdminActor", fields: [actorAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorUser     User?          @relation("OrderUserActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([orderId, createdAt])
 }
@@ -286,6 +349,19 @@ model Subscription {
   productTypeSnapshot        ProductType
   priceSnapshotFen           Int
   termSnapshot               String              @db.VarChar(40)
+  servicePeriodUnitSnapshot  ServicePeriodUnit?
+  servicePeriodCountSnapshot Int?
+  // Stable through renewals; explicit manual expiry correction resets anchor and increments revision.
+  billingAnchorAt            DateTime?           @db.DateTime(3)
+  billingTimezone            String?             @db.VarChar(64)
+  billingRevision            Int?
+  currentPeriodStartAt       DateTime?           @db.DateTime(3)
+  currentPeriodEndAt         DateTime?           @db.DateTime(3)
+  // Successful early renewal marker for a particular current-period start.
+  earlyRenewedPeriodStartAt  DateTime?           @db.DateTime(3)
+  earlyRenewalOrderId        String?             @unique @db.VarChar(36)
+  // Explicit false for a fresh ORDER cycle; NULL preserves unknown legacy eligibility.
+  earlyRenewalUsed           Boolean?
   formSchemaSnapshot         Json                @default("{\"version\":1,\"fields\":[]}")
   formData                   Json                @default("{}")
   note                       String?             @db.VarChar(2000)
@@ -304,6 +380,7 @@ model Subscription {
   user                       User                @relation("SubscriptionCustomer", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   product                    Product             @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   sourceOrder                Order?              @relation("SubscriptionSourceOrder", fields: [sourceOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  earlyRenewalOrder          Order?              @relation("EarlyRenewalOrder", fields: [earlyRenewalOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   createdByAdmin             User?               @relation("SubscriptionCreator", fields: [createdByAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   renewalOrders              Order[]             @relation("RenewalOrders")
   events                     SubscriptionEvent[]
@@ -354,11 +431,12 @@ model AdminAuditLog {
 }
 
 model AppSettings {
-  id         Int      @id @default(1)
-  storeName  String   @db.VarChar(80)
-  ownerEmail String   @db.VarChar(254)
-  timezone   String   @default("Asia/Shanghai") @db.VarChar(64)
-  updatedAt  DateTime @updatedAt @db.DateTime(3)
+  id                  Int      @id @default(1)
+  storeName           String   @db.VarChar(80)
+  ownerEmail          String   @db.VarChar(254)
+  timezone            String   @default("Asia/Shanghai") @db.VarChar(64)
+  paymentInstructions String   @default("") @db.VarChar(4000)
+  updatedAt           DateTime @updatedAt @db.DateTime(3)
 }
 
 model IdempotencyRecord {

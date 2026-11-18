@@ -1,5 +1,7 @@
 # Task 1.2 — Local Offline Customer and Order Management
 
+> **Latest model-only override (2026-11-18):** [Order/subscription stage 1](15-order-subscription-foundation.md) introduces the future order-first data model while retaining the Phase 2 runtime below. New workflow subscriptions will require a source order after full manual payment confirmation and fulfillment. USER/ADMIN/SYSTEM_RENEWAL sources describe origins, not online payment. Only schema/migration/compatibility/tests are implemented now; no order/payment API or new UI. Unknown historical periods and unlinked subscriptions remain unchanged. Migration verification uses isolated databases only.
+
 > **Current Phase 2 override (2026-11-17):** The owner separately authorized user-name refactoring and administrator-only subscription management before offline orders. `displayName` becomes nullable `username` (customer-owned, no new editing/activation flow yet) and `adminLabel` (admin-only). Admin naming is adminLabel → username → login-email prefix; customer responses exclude adminLabel. Subscription sources are ADMIN/SYSTEM, stored states ACTIVE/TERMINATED. Admin creates independent subscription records and directly edits/renews/terminates them without orders, payments, email or automatic duration arithmetic. Product/form snapshots are frozen; archived products block new subscriptions/renewals but allow maintenance of existing unexpired subscriptions. Expired ACTIVE rows grant no entitlement and cannot be edited/renewed, even before the minute worker terminates them. [Phase 2 details](14-user-subscription-core.md) supersede conflicting legacy subscription rules below. No development database migration is performed by implementation/tests.
 
 
@@ -68,7 +70,7 @@ The customer storefront may remain available as a read-only portal after activat
 
 ### 3.3 Offline orders
 
-- Every order created in this milestone has source OFFLINE_MANUAL. Do not implement ONLINE order creation.
+- The original offline-order source is retired by the latest model stage: ADMIN/USER ordinary orders and final hidden SYSTEM_RENEWAL only. This source distinction does not introduce online payment. Order APIs remain unimplemented; follow docs/15-order-subscription-foundation.md.
 - Order kinds: INITIAL, RENEWAL, ONE_TIME.
 - Admin selects a customer (including PENDING_ACTIVATION), an unarchived product (listed may be false), kind, target service identifier, notification/contact email, and amount. Default amount comes from the product initial price or the subscription renewal price. If the administrator overrides it, record the override in the audit log.
 - A RENEWAL order must link to an existing subscription belonging to the selected customer and matching the product.
@@ -118,7 +120,7 @@ Use these 11 Prisma models. There is no separate Customer table: CUSTOMER is a U
 2. **Session** — hashed opaque session token, userId, expiresAt, revokedAt, lastSeenAt, timestamps. Never store the raw session token.
 3. **InvitationToken** — userId, unique tokenHash, expiresAt, usedAt, revokedAt, createdByAdminId, createdAt. Never store the raw invitation token.
 4. **Product** — slug, name, description, product type, priceFen, renewalPriceFen, termLabel, legacy targetField, listed, sortOrder, versioned formSchema JSON, archivedAt, timestamps.
-5. **Order** — orderNo, userId, productId, optional subscriptionId for renewals, orderKind, source OFFLINE_MANUAL, immutable product/price/contact/target snapshots, amountFen, paymentStatus summary, fulfillmentStatus, internalNote, createdByAdminId, timestamps.
+5. **Order** — orderNo, userId, productId, optional subscriptionId for renewals, orderKind, source USER/ADMIN/SYSTEM_RENEWAL (latest model override), immutable product/price/contact/target snapshots, amountFen, paymentStatus summary, fulfillmentStatus, internalNote, createdByAdminId, timestamps.
 6. **PaymentTransaction** — orderId, kind PAYMENT/REFUND, channel, amountFen, status PENDING/CONFIRMED/FAILED, externalReference, occurredAt, confirmedAt, createdByAdminId, confirmedByAdminId, note, timestamps. Records customer money only; it is not a supplier-transfer table.
 7. **OrderEvent** — orderId, event type, actorAdminId, note, safe metadata/before-after snapshot, createdAt. Used for order timeline and status history.
 8. **Subscription** — userId, productId, optional unique sourceOrderId, sourceType ORDER/MANUAL_GRANT/HISTORICAL_IMPORT, targetIdentifier, startedAt, expiresAt, renewalPriceFen, stored status ACTIVE/SUSPENDED/TERMINATED, createdByAdminId, timestamps.

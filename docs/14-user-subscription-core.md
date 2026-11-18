@@ -1,5 +1,7 @@
 # Phase 2 — User Model Refactoring & Subscription Management Core
 
+> **Subsequent model stage (2026-11-18):** [Order/subscription foundation](15-order-subscription-foundation.md) adds structured periods, order snapshots and ORDER-linked subscriptions for the future workflow. This guide describes the preserved Phase 2 implementation and its immutable migration history. Its ADMIN/SYSTEM direct-creation and manual-renewal behavior remains compatibility runtime until a separately authorized service stage integrates the order-first flow; it is not authorization to create new order/payment APIs now.
+
 Implemented on a separate feature worktree for owner review. This phase supersedes the older order-first renewal design for administrator subscription operations. Stop at the PR; do not merge or begin orders, payments, notifications, verification codes or API keys.
 
 ## Scope and architecture

@@ -417,12 +417,15 @@ test('editing configuration and archiving preserve accounts, invitations, sessio
   const order = await db.order.create({
     data: {
       orderNo: 'PRODUCT-HISTORY',
+      source: 'ADMIN',
       userId: user.id,
       productId,
       kind: 'INITIAL',
       productNameSnapshot: original.name,
       productTypeSnapshot: 'SUBSCRIPTION',
       termSnapshot: 'Confirmed old term',
+      servicePeriodUnitSnapshot: 'DAY',
+      servicePeriodCountSnapshot: 30,
       amountFen: 1234,
       contactEmailSnapshot: user.loginEmail,
       createdByAdminId: adminId,

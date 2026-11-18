@@ -23,15 +23,15 @@ async function snapshot() {
         invitations: await db.invitationToken.findMany(),
         products:
           await db.$queryRaw`SELECT id,slug,name,description,type,priceFen,renewalPriceFen,termLabel,targetField,listed,archivedAt,createdAt,updatedAt FROM Product ORDER BY id`,
-        orders: await db.order.findMany(),
+        orders: await db.$queryRaw`SELECT * FROM \`Order\` ORDER BY id`,
         subscriptions:
           await db.$queryRaw`SELECT * FROM Subscription ORDER BY id`,
         payments: await db.paymentTransaction.findMany(),
-        orderEvents: await db.orderEvent.findMany(),
+        orderEvents: await db.$queryRaw`SELECT * FROM OrderEvent ORDER BY id`,
         subscriptionEvents:
           await db.$queryRaw`SELECT * FROM SubscriptionEvent ORDER BY id`,
         audits: await db.$queryRaw`SELECT * FROM AdminAuditLog ORDER BY id`,
-        settings: await db.appSettings.findMany(),
+        settings: await db.$queryRaw`SELECT * FROM AppSettings ORDER BY id`,
       },
       (_key, value) => (typeof value === 'bigint' ? Number(value) : value),
     ),
@@ -63,22 +63,15 @@ try {
     await db.$executeRaw`INSERT INTO Product (id,slug,name,type,priceFen,renewalPriceFen,termLabel,targetField,listed,purchaseEnabled,renewalEnabled,updatedAt) VALUES (${productId},'legacy-product','Legacy product','SUBSCRIPTION',1234,999,'Legacy confirmed term','EMAIL',true,false,true,UTC_TIMESTAMP(3))`
     // An old archived-but-listed row must be normalized without losing its history.
     await db.$executeRaw`INSERT INTO Product (id,slug,name,type,priceFen,termLabel,targetField,listed,purchaseEnabled,renewalEnabled,archivedAt,updatedAt) VALUES (${randomUUID()},'legacy-archived','Archived legacy product','ONE_TIME',500,'Once','NONE',true,true,false,'2026-01-01 00:00:00.000',UTC_TIMESTAMP(3))`
-    const order = await db.order.create({
-      data: {
-        orderNo: 'UPGRADE-ORDER',
-        userId: user.id,
-        productId,
-        kind: 'INITIAL',
-        productNameSnapshot: 'Historical name',
-        productTypeSnapshot: 'SUBSCRIPTION',
-        termSnapshot: 'Historical term',
-        amountFen: 1234,
-        renewalPriceSnapshotFen: 999,
-        contactEmailSnapshot: user.loginEmail,
-        targetIdentifier: 'legacy@example.com',
-        createdByAdminId: admin.id,
-      },
-    })
+    // The current generated client has columns that do not exist in this old schema.
+    const order = { id: randomUUID() }
+    await db.$executeRaw`INSERT INTO \`Order\` (id,orderNo,userId,productId,kind,productNameSnapshot,productTypeSnapshot,termSnapshot,amountFen,renewalPriceSnapshotFen,contactEmailSnapshot,targetIdentifier,createdByAdminId,updatedAt) VALUES (${order.id},'UPGRADE-ORDER',${user.id},${productId},'INITIAL','Historical name','SUBSCRIPTION','Historical term',1234,999,${user.loginEmail},'legacy@example.com',${admin.id},UTC_TIMESTAMP(3))`
+    for (const [payment, fulfillment] of [
+      ['PAID', 'COMPLETED'],
+      ['REFUNDED', 'CANCELLED'],
+    ] as const) {
+      await db.$executeRaw`INSERT INTO \`Order\` (id,orderNo,userId,productId,kind,productNameSnapshot,productTypeSnapshot,termSnapshot,amountFen,contactEmailSnapshot,createdByAdminId,paymentStatus,fulfillmentStatus,updatedAt) VALUES (${randomUUID()},${'UPGRADE-' + payment},${user.id},${productId},'INITIAL','Historical paid/cancelled name','SUBSCRIPTION','30 days legacy text',1234,${user.loginEmail},${admin.id},${payment},${fulfillment},UTC_TIMESTAMP(3))`
+    }
     const sub = { id: randomUUID() }
     await db.$executeRaw`INSERT INTO Subscription (id,userId,productId,sourceType,targetIdentifier,startedAt,expiresAt,renewalPriceFen,createdByAdminId,updatedAt) VALUES (${sub.id},${user.id},${productId},'MANUAL_GRANT','legacy@example.com','2026-01-01','2030-01-01',999,${admin.id},UTC_TIMESTAMP(3))`
     for (const source of ['ORDER', 'HISTORICAL_IMPORT']) {
@@ -95,13 +88,7 @@ try {
         createdByAdminId: admin.id,
       },
     })
-    await db.orderEvent.create({
-      data: {
-        orderId: order.id,
-        eventType: 'ORDER_CREATED',
-        actorAdminId: admin.id,
-      },
-    })
+    await db.$executeRaw`INSERT INTO OrderEvent (id,orderId,eventType,actorAdminId) VALUES (${randomUUID()},${order.id},'ORDER_CREATED',${admin.id})`
     await db.$executeRaw`INSERT INTO SubscriptionEvent (id,subscriptionId,eventType,actorAdminId,reason) VALUES (${randomUUID()},${sub.id},'MANUAL_GRANT',${admin.id},'Legacy event retained')`
     await db.session.create({
       data: {
@@ -119,14 +106,7 @@ try {
       },
     })
     await db.$executeRaw`INSERT INTO AdminAuditLog (id,actorAdminId,action,entityType,entityId) VALUES (${randomUUID()},${admin.id},'UPGRADE_FIXTURE','User',${user.id})`
-    await db.appSettings.create({
-      data: {
-        id: 1,
-        storeName: 'Existing store',
-        ownerEmail: 'upgrade-admin@example.com',
-        timezone: 'Asia/Shanghai',
-      },
-    })
+    await db.$executeRaw`INSERT INTO AppSettings (id,storeName,ownerEmail,timezone,updatedAt) VALUES (1,'Existing store','upgrade-admin@example.com','Asia/Shanghai',UTC_TIMESTAMP(3))`
     writeFileSync(snapshotFile, JSON.stringify(await snapshot()), {
       mode: 0o600,
     })
@@ -136,13 +116,16 @@ try {
       await snapshot(),
       JSON.parse(readFileSync(snapshotFile, 'utf8')),
     )
-    for (const p of await db.product.findMany()) {
+    for (const p of await db.product.findMany({
+      select: { formSchema: true, sortOrder: true },
+    })) {
       assert.deepEqual(p.formSchema, { version: 1, fields: [] })
       assert.equal(p.sortOrder, 0)
     }
     // Model a PR #4 installation with saved forms before applying the review migration.
     await db.product.update({
       where: { slug: 'legacy-product' },
+      select: { id: true },
       data: {
         sortOrder: 17,
         formSchema: {
@@ -300,27 +283,8 @@ try {
       ).status,
       'PENDING_ACTIVATION',
     )
-    // Remove only the known fictional upgrade fixture before the existing empty-db suite.
-    await db.$transaction(async (tx) => {
-      await tx.subscriptionEvent.deleteMany()
-      await tx.orderEvent.deleteMany()
-      await tx.paymentTransaction.deleteMany()
-      await tx.subscription.deleteMany()
-      await tx.order.deleteMany()
-      await tx.session.deleteMany()
-      await tx.invitationToken.deleteMany()
-      await tx.adminAuditLog.deleteMany()
-      await tx.product.deleteMany({
-        where: { id: { in: [product.id, archived.id] } },
-      })
-      await tx.appSettings.delete({ where: { id: 1 } })
-      await tx.user.delete({
-        where: { loginEmail: 'upgrade-customer@example.com' },
-      })
-      await tx.user.delete({
-        where: { loginEmail: 'upgrade-admin@example.com' },
-      })
-    })
+    // Keep protected legacy orders and all related fixtures. Only removal of this
+    // runner's random disposable project cleans them up; never disable triggers.
     console.info(
       'Upgrade preserved all 11 populated legacy tables, source links, dates, forms, sessions and invitations; mapped legacy sources to ADMIN and added immutable subscription snapshots.',
     )
