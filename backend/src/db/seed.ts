@@ -49,7 +49,7 @@ export async function seedAdministrator(
             admin = await tx.user.create({
               data: {
                 id: ownerId,
-                displayName: 'Owner',
+                adminLabel: 'Owner',
                 loginEmail: env.ADMIN_EMAIL,
                 notificationEmail: env.ADMIN_EMAIL,
                 passwordHash,

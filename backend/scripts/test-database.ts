@@ -138,6 +138,14 @@ try {
       env,
     )
   }
+  if (!browserMode)
+    console.info(
+      run(
+        process.execPath,
+        ['test/integration/upgrade.ts', 'guard', upgradeSnapshot],
+        env,
+      ),
+    )
   run(process.execPath, ['scripts/prisma.ts', 'migrate', 'deploy'], env)
   if (!browserMode) {
     console.info(
@@ -262,6 +270,13 @@ try {
       run(
         process.execPath,
         ['--test', 'test/integration/products.test.ts'],
+        env,
+      ),
+    )
+    console.info(
+      run(
+        process.execPath,
+        ['--test', 'test/integration/subscriptions.test.ts'],
         env,
       ),
     )

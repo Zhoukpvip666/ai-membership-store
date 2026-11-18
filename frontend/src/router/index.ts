@@ -60,8 +60,7 @@ export const router = createRouter({
         },
         {
           path: 'subscriptions',
-          component: () => import('../views/account/Subscriptions.vue'),
-          props: { admin: true },
+          component: () => import('../views/admin/Subscriptions.vue'),
         },
         { path: 'users', component: () => import('../views/admin/Users.vue') },
         {

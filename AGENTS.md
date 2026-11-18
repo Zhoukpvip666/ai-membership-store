@@ -88,3 +88,15 @@ A task is complete only when:
 - Offline refund is only recorded after private agreement; mark it confirmed only after the owner has actually returned funds externally. The application never moves money.
 - Keep the app bound to loopback during local development. Do not deploy or expose it publicly.
 - Do not add supplier cost, supplier transfer, merchant wallet, multi-merchant, or profit accounting features.
+
+## Phase 2 owner-approved override
+
+- Phase 2 follows docs/14-user-subscription-core.md for user names and subscriptions. This explicitly supersedes older subscription-renewal/order linkage rules for this phase.
+- Only ADMIN can create/manage subscriptions. Direct renewal changes the existing subscription, using a manually entered expiry; never create an order/payment or infer duration.
+- Keep username separate from private adminLabel. Customer responses must exclude adminLabel; do not add a new activation or username editing flow.
+- Persist frozen product/form snapshots and validate changes against the subscription's own snapshot.
+- ADMIN/SYSTEM sources and ACTIVE/TERMINATED states only. Preserve all historical event types/rows and restrictive references.
+- Legacy ORDER/MANUAL_GRANT/HISTORICAL_IMPORT sources migrate to ADMIN without changing creators, IDs, dates, price or status. Any SUSPENDED row blocks migration before persistent changes; report its count and IDs for operator decision.
+- Versioned migration and tests run on isolated databases only during implementation. Never migrate/reset the development database or edit its .env.
+- Subscription writes, events, sanitized audits and idempotency responses commit atomically. Enforce optimistic version checks and database-time expiry checks, including races with the minute expiry worker.
+- No order/payment, email/SMTP, notifications, verification codes, upstream API or API-key feature in this phase. Stop at the new PR for review.

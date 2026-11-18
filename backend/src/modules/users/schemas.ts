@@ -10,13 +10,13 @@ export const password = z
   )
 export const id = z.uuid()
 const profile = {
-  displayName: z.string().trim().min(1).max(80),
+  adminLabel: z.string().trim().min(1).max(80).nullable().optional(),
   notificationEmail: email.nullable().optional(),
 }
 export const createCustomer = z.strictObject({ ...profile, loginEmail: email })
 export const editCustomer = z
   .strictObject({
-    displayName: profile.displayName.optional(),
+    adminLabel: profile.adminLabel.optional(),
     notificationEmail: profile.notificationEmail,
   })
   .refine((value) => Object.keys(value).length > 0)

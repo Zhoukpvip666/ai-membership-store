@@ -1,5 +1,7 @@
 # Task 1.2.2 — Authentication, customers, and invitations
 
+> Historical milestone report. The current user/subscription contract and fourth incremental migration are documented in [Phase 2](14-user-subscription-core.md). Prior table/test counts and displayName/source/status descriptions below describe their original milestone, not the current schema.
+
 ## Scope and status
 
 Implements only the approved local authentication/customer/invitation milestone. Task 1.2.3 has not started. The existing 11-table schema and initial migration are unchanged. Implementation and verification use a separate worktree; the original checkout, local `.env`, running API and development database are preserved.

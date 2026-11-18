@@ -12,7 +12,7 @@ import type {
 
 export const publicUserSelect = {
   id: true,
-  displayName: true,
+  username: true,
   loginEmail: true,
   notificationEmail: true,
   role: true,
@@ -20,6 +20,10 @@ export const publicUserSelect = {
   activatedAt: true,
   createdAt: true,
   updatedAt: true,
+} as const
+export const adminUserSelect = {
+  ...publicUserSelect,
+  adminLabel: true,
 } as const
 const counts = { select: { orders: true, subscriptions: true } } as const
 const invitationSelect = {
@@ -38,14 +42,15 @@ export function customerService(database: PrismaClient, appBaseUrl: string) {
         role: 'CUSTOMER' as const,
         status: input.status,
         OR: [
-          { displayName: { contains: input.search } },
+          { adminLabel: { contains: input.search } },
+          { username: { contains: input.search } },
           { loginEmail: { contains: input.search } },
         ],
       }
       const [items, total] = await database.$transaction([
         database.user.findMany({
           where,
-          select: { ...publicUserSelect, _count: counts },
+          select: { ...adminUserSelect, _count: counts },
           orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
           skip: (input.page - 1) * input.pageSize,
           take: input.pageSize,
@@ -58,7 +63,7 @@ export function customerService(database: PrismaClient, appBaseUrl: string) {
       const user = await database.user.findFirst({
         where: { id: userId, role: 'CUSTOMER' },
         select: {
-          ...publicUserSelect,
+          ...adminUserSelect,
           _count: counts,
           invitations: {
             select: invitationSelect,
@@ -84,7 +89,7 @@ export function customerService(database: PrismaClient, appBaseUrl: string) {
             status: 'PENDING_ACTIVATION',
             createdByAdminId: actorId,
           },
-          select: publicUserSelect,
+          select: adminUserSelect,
         })
         await tx.adminAuditLog.create({
           data: {
@@ -116,7 +121,7 @@ export function customerService(database: PrismaClient, appBaseUrl: string) {
         const user = await tx.user.update({
           where: { id: userId },
           data: input,
-          select: publicUserSelect,
+          select: adminUserSelect,
         })
         await tx.adminAuditLog.create({
           data: {
@@ -152,7 +157,7 @@ export function customerService(database: PrismaClient, appBaseUrl: string) {
         const updated = await tx.user.update({
           where: { id: userId },
           data: { status },
-          select: publicUserSelect,
+          select: adminUserSelect,
         })
         if (input.disabled) {
           const now = new Date()

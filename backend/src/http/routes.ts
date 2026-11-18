@@ -12,6 +12,7 @@ import * as schemas from '../modules/users/schemas.ts'
 import { ApiError } from './errors.ts'
 import { csrf, rateLimit } from './security.ts'
 import { productSettingsRoutes } from '../modules/products/routes.ts'
+import { subscriptionRoutes } from '../modules/subscriptions/routes.ts'
 
 export function applicationRoutes(database: PrismaClient, env: Environment) {
   const router = Router()
@@ -75,6 +76,7 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
   )
   const adminMutations = rateLimit(120)
   router.use('/admin', productSettingsRoutes(database))
+  router.use('/admin', subscriptionRoutes(database))
   router.get('/admin/users', async (request, response) => {
     response.json(
       await customers.list(schemas.listCustomers.parse(request.query)),

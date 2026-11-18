@@ -44,7 +44,7 @@ const nav = [
           <RouterLink class="console-link" to="/admin"
             >管理控制台 <ArrowUpRight :size="14" /></RouterLink
           ><RouterLink to="/profile" class="avatar" aria-label="个人中心">{{
-            auth.state.user?.displayName.slice(0, 1) || '我'
+            auth.state.user?.username?.slice(0, 1) || '我'
           }}</RouterLink>
         </div>
       </div>

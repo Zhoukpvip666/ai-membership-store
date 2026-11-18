@@ -1,5 +1,11 @@
 # Development Roadmap
 
+## Phase 2 — User Model Refactoring & Subscription Management Core
+
+**Status: Implemented for owner review; not merged.** [Design, migration, tests and operation guide](14-user-subscription-core.md).
+
+This separately authorized phase supersedes the earlier order-first subscription sequence. Deliver user names/privacy, additive migration with SUSPENDED preflight, immutable subscription snapshots/eight-type form data, ADMIN list/create/detail/edit/renew/terminate/history, optimistic versions, persistent idempotency and minute expiry termination. Preserve accounts/sessions/invitations/history. Only isolated databases are migrated/tested; development migration is a manual post-review step. Run format/typecheck/lint/unit/database/E2E/build. Stop at a new PR; no order/payment, notification, verification-code, API-key or upstream work.
+
 ## Delivery rules
 
 - Implement one task at a time.
@@ -113,7 +119,7 @@ Acceptance:
 - Historical snapshots remain unchanged after product edits.
 - No supplier cost fields.
 
-Future order selection must allow unlisted/unarchived products and reject archived products, including renewal orders. Future manual subscription grants/imports must allow unlisted/unarchived SUBSCRIPTION products and reject archived or ONE_TIME products. These rules document later tasks only; Task 1.2.3 adds no order/subscription writes.
+Future order selection must allow unlisted/unarchived products and reject archived products. Phase 2 now implements independent ADMIN subscriptions for unlisted/unarchived SUBSCRIPTION products and rejects archived or ONE_TIME products. Task 1.2.3 itself added no subscription writes.
 
 #### Task 1.2.4 — Offline orders, payments, refunds, and fulfillment
 
@@ -132,21 +138,15 @@ Acceptance:
 - Refund is marked successful only after external refund is actually sent.
 - Refund and fulfillment transitions are atomic and audited.
 
-#### Task 1.2.5 — Subscriptions and renewals
+#### Task 1.2.5 — Superseded subscription sequence
 
-- Admin creates subscriptions from completed orders, manual grants, or historical imports.
-- Pending-activation customers may own subscriptions.
-- Admin enters actual start/expiry dates and renewal price.
-- Renewal creates a separate offline order linked to the subscription.
-- On renewal fulfillment, admin enters supplier-confirmed expiry; update subscription and append event atomically.
-- Add suspension, resumption, termination, and date correction with reasons.
+The owner-authorized Phase 2 above replaces this earlier order-first design. Its implementation is ready for review; do not start a duplicate subscription task or restore the former suspension/resumption states.
 
-Acceptance:
-- Manual grant/history import creates no fake order/payment.
-- Each renewal creates a new order.
-- Product edits do not rewrite existing subscription renewal price snapshots.
-- Expiry is not auto-extended by guessed durations.
-- Subscription event history is preserved.
+- ADMIN creates independent subscriptions for active or pending customers, with frozen product/form snapshots.
+- Direct renewal changes the existing unexpired subscription using an explicit expiry, without orders/payments or guessed durations.
+- Version checks, persistent idempotency, event/audit history and automatic expiry termination protect state changes.
+- ADMIN/SYSTEM sources and ACTIVE/TERMINATED states are the current contract. Preserve old event rows and legacy source-order references.
+- Development migration still requires separate operator authorization after PR review. See [Phase 2 operation and verification guide](14-user-subscription-core.md).
 
 #### Task 1.2.6 — Dashboard and customer read-only portal
 

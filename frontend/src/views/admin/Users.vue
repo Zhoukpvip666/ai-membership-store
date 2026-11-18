@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { adminName } from '../../stores/user-name'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search } from '@lucide/vue'
@@ -23,7 +24,7 @@ const selected = ref<Customer>()
 const formOpen = ref(false)
 const editing = ref<Customer>()
 const form = reactive({
-  displayName: '',
+  adminLabel: '',
   loginEmail: '',
   notificationEmail: '',
 })
@@ -91,7 +92,7 @@ async function detail(userId: string, clear = true) {
 function openForm(user?: Customer) {
   editing.value = user
   Object.assign(form, {
-    displayName: user?.displayName ?? '',
+    adminLabel: user?.adminLabel ?? '',
     loginEmail: user?.loginEmail ?? '',
     notificationEmail: user?.notificationEmail ?? '',
   })
@@ -104,7 +105,7 @@ async function save() {
   formError.value = ''
   try {
     const input = {
-      displayName: form.displayName,
+      adminLabel: form.adminLabel || null,
       notificationEmail: form.notificationEmail || null,
     }
     await api(
@@ -215,7 +216,7 @@ onMounted(() => load())
           :prefix-icon="Search"
           class="search-input"
           aria-label="搜索用户"
-          placeholder="搜索姓名或登录邮箱"
+          placeholder="搜索备注、用户名或邮箱"
           clearable
           @keyup.enter="load(true)"
         />
@@ -247,7 +248,7 @@ onMounted(() => load())
           <tbody>
             <tr v-for="user in result.items" :key="user.id">
               <td>
-                <strong>{{ user.displayName }}</strong><small>{{
+                <strong>{{ adminName(user) }}</strong><small>{{
                   mask(user.loginEmail)
                 }}</small>
               </td>
@@ -309,12 +310,11 @@ onMounted(() => load())
     >
       <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
       <ElForm label-position="top" @submit.prevent="save">
-        <ElFormItem label="客户姓名"
+        <ElFormItem label="内部备注"
           ><ElInput
-            v-model="form.displayName"
+            v-model="form.adminLabel"
             maxlength="80"
-            aria-label="客户姓名"
-            required
+            aria-label="内部备注"
         /></ElFormItem>
         <ElFormItem label="登录邮箱"
           ><ElInput
@@ -381,9 +381,9 @@ onMounted(() => load())
     >
       <template v-if="selected">
         <div class="profile-user">
-          <span class="avatar">{{ selected.displayName.slice(0, 1) }}</span>
+          <span class="avatar">{{ adminName(selected).slice(0, 1) }}</span>
           <div>
-            <h3>{{ selected.displayName }}</h3>
+            <h3>{{ adminName(selected) }}</h3>
             <span class="muted">{{ selected.loginEmail }}</span>
           </div>
         </div>

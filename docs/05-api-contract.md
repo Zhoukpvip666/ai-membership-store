@@ -1,10 +1,10 @@
-# Local Operations API Contract (Task 1.2)
+# Local Operations API Contract (Task 1.2 and Phase 2)
 
 Base path: /api/v1. All payloads are JSON. Timestamps are UTC ISO-8601. Money is integer CNY fen. Validate all input with Zod or an equivalent schema validator. This contract covers the local-only offline operations milestone; online payment and supplier/email APIs are deliberately absent.
 
-## Task 1.2.2 implemented surface
+## Implemented surface
 
-`GET /api/v1/health` and its `/health` alias retain their database-readiness behavior. Each request probes MySQL through Prisma. Successful connectivity returns HTTP 200 with `{"status":"ok","database":"ready"}`. Connection/query failure returns HTTP 503 with `{"status":"degraded","database":"unavailable"}`; driver errors and credentials are never returned. This does not verify migration currency: use the local `db:status` command. Authentication and the section 3 customer/invitation APIs below are implemented in Task 1.2.2. Sections 4–8 remain unimplemented; unknown authorized routes return 404. All /admin routes, including unimplemented paths, first require a valid ADMIN session.
+`GET /api/v1/health` and its `/health` alias retain their database-readiness behavior. Each request probes MySQL through Prisma. Successful connectivity returns HTTP 200 with `{"status":"ok","database":"ready"}`. Connection/query failure returns HTTP 503 with `{"status":"degraded","database":"unavailable"}`; driver errors and credentials are never returned. This does not verify migration currency: use the local `db:status` command. Authentication and the section 3 customer/invitation APIs below are implemented in Task 1.2.2. Product/settings and Phase 2 subscription APIs are implemented below; offline order/payment/dashboard/customer-history APIs remain unimplemented and return 404. All /admin routes, including unimplemented paths, first require a valid ADMIN session.
 
 ## 1. Conventions
 
@@ -48,7 +48,7 @@ No public /auth/register route. Admin is seeded from local environment configura
 | GET | /admin/users | Search/list customers |
 | POST | /admin/users | Create a PENDING_ACTIVATION customer |
 | GET | /admin/users/:id | Customer detail and order/subscription counts |
-| PATCH | /admin/users/:id | Update display name/notification email |
+| PATCH | /admin/users/:id | Update private label/notification email |
 | PATCH | /admin/users/:id/status | Disable/enable customer account |
 | POST | /admin/users/:id/invitations | Generate/reissue invitation and return copyable URL once |
 | POST | /admin/invitations/:id/revoke | Revoke an unused invitation |
@@ -58,15 +58,15 @@ Creating a user and creating a subscription are independent. A pending customer 
 ### Implemented customer payloads
 
 - List query: optional search, status (PENDING_ACTIVATION/ACTIVE/DISABLED), page (1–10000, default 1), pageSize (1–100, default 20). Response: `{items,total,page,pageSize}`; each item contains public account fields and `_count:{orders,subscriptions}`. Only CUSTOMER rows are listed.
-- Create: `{displayName,loginEmail,notificationEmail?}`. Display name is 1–80 trimmed characters; emails are validated, normalized and at most 254 characters. Null/omitted notification email falls back to login email in the UI. Response HTTP 201 `{user}`; account is CUSTOMER/PENDING_ACTIVATION with null passwordHash and activatedAt. Duplicate email returns 409 EMAIL_EXISTS.
+- Create: `{adminLabel?,loginEmail,notificationEmail?}`. adminLabel is nullable or 1–80 trimmed characters; username is customer-owned and cannot be assigned by admin; emails are validated, normalized and at most 254 characters. Null/omitted notification email falls back to login email in the UI. Response HTTP 201 `{user}`; account is CUSTOMER/PENDING_ACTIVATION with null passwordHash and activatedAt. Duplicate email returns 409 EMAIL_EXISTS.
 - Detail: `{user}`, including real order/subscription counts and the latest 10 invitation metadata rows (id/createdAt/expiresAt/usedAt/revokedAt). No password/token hash or original URL is exposed.
-- Edit: nonempty `{displayName?,notificationEmail?}`. Login email is immutable after creation, matching the profile-only PATCH contract. Supplied role, status, password, passwordHash or unknown fields are rejected with 400; administrators cannot set customer passwords.
+- Edit: nonempty `{adminLabel?,notificationEmail?}`. Login email is immutable after creation, matching the profile-only PATCH contract. Supplied role, status, password, passwordHash or unknown fields are rejected with 400; administrators cannot set customer passwords.
 - Status: `{disabled:boolean,reason:string}` (1–500 trimmed characters). Disabling revokes all sessions and unused invitations atomically, preserving orders/subscriptions. Restoring returns to ACTIVE only for an already activated/password-bearing account, otherwise PENDING_ACTIVATION. Repeating the current status returns 409.
 - Issue/reissue: JSON `{}`, allowed only for unactivated PENDING_ACTIVATION customers. Response HTTP 201 `{invitation,url}`; invitation contains safe metadata only, and url is returned once. It has the form APP_BASE_URL/activate#TOKEN so the browser never sends the token in a URL to the web server; the activation page removes the fragment from browser history and submits the token only in the activation body. Regeneration transactionally revokes earlier unused invitations.
 - Revoke: JSON `{}`; HTTP 204. Already used/revoked invitations return 409. The UI retains no recoverable URL after closing the detail.
 - Customer creation/edit/disable/restore, invitation issue/revoke and administrator login/logout append sanitized audit records transactionally. Audit snapshots omit names/emails, raw tokens and password/token hashes; edit logs name changed fields only.
 
-Task 1.2.2 adds no customer order/subscription read APIs. They remain section 7 future work; customer UI shows an explicit placeholder rather than another account's Mock history. No product/order/subscription CRUD is implemented.
+Customer order/subscription read APIs remain section 7 future work; customer UI shows an explicit placeholder rather than another account's Mock history. Administrator products and subscriptions are implemented in sections 4 and 6; order CRUD remains unimplemented.
 
 ## 4. Admin products and settings
 
@@ -111,18 +111,33 @@ Supported offline channels: WECHAT, ALIPAY, CASH, BANK_TRANSFER, OTHER. Payment 
 
 No partial payments or partial refunds in Task 1.2. Refund is confirmed only after external money return. A confirmed full refund before fulfillment completion cancels fulfillment; a refund after completion does not erase historical completion.
 
-## 6. Admin subscriptions
+## 6. Admin subscriptions — Phase 2
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | /admin/subscriptions | Search/filter subscriptions |
-| POST | /admin/subscriptions | Create subscription from ORDER, MANUAL_GRANT, or HISTORICAL_IMPORT source |
-| GET | /admin/subscriptions/:id | Subscription and event history |
-| PATCH | /admin/subscriptions/:id | Correct dates/renewal price/status with reason and audit |
-| POST | /admin/subscriptions/:id/renewal-orders | Create separate OFFLINE_MANUAL renewal order |
-| POST | /admin/subscriptions/:id/terminate | Terminate with required reason |
+| GET / POST | /admin/subscriptions | Search/list or create independent ADMIN subscription |
+| GET / PATCH | /admin/subscriptions/:id | Read snapshot or maintain unexpired ACTIVE subscription |
+| POST | /admin/subscriptions/:id/renew | Direct manual expiry update, no order/payment |
+| POST | /admin/subscriptions/:id/terminate | Irreversible immediate termination |
+| GET | /admin/subscriptions/:id/events | Paginated safe history |
 
-Pending-activation customers are valid subscription owners. MANUAL_GRANT and HISTORICAL_IMPORT do not create fake orders or payments. Renewal creates a new order but does not extend expiry until service completion is confirmed and the administrator enters the supplier-confirmed new expiry date.
+All seven routes use existing ADMIN session, CSRF, JSON-body and mutation rate limits. List returns `{items,total,page,pageSize,serverNow}`; events return `{items,total,page,pageSize}`; detail/mutations return `{subscription}`. List/detail include ADMIN-safe customer info and only current product ID/archive eligibility, never use current product name/schema instead of snapshots.
+
+List query: search (username/adminLabel/loginEmail/frozen product name, max254), userId/productId UUID, status ACTIVE/TERMINATED, sourceType ADMIN/SYSTEM, expiry ALL/UPCOMING/EXPIRED. UPCOMING means future expiry within 7 days; EXPIRED includes terminated rows whose expiry is past. Optional from/to bound expiresAt inclusively; timestamps are UTC ISO-8601 with milliseconds. Page defaults1 (max10000), pageSize20 (max100). Sort createdAt DESC then id ASC. Unknown query properties rejected.
+
+Create `{userId,productId,startedAt,expiresAt,renewalPriceFen,formData?,note?}`. Customer must exist, role CUSTOMER, PENDING_ACTIVATION or ACTIVE. Product must be unarchived SUBSCRIPTION; listed is irrelevant. Start < expiry; Fen integer0–2147483647; note nullable max2000. Expired historical entries are allowed and are ineligible immediately; minute sweep terminates them. Source/status/creator/snapshots/version are server-managed, extra keys rejected. Copies name/description/type/initial price/term/schema atomically and sets version1/ADMIN/ACTIVE. HTTP201, CREATED event and audit. Independent records even for the same customer/product. No fake orders/payments.
+
+PATCH is nonempty, allows only startedAt/expiresAt/renewalPriceFen/formData/note plus required version>=1 and reason1–500. Reject expired/terminated rows and stale version with409. Product archive does not prevent maintenance. Supplied formData validates against formSchemaSnapshot, never current Product. Dates and merged start<expiry checked server-side. Increment version once; record UPDATED and appropriate EXPIRY_ADJUSTED/PRICE_CHANGED/FORM_DATA_UPDATED events.
+
+Renew `{version,newExpiresAt,renewalPriceFen?,reason}` requires unexpired ACTIVE and unarchived product. New expiry must exceed database time and startedAt. It need not add a fixed period; administrator enters confirmed time. Updates same row, version+1, RENEWED event/audit; never an order/payment. Terminate `{version,reason}` sets TERMINATED/terminatedAt/terminationReason and version+1, records TERMINATED, cannot restore. Repeating without the original idempotency key conflicts.
+
+All four mutations accept optional `Idempotency-Key` (1–128 ASCII letters/digits/underscore/dot/colon/hyphen); frontend always sends it and retains it for a same-body retry. Same admin/key/canonical request replays original status/body. Different request/route/target conflicts409 IDEMPOTENCY_CONFLICT. Version conflict/expiry/termination returns409 SUBSCRIPTION_CONFLICT. Authentication/CSRF/rate checks still run on replay.
+
+formData keys must be configured stable IDs; no unknown keys, coercion, expressions or HTML execution. Eight types follow schema validation/default bounds: text/textarea<=500, valid email<=254, finite number within safe range, real YYYY-MM-DD date, select/radio existing value, checkbox distinct existing values (max20). Required rejects missing/blank/empty selections; 0 is valid. Optional empty fields are omitted. Total formData<=8KiB and overall JSON request<=16KiB. Defaults are a UI convenience, never trusted as a substitute for submitted values.
+
+Every minute (also startup) the worker conditionally terminates ACTIVE rows with expiresAt<=UTC_TIMESTAMP(3), sets reason `订阅到期`, version+1, AUTO_TERMINATED event and SYSTEM audit in one transaction. Multiple API processes/sweeps and admin renewal race safely on version/status/database-time conditions. Future entitlement reads must check ACTIVE AND expiresAt>now, independent of worker timing. No public worker trigger or SYSTEM creation endpoint.
+
+The customer login/me projection includes username but never adminLabel; administrator customer APIs include both. No new username-setting, verification-code or activation workflow is added. Full snapshot/migration/privacy contract: [Phase 2 guide](14-user-subscription-core.md).
 
 ## 7. Customer read-only APIs
 

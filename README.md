@@ -2,7 +2,7 @@
 
 A private, independently operated storefront and order-management system for AI membership services and other digital services.
 
-**Project status:** Tasks 1.2.1–1.2.2 are merged. Task 1.2.3 products/settings persistence and eight-type form configuration is implemented for owner review. Product/customer/settings management uses the local API; overview/order/subscription screens remain explicitly Mock. See [the implementation and operations report](docs/13-products-settings-forms.md). Task 1.2.4 is not started.
+**Project status:** Tasks 1.2.1–1.2.3 are merged. Phase 2 user-model refactoring and administrator subscription management is implemented for review. See [Phase 2 implementation and operation guide](docs/14-user-subscription-core.md). Products/customers/settings/subscriptions use the local API; overview/orders remain Mock. No order/payment/notification/verification-code/API-key development is included.
 
 ## Operating model: single merchant
 
@@ -82,6 +82,7 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 11. docs/11-database-foundation.md — Task 1.2.1 schema, local migration/seed instructions, tests and implementation report.
 12. docs/12-authentication-customers-invitations.md — Task 1.2.2 implementation, local operation, security boundaries and verification.
 13. docs/13-products-settings-forms.md — Task 1.2.3 product/settings persistence, dynamic form contract, migration and isolated verification.
+14. docs/14-user-subscription-core.md — Phase 2 user names, frozen subscription forms, direct renewal, concurrency, migration and operation guide.
 
 ## Important launch gates
 
@@ -115,9 +116,9 @@ Before accepting real orders, the operator must verify that the supplier is auth
     └── 13-products-settings-forms.md
 ```
 
-## Local development — Task 1.2.3
+## Local development — Phase 2
 
-Products, dynamic form configuration and system settings now persist in MySQL alongside authentication/customers/invitations. See [Task 1.2.3 operation and verification guide](docs/13-products-settings-forms.md), [database setup](docs/11-database-foundation.md) and [authentication guide](docs/12-authentication-customers-invitations.md).
+Administrator subscriptions now persist with product/form snapshots, alongside products/settings and authentication/customers/invitations. Read the Phase 2 guide before applying the new migration; implementation tests never migrate the development database. See [Task 1.2.3 operation and verification guide](docs/13-products-settings-forms.md), [database setup](docs/11-database-foundation.md) and [authentication guide](docs/12-authentication-customers-invitations.md).
 
 For an existing initialized Task 1.2.2 database, preserve your `.env` and MySQL volume. After review and an operator backup, apply only committed migrations; do not reset/reseed existing accounts:
 
@@ -130,11 +131,11 @@ npm run dev:api
 npm run dev:web
 ```
 
-Open `http://localhost:5173/admin/login`; product management is `/admin/products`, settings `/admin/settings`, customers `/admin/users`. API defaults to `http://127.0.0.1:3000/api/v1`; APP_BASE_URL must match the frontend origin. Reuse existing correctly configured services instead of starting duplicates. Fresh installations follow the foundation guide for MySQL 8.4/environment/initial seed setup.
+Open `http://localhost:5173/admin/login`; product management is `/admin/products`, settings `/admin/settings`, customers `/admin/users`, subscriptions `/admin/subscriptions`. API defaults to `http://127.0.0.1:3000/api/v1`; APP_BASE_URL must match the frontend origin. Reuse existing correctly configured services instead of starting duplicates. Fresh installations follow the foundation guide for MySQL 8.4/environment/initial seed setup.
 
 The product editor supports integer Fen prices, descriptive service term, sorting, listing visibility, irreversible archive and eight-type form configuration/preview. Settings save only store name, notification email and IANA timezone; notification email does not change the admin login. All endpoints require an ADMIN database session. Product/settings writes and sanitized audit records share transactions. The form migration adds an empty schema/default sort order. A separate follow-up migration removes the two obsolete purchase/renewal permission columns and unlists already archived products. Both existing migrations remain unchanged; all eleven business tables, saved forms and remaining data are retained. Existing targetField and order/subscription snapshots remain intact. Product state consists only of listed and archivedAt. Unlisted/unarchived products remain available to ADMIN for future offline orders and manual subscription operations (SUBSCRIPTION only); those writes are outside this task. Archive atomically sets listed=false, cannot be reversed and prevents edits/relisting.
 
-The catalog is an ADMIN preview of persisted listed/unarchived products. Purchasing, renewal creation and form submission are disabled. Public/customer product/history pages remain explicit placeholders. Overview/order/subscription demo history remains marked Mock and separate from real products/customers. Mock completion/refund demonstrations move no money and call no business API. Preview values are never saved. No SMTP, payment provider or upstream service is connected.
+The catalog is an ADMIN preview of persisted listed/unarchived products. Purchasing, renewal creation and form submission are disabled. Public/customer product/history pages remain explicit placeholders. Overview/order demo history remains marked Mock and separate from real products/customers/subscriptions. Customer history remains a placeholder; no customer subscription endpoint is added. Mock completion/refund demonstrations move no money and call no business API. Preview values are never saved. No SMTP, payment provider or upstream service is connected.
 
 ## Checks
 
@@ -153,4 +154,4 @@ Database/E2E tests use random isolated MySQL 8.4 projects/volumes and temporary 
 
 Build artifacts are frontend/dist and backend/dist. Preview can use `npm run preview -w frontend` with the port matching APP_BASE_URL and `npm start -w backend`; these are local previews, not production deployment configuration.
 
-Task 1.2.3 stops at its PR for human review. Task 1.2.4 is not started.
+Phase 2 stops at its PR for human review. Offline orders/payments, customer history, notifications and API keys remain unimplemented.

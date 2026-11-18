@@ -18,7 +18,12 @@ const route = useRoute()
 const router = useRouter()
 const logoutError = ref('')
 const persistentPage = computed(() =>
-  ['/admin/users', '/admin/products', '/admin/settings'].includes(route.path),
+  [
+    '/admin/users',
+    '/admin/products',
+    '/admin/settings',
+    '/admin/subscriptions',
+  ].includes(route.path),
 )
 onMounted(() => {
   void settings.load().catch(() => {})
@@ -69,7 +74,7 @@ const nav = [
       </nav>
       <div class="sidebar-bottom">
         <span class="online-dot"></span> 本地运行环境
-        <small>Task 1.2.3 · 仅限本机</small>
+        <small>阶段 2 · 仅限本机</small>
       </div>
     </aside>
     <main class="admin-main">
@@ -77,7 +82,7 @@ const nav = [
         <FlaskConical :size="15" /><span>{{
           persistentPage
             ? '当前页面保存至本地数据库 · 不发送邮件'
-            : '经营概览、订单和订阅仍为 Mock 演示'
+            : '经营概览和订单仍为 Mock 演示'
         }}</span
         ><span class="demo-pill">{{ persistentPage ? 'LOCAL' : 'MOCK' }}</span>
       </div>
