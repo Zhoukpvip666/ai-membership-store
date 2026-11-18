@@ -11,7 +11,7 @@ Phase 2 user/subscription fields and migration rules below follow [14-user-subsc
 - Single merchant: the site owner is the only ADMIN and seller. There is no Merchant, CustomerWallet, merchant balance, withdrawal, or sub-merchant model.
 - A customer is a User with role CUSTOMER. There is no separate customers table.
 - Customers may have orders and subscriptions while their account status is PENDING_ACTIVATION.
-- Transactions remain offline/manual. OFFLINE_MANUAL is retained for legacy orders; USER, ADMIN and SYSTEM_RENEWAL identify future order creators, not payment providers. Online payment is not implemented.
+- Transactions remain offline/manual. Only USER, ADMIN and SYSTEM_RENEWAL identify order creators, not payment providers; retired-source order compatibility ends at migration ten. Online payment is not implemented.
 - Payment transactions record customer money received/refunded outside the app. The app never moves money.
 - No supplier costs, supplier transfers, supplier fulfillment, email outbox, SMTP, or payment-provider credentials in this schema.
 
@@ -96,7 +96,7 @@ Do not add supplierCost. Product API never hard-deletes any product. Product has
 | productId | String FK Product | Product reference; deletion restricted |
 | subscriptionId | String?, FK Subscription | Required for RENEWAL; null for initial/one-time |
 | kind | INITIAL / RENEWAL / ONE_TIME | Order purpose |
-| source | OFFLINE_MANUAL / USER / ADMIN / SYSTEM_RENEWAL | Legacy/manual compatibility and future creation origin |
+| source | USER / ADMIN / SYSTEM_RENEWAL; nullable storage DEFAULT NULL, logically required | INSERT Trigger and non-NULL CHECK reject omission/NULL in every SQL mode; source is immutable and all orders reject DELETE/REPLACE |
 | hidden | Boolean, default false | System renewal orders are persisted but hidden from ordinary customer listings; ADMIN visibility/ownership rules are deferred |
 | productNameSnapshot | VarChar(120) | Immutable product name |
 | productDescriptionSnapshot / priceSnapshotFen | Nullable Text / Int Fen | Frozen description and configured price; NULL on old orders |
@@ -122,9 +122,11 @@ Do not add supplierCost. Product API never hard-deletes any product. Product has
 | createdByAdminId / createdByUserId | Nullable restrictive User FKs | ADMIN or USER creator; system needs no fake account; legacy admin references preserved |
 | createdAt / updatedAt | DateTime(3) | Timestamps |
 
-The sixth migration requires visible USER/ADMIN orders with INITIAL/SUBSCRIPTION or ONE_TIME/ONE_TIME, no subscription link and no renewal-only snapshots. SYSTEM_RENEWAL requires RENEWAL/SUBSCRIPTION, hidden=true, the original subscription and complete cycle/anchor/revision snapshots. OFFLINE_MANUAL is exempt, retaining all old combinations. New subscription-product orders must have a positive structured period. Cross-table ownership/roles/payment verification remain service checks.
+The tenth migration removes the retired enum member, all retired-source CHECK exemptions and the two legacy-specific triggers. It preserves the source-identity Trigger and original renewal guards, and installs an unconditional all-order DELETE guard. Nullable ENUM storage prevents non-strict omission from silently choosing USER; the INSERT Trigger and source IS NOT NULL CHECK enforce required source. Prisma reflects storage optionality; future create services must still explicitly require a source. Old migration SQL remains intact. Migration ten first rejects any remaining retired-source order without conversion or cleanup. Development orders and references remain uninspected and require separate authorization before migration.
 
-The seventh migration adds nullable Order.paidAt without backfill and replaces the sixth migration's provisional paymentRecordedAt-based final-state check. SYSTEM_RENEWAL must be inserted as PAID/COMPLETED with non-NULL paidAt, paymentConfirmedAt and fulfilledAt, NULL cancelledAt, and paidAt <= paymentConfirmedAt <= fulfilledAt. Every required timestamp has an explicit non-NULL guard to prevent MySQL CHECK's UNKNOWN result from accepting incomplete rows. paymentRecordedAt is not consulted. Unpaid, processing, not-started, failed, cancelled or refund-state system renewals cannot be inserted. New USER/ADMIN orders also reject reversed known payment/confirmation/fulfillment pairs while permitting unknown timestamps. OFFLINE_MANUAL history is exempt; its old fields are not rewritten.
+The sixth migration requires visible USER/ADMIN orders with INITIAL/SUBSCRIPTION or ONE_TIME/ONE_TIME, no subscription link and no renewal-only snapshots. SYSTEM_RENEWAL requires RENEWAL/SUBSCRIPTION, hidden=true, the original subscription and complete cycle/anchor/revision snapshots. Migration ten removes every historical source exemption. New subscription-product orders must have a positive structured period. Cross-table ownership/roles/payment verification remain service checks.
+
+The seventh migration adds nullable Order.paidAt without backfill and replaces the sixth migration's provisional paymentRecordedAt-based final-state check. SYSTEM_RENEWAL must be inserted as PAID/COMPLETED with non-NULL paidAt, paymentConfirmedAt and fulfilledAt, NULL cancelledAt, and paidAt <= paymentConfirmedAt <= fulfilledAt. Every required timestamp has an explicit non-NULL guard to prevent MySQL CHECK's UNKNOWN result from accepting incomplete rows. paymentRecordedAt is not consulted. Unpaid, processing, not-started, failed, cancelled or refund-state system renewals cannot be inserted. New USER/ADMIN orders also reject reversed known payment/confirmation/fulfillment pairs while permitting unknown timestamps. No source is exempt after migration ten.
 
 For a new confirmed full PAYMENT, Order.paidAt must equal PaymentTransaction.occurredAt and Order.paymentConfirmedAt must match its confirmedAt, written in the same future business transaction. The deliberate frozen order copy is not a second independent payment clock. The row-local SQL CHECK does not enforce cross-table equality; the future service must validate the trusted payment, amount and relationship before committing. No order API or payment service is added here.
 

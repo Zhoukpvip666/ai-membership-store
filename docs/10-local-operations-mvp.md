@@ -70,7 +70,7 @@ The customer storefront may remain available as a read-only portal after activat
 
 ### 3.3 Offline orders
 
-- Every order created in this milestone has source OFFLINE_MANUAL. Do not implement ONLINE order creation.
+- The original offline-order source is retired by the latest model stage: ADMIN/USER ordinary orders and final hidden SYSTEM_RENEWAL only. This source distinction does not introduce online payment. Order APIs remain unimplemented; follow docs/15-order-subscription-foundation.md.
 - Order kinds: INITIAL, RENEWAL, ONE_TIME.
 - Admin selects a customer (including PENDING_ACTIVATION), an unarchived product (listed may be false), kind, target service identifier, notification/contact email, and amount. Default amount comes from the product initial price or the subscription renewal price. If the administrator overrides it, record the override in the audit log.
 - A RENEWAL order must link to an existing subscription belonging to the selected customer and matching the product.
@@ -120,7 +120,7 @@ Use these 11 Prisma models. There is no separate Customer table: CUSTOMER is a U
 2. **Session** — hashed opaque session token, userId, expiresAt, revokedAt, lastSeenAt, timestamps. Never store the raw session token.
 3. **InvitationToken** — userId, unique tokenHash, expiresAt, usedAt, revokedAt, createdByAdminId, createdAt. Never store the raw invitation token.
 4. **Product** — slug, name, description, product type, priceFen, renewalPriceFen, termLabel, legacy targetField, listed, sortOrder, versioned formSchema JSON, archivedAt, timestamps.
-5. **Order** — orderNo, userId, productId, optional subscriptionId for renewals, orderKind, source OFFLINE_MANUAL, immutable product/price/contact/target snapshots, amountFen, paymentStatus summary, fulfillmentStatus, internalNote, createdByAdminId, timestamps.
+5. **Order** — orderNo, userId, productId, optional subscriptionId for renewals, orderKind, source USER/ADMIN/SYSTEM_RENEWAL (latest model override), immutable product/price/contact/target snapshots, amountFen, paymentStatus summary, fulfillmentStatus, internalNote, createdByAdminId, timestamps.
 6. **PaymentTransaction** — orderId, kind PAYMENT/REFUND, channel, amountFen, status PENDING/CONFIRMED/FAILED, externalReference, occurredAt, confirmedAt, createdByAdminId, confirmedByAdminId, note, timestamps. Records customer money only; it is not a supplier-transfer table.
 7. **OrderEvent** — orderId, event type, actorAdminId, note, safe metadata/before-after snapshot, createdAt. Used for order timeline and status history.
 8. **Subscription** — userId, productId, optional unique sourceOrderId, sourceType ORDER/MANUAL_GRANT/HISTORICAL_IMPORT, targetIdentifier, startedAt, expiresAt, renewalPriceFen, stored status ACTIVE/SUSPENDED/TERMINATED, createdByAdminId, timestamps.

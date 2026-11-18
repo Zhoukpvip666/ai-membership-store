@@ -14,6 +14,8 @@ The sixth migration tightens USER/ADMIN ordinary orders and hidden SYSTEM_RENEWA
 
 Future administrator renewal verifies full external receipt first; future customer renewal accepts only a trusted successful payment result (no provider integration here). The system then creates and fulfills one renewal order, updates the existing subscription and writes events/audit in one transaction. The seventh migration requires SYSTEM_RENEWAL to be inserted as PAID/COMPLETED, with paidAt <= paymentConfirmedAt <= fulfilledAt (all explicitly non-NULL) and cancelledAt NULL. Order.paidAt is actual payment occurrence, frozen from the corresponding confirmed full PAYMENT's occurredAt; paymentConfirmedAt is the administrator's receipt confirmation time. PaymentTransaction.createdAt is the database entry time and can follow confirmation. Preserve deprecated paymentRecordedAt only for old data; never accept it as paidAt, fall back to it, or write it in the new flow. Row-local SQL cannot check equality across tables; future payment/fulfillment transactions must validate and persist matching occurrence/confirmation times and amounts atomically. Never create a pending renewal requiring a subsequent update: these rows are immutable from INSERT. Existing Phase 2 APIs are unchanged and must be integrated/restricted before ORDER subscriptions are enabled.
 
+The final model supports only USER/ADMIN/SYSTEM_RENEWAL. Migration ten removes the retired source, all its CHECK exemptions and its special triggers. Every create service must explicitly select a source from trusted server context; nullable ENUM storage is only an omission sentinel, rejected by the INSERT Trigger and a non-NULL CHECK. All order sources are immutable; every order rejects DELETE/REPLACE. Same-source ordinary payment/fulfillment/note updates remain possible, while SYSTEM_RENEWAL is immutable immediately after its final INSERT. Future APIs must not expose source mutation or physical order deletion. This repair adds no endpoint and does not inspect or clean development test orders.
+
 ## 1. Conventions
 
 - Single merchant and one owner ADMIN account.
@@ -105,7 +107,7 @@ Settings PATCH is nonempty and accepts only storeName (1–80), ownerEmail (norm
 | Method | Path | Purpose |
 |---|---|---|
 | GET | /admin/orders | Search/filter by customer, order number, payment status, fulfillment status, date |
-| POST | /admin/orders | Create OFFLINE_MANUAL order |
+| POST | /admin/orders | Create ADMIN ordinary order (INITIAL/ONE_TIME; not implemented) |
 | GET | /admin/orders/:id | Order snapshot, transactions, events, linked subscription |
 | POST | /admin/orders/:id/payment-transactions | Record offline payment transaction as pending verification |
 | POST | /admin/payment-transactions/:id/confirm | Confirm payment after checking the actual external account |

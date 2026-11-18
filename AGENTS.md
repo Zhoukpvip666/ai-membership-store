@@ -79,7 +79,7 @@ A task is complete only when:
 
 - Follow docs/10-local-operations-mvp.md, docs/04-data-model.md, and docs/05-api-contract.md as the current source of truth for Task 1.2.
 - This milestone is a local offline customer/order/subscription manager, not a public online store.
-- Implement only OFFLINE_MANUAL orders. Do not implement online checkout, payment-provider APIs/webhooks, settlement, funds holding, or withdrawal.
+- The original Task 1.2 offline-order source design is superseded by the current order-model override below. Do not implement online checkout, payment-provider APIs/webhooks, settlement, funds holding, or withdrawal.
 - Never send email in Task 1.2. Invitation links are generated for the admin to copy manually. No SMTP package, email outbox, or email worker.
 - The app must make clear that localhost invitation links cannot be opened by external customers.
 - Pending-activation customers may own orders and subscriptions. Do not gate admin operations on customer activation status.
@@ -105,6 +105,12 @@ A task is complete only when:
 
 - Follow docs/15-order-subscription-foundation.md for the separately authorized additive database model stage. Future business uses order → confirmed full offline payment → fulfillment → order-linked subscription; this supersedes Phase 2 direct creation/renewal for the future workflow.
 - This stage implements schema, versioned migration, compatibility tests and documentation only. Do not implement new pages, order/payment APIs, calendar calculations, renewal jobs or fulfillment services.
-- Retain OFFLINE_MANUAL orders, ADMIN/SYSTEM subscriptions, all old states/columns/records and nullable legacy sourceOrderId. Add USER/ADMIN/SYSTEM_RENEWAL order sources and ORDER subscription source without converting history.
+- Final Order sources are USER/ADMIN/SYSTEM_RENEWAL only. Retain ADMIN/SYSTEM subscriptions, old non-source columns/states, and nullable legacy subscription sourceOrderId; do not invent orders/payments. Order source is immutable and every order rejects DELETE/REPLACE. Migration ten removes retired-source compatibility and refuses existing retired-source rows; development cleanup requires separate authorization.
 - Unknown historical periods/anchors/order forms stay NULL. Never infer from termLabel, invent source orders/payments or alter original snapshots.
 - Only isolated databases may be migrated/tested during development. Preserve the original checkout, .env, running services and data volume. Review and backup precede any separately authorized development migration.
+
+## Final source override (2026-11-18)
+
+- OFFLINE_MANUAL is retired. Remove it from the current Prisma enum and final database CHECK/trigger definitions; retain immutable historical migration SQL.
+- Only random isolated migration fixtures may be cleaned in this task. Do not connect to the development database, inspect its orders, remove its records or modify its volume/.env. Report its order counts/relationships as uninspected.
+- Nullable source storage is deliberate to reject non-strict implicit ENUM defaults; a required-source CHECK and INSERT Trigger forbid persisted NULL. Future order services must explicitly require a source from trusted server context.

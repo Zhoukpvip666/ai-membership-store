@@ -46,7 +46,6 @@ enum OrderKind {
 }
 
 enum OrderSource {
-  OFFLINE_MANUAL
   USER
   ADMIN
   SYSTEM_RENEWAL
@@ -233,7 +232,9 @@ model Order {
   productId                  String               @db.VarChar(36)
   subscriptionId             String?              @db.VarChar(36)
   kind                       OrderKind
-  source                     OrderSource          @default(OFFLINE_MANUAL)
+  // Nullable storage rejects implicit ENUM defaults; INSERT guard + CHECK require a source.
+  // Persisted identity is immutable; every order is protected from DELETE/REPLACE.
+  source                     OrderSource?
   hidden                     Boolean              @default(false)
   productNameSnapshot        String               @db.VarChar(120)
   productDescriptionSnapshot String?              @db.Text

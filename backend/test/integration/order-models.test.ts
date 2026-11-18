@@ -280,7 +280,7 @@ test('additive order/subscription model foundation', async (t) => {
     },
   )
   await t.test(
-    'new order lifecycle times reject reversed known pairs while legacy times stay compatible',
+    'new order lifecycle times reject reversed known pairs',
     async () => {
       for (const times of [
         { paidAt: periodEnd, paymentConfirmedAt: anchor },
@@ -292,16 +292,6 @@ test('additive order/subscription model foundation', async (t) => {
           (error: unknown) =>
             /Order_payment_timeline_check/.test(String(error)),
         )
-      const legacy = await db.order.create({
-        data: orderData({
-          source: 'OFFLINE_MANUAL',
-          paymentRecordedAt: anchor,
-          paymentConfirmedAt: periodEnd,
-          fulfilledAt: anchor,
-        }),
-      })
-      assert.equal(legacy.paidAt, null)
-      assert.deepEqual(legacy.paymentRecordedAt, anchor)
     },
   )
   await t.test(

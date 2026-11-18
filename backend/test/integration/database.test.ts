@@ -23,7 +23,7 @@ const isPrismaError = (code: string) => (error: unknown) =>
     error.code === code,
   )
 
-test('migration creates twelve domain tables and seven migration records', async () => {
+test('migration creates twelve domain tables and ten migration records', async () => {
   const tables = await db.$queryRaw<{ name: string }[]>`
     SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()`
   assert.deepEqual(
@@ -54,7 +54,7 @@ test('migration creates twelve domain tables and seven migration records', async
   assert.equal(zones[0]!.zone, '+00:00')
   const migrations = await db.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*) AS count FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`
-  assert.equal(Number(migrations[0]!.count), 7)
+  assert.equal(Number(migrations[0]!.count), 10)
   assert.equal(await db.user.count(), 0)
 })
 
@@ -305,12 +305,15 @@ test('all remaining model relations, UTC snapshots and unique source-order links
   const order = await db.order.create({
     data: {
       orderNo: 'TEST-INITIAL',
+      source: 'ADMIN',
       userId: customerId,
       productId,
       kind: 'INITIAL',
       productNameSnapshot: 'Immutable fixture name',
       productTypeSnapshot: 'SUBSCRIPTION',
       termSnapshot: 'Confirmed term',
+      servicePeriodUnitSnapshot: 'DAY',
+      servicePeriodCountSnapshot: 30,
       amountFen: 12900,
       renewalPriceSnapshotFen: 9900,
       contactEmailSnapshot: 'pending-customer@example.com',
@@ -319,7 +322,7 @@ test('all remaining model relations, UTC snapshots and unique source-order links
     },
   })
   orderId = order.id
-  assert.equal(order.source, 'OFFLINE_MANUAL')
+  assert.equal(order.source, 'ADMIN')
   assert.equal(order.paymentStatus, 'UNPAID')
   assert.equal(order.fulfillmentStatus, 'NOT_STARTED')
   await db.order.create({
@@ -331,6 +334,22 @@ test('all remaining model relations, UTC snapshots and unique source-order links
       orderNo: 'TEST-RENEWAL',
       kind: 'RENEWAL',
       subscriptionId,
+      source: 'SYSTEM_RENEWAL',
+      createdByAdminId: null,
+      hidden: true,
+      paymentStatus: 'PAID',
+      fulfillmentStatus: 'COMPLETED',
+      paidAt: new Date('2028-01-01T00:00:00Z'),
+      paymentConfirmedAt: new Date('2028-01-01T00:00:00Z'),
+      fulfilledAt: new Date('2028-01-01T00:00:00Z'),
+      renewalForPeriodStartAt: new Date('2028-01-01T00:00:00Z'),
+      renewalPeriodStartAt: new Date('2028-01-31T00:00:00Z'),
+      renewalPeriodEndAt: new Date('2028-03-01T00:00:00Z'),
+      billingAnchorSnapshotAt: new Date('2028-01-01T00:00:00Z'),
+      billingTimezoneSnapshot: 'UTC',
+      billingRevisionSnapshot: 1,
+      renewalRequestKeyHash: randomBytes(32).toString('hex'),
+      renewalRequestHash: randomBytes(32).toString('hex'),
     },
   })
   const entitlement = {
@@ -438,13 +457,16 @@ test('all remaining model relations, UTC snapshots and unique source-order links
   )
 })
 
-test('foreign keys prevent deleting customer, product, order, subscription or actor history', async () => {
+test('foreign keys and the order guard prevent physical history deletion', async () => {
   for (const action of [
     () => db.user.delete({ where: { id: customerId } }),
     () => db.user.delete({ where: { id: adminId } }),
     () => db.product.delete({ where: { id: productId } }),
-    () => db.order.delete({ where: { id: orderId } }),
     () => db.subscription.delete({ where: { id: subscriptionId } }),
   ])
     await assert.rejects(action(), isPrismaError('P2003'))
+  await assert.rejects(
+    db.order.delete({ where: { id: orderId } }),
+    (error: unknown) => /ORDER_DELETE_FORBIDDEN/.test(String(error)),
+  )
 })

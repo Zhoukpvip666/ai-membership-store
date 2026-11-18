@@ -233,7 +233,7 @@ test('review constraints and immutable renewal purchase evidence', async (t) => 
   )
 
   await t.test(
-    'legacy orders and unlinked ADMIN/SYSTEM subscriptions retain unknown periods',
+    'unlinked ADMIN/SYSTEM subscriptions retain unknown periods',
     async () => {
       for (const sourceType of ['ADMIN', 'SYSTEM'] as const) {
         const legacy = await db.subscription.create({
@@ -256,15 +256,6 @@ test('review constraints and immutable renewal purchase evidence', async (t) => 
         assert.equal(legacy.billingRevision, null)
         assert.equal(legacy.sourceOrderId, null)
       }
-      const legacy = await db.order.create({
-        data: ordinary({
-          source: 'OFFLINE_MANUAL',
-          kind: 'RENEWAL',
-          servicePeriodUnitSnapshot: null,
-          servicePeriodCountSnapshot: null,
-        }),
-      })
-      assert.equal(legacy.servicePeriodUnitSnapshot, null)
     },
   )
 

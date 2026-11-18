@@ -14,12 +14,17 @@ const directory = mkdtempSync(join(tmpdir(), 'membership-foundation-'))
 const envFile = join(directory, 'test.env')
 const upgradeSnapshot = join(directory, 'upgrade.json')
 const orderUpgradeSnapshot = join(directory, 'order-upgrade.json')
+const sourceUpgradeSnapshot = join(directory, 'source-upgrade.json')
 const password = randomBytes(24).toString('hex')
 const rootPassword = randomBytes(24).toString('hex')
 const adminPassword = randomBytes(24).toString('hex')
 const browserMode = process.argv.includes('--e2e')
-const freshInstall = process.argv.includes('--fresh')
+const requestedFreshInstall = process.argv.includes('--fresh')
 const modelsOnly = process.argv.includes('--models-only')
+// Protected history cannot be deleted to prepare empty-database API/seed tests.
+// Full regression first verifies history in a separate disposable project, then
+// runs its existing empty-database suites against this independently fresh one.
+const freshInstall = requestedFreshInstall || (!modelsOnly && !browserMode)
 let apiProcess: ChildProcess | undefined
 writeFileSync(
   envFile,
@@ -41,6 +46,7 @@ function run(
   args: string[],
   env: NodeJS.ProcessEnv = process.env,
   commandCwd = cwd,
+  timeout = browserMode ? 600000 : 180000,
 ) {
   try {
     return execFileSync(binary, args, {
@@ -48,7 +54,7 @@ function run(
       env,
       encoding: 'utf8',
       stdio: 'pipe',
-      timeout: browserMode ? 600000 : 180000,
+      timeout,
     })
   } catch (error) {
     const result = error as { stdout?: string; stderr?: string }
@@ -66,13 +72,27 @@ function run(
 
 function runModelTests(env: NodeJS.ProcessEnv) {
   // Paid renewal fixtures intentionally remain; no later API/seed suite sees them.
-  for (const suite of ['order-models.test.ts', 'renewal-integrity.test.ts'])
+  for (const suite of [
+    'order-models.test.ts',
+    'renewal-integrity.test.ts',
+    'order-source.test.ts',
+  ])
     console.info(
       run(process.execPath, ['--test', 'test/integration/' + suite], env),
     )
 }
 
 try {
+  if (!browserMode && !modelsOnly && !requestedFreshInstall)
+    console.info(
+      run(
+        process.execPath,
+        ['scripts/test-database.ts', '--models-only'],
+        process.env,
+        cwd,
+        600000,
+      ),
+    )
   console.info(`Starting isolated MySQL 8.4 project: ${project}`)
   run('docker', [...compose, 'up', '-d', '--wait', 'mysql'])
   const databaseAddress = () => {
@@ -245,13 +265,24 @@ try {
       ['test/integration/order-upgrade.ts', 'before', orderUpgradeSnapshot],
       env,
     )
-  }
-  run(
-    process.execPath,
-    ['scripts/prisma.ts', 'migrate', 'deploy'],
-    migrationEnv,
-  )
-  if (!browserMode && !freshInstall) {
+    // Verify the old migration contract before authorized disposable-fixture cleanup.
+    const seventh = '20261118020000_order_paid_at'
+    run(
+      process.execPath,
+      [
+        'scripts/prisma.ts',
+        'db',
+        'execute',
+        '--file',
+        `prisma/migrations/${seventh}/migration.sql`,
+      ],
+      migrationEnv,
+    )
+    run(
+      process.execPath,
+      ['scripts/prisma.ts', 'migrate', 'resolve', '--applied', seventh],
+      migrationEnv,
+    )
     console.info(
       run(
         process.execPath,
@@ -268,6 +299,68 @@ try {
       ),
     )
     unlinkSync(upgradeSnapshot)
+    // Exercise the final migration's fail-fast preflight against old synthetic
+    // orders, then remove only those fixtures before protected migrations 8/9.
+    run(
+      process.execPath,
+      [
+        'test/integration/order-source-upgrade.ts',
+        'before',
+        sourceUpgradeSnapshot,
+      ],
+      env,
+    )
+    // Also verify a genuinely populated ninth-to-tenth upgrade: removing the
+    // first ENUM member must preserve already valid source values/references.
+    for (const migration of [
+      '20261118030000_order_source_guard',
+      '20261118040000_order_source_identity',
+    ]) {
+      run(
+        process.execPath,
+        [
+          'scripts/prisma.ts',
+          'db',
+          'execute',
+          '--file',
+          `prisma/migrations/${migration}/migration.sql`,
+        ],
+        migrationEnv,
+      )
+      run(
+        process.execPath,
+        ['scripts/prisma.ts', 'migrate', 'resolve', '--applied', migration],
+        migrationEnv,
+      )
+    }
+    run(
+      process.execPath,
+      [
+        'test/integration/order-source-upgrade.ts',
+        'ready',
+        sourceUpgradeSnapshot,
+      ],
+      env,
+    )
+  }
+  run(
+    process.execPath,
+    ['scripts/prisma.ts', 'migrate', 'deploy'],
+    migrationEnv,
+  )
+  if (!browserMode && !freshInstall) {
+    console.info(
+      run(
+        process.execPath,
+        [
+          'test/integration/order-source-upgrade.ts',
+          'after',
+          sourceUpgradeSnapshot,
+        ],
+        env,
+      ),
+    )
+    unlinkSync(sourceUpgradeSnapshot)
   }
   const repeated = run(
     process.execPath,
@@ -309,11 +402,16 @@ try {
       try {
         const versions = await db.$queryRawUnsafe('SELECT COUNT(*) AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL');
         const tables = await db.$queryRawUnsafe('SELECT COUNT(*) AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()');
-        assert.equal(Number(versions[0].n), 7);
+        assert.equal(Number(versions[0].n), 10);
         assert.equal(Number(tables[0].n), 13);
-        assert.equal(await db.user.count(), 0);
-        await db.user.create({ data: { loginEmail: 'model-fixture@example.com', role: 'ADMIN', status: 'DISABLED' } });
-        await db.appSettings.create({ data: { id: 1, storeName: 'Isolated model fixture', ownerEmail: 'model-fixture@example.com' } });
+        if (await db.user.count() === 0) {
+          await db.user.create({ data: { loginEmail: 'model-fixture@example.com', role: 'ADMIN', status: 'DISABLED' } });
+          await db.appSettings.create({ data: { id: 1, storeName: 'Isolated model fixture', ownerEmail: 'model-fixture@example.com' } });
+        } else {
+          assert.equal(await db.user.count({ where: { role: 'ADMIN' } }), 1);
+          assert.equal(await db.order.count(), 3);
+          assert.equal(await db.appSettings.count(), 1);
+        }
       } finally { await db.$disconnect(); }
     `,
       ],
@@ -321,7 +419,7 @@ try {
     )
     console.info('Models-only: no Seed, API or browser suites are executed.')
     runModelTests(env)
-  } else if (freshInstall && !browserMode) {
+  } else if (requestedFreshInstall && !browserMode) {
     // The upgrade path runs the full API regression suite; fresh installation
     // independently checks empty-schema deployment and every model constraint.
     console.info(
@@ -491,6 +589,11 @@ try {
     unlinkSync(orderUpgradeSnapshot)
   } catch {
     /* No order fixture remains after a successful upgrade. */
+  }
+  try {
+    unlinkSync(sourceUpgradeSnapshot)
+  } catch {
+    /* No source fixture remains after a successful upgrade. */
   }
   rmdirSync(directory)
 }

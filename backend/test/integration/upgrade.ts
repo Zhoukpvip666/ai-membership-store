@@ -283,27 +283,8 @@ try {
       ).status,
       'PENDING_ACTIVATION',
     )
-    // Remove only the known fictional upgrade fixture before the existing empty-db suite.
-    await db.$transaction(async (tx) => {
-      await tx.subscriptionEvent.deleteMany()
-      await tx.orderEvent.deleteMany()
-      await tx.paymentTransaction.deleteMany()
-      await tx.subscription.deleteMany()
-      await tx.order.deleteMany()
-      await tx.session.deleteMany()
-      await tx.invitationToken.deleteMany()
-      await tx.adminAuditLog.deleteMany()
-      await tx.product.deleteMany({
-        where: { id: { in: [product.id, archived.id] } },
-      })
-      await tx.appSettings.delete({ where: { id: 1 } })
-      await tx.user.delete({
-        where: { loginEmail: 'upgrade-customer@example.com' },
-      })
-      await tx.user.delete({
-        where: { loginEmail: 'upgrade-admin@example.com' },
-      })
-    })
+    // Keep protected legacy orders and all related fixtures. Only removal of this
+    // runner's random disposable project cleans them up; never disable triggers.
     console.info(
       'Upgrade preserved all 11 populated legacy tables, source links, dates, forms, sessions and invitations; mapped legacy sources to ADMIN and added immutable subscription snapshots.',
     )

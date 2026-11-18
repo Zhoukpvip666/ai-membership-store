@@ -17,7 +17,7 @@
 | Session | 用户关联、唯一 tokenHash、到期/撤销时间；没有原始 token 字段 |
 | InvitationToken | 用户/签发管理员、唯一 tokenHash、到期/使用/撤销时间；仅表结构 |
 | Product | 唯一 slug、类型、整数分价格、商城展示 listed、不可逆归档 archivedAt |
-| Order | 唯一 orderNo、客户/商品/可选续费订阅、快照、OFFLINE_MANUAL、独立付款/履约状态 |
+| Order | 唯一 orderNo、客户/商品/可选续费订阅、快照、独立付款/履约状态；初始来源枚举已由第十条迁移替换为 USER/ADMIN/SYSTEM_RENEWAL |
 | PaymentTransaction | 订单关联、PAYMENT/REFUND、线下渠道、整数分金额、记录/确认管理员 |
 | OrderEvent | 订单时间线、管理员、脱敏状态快照 |
 | Subscription | 客户/商品、可空唯一 sourceOrderId、来源、确认起止日期、续费价格快照 |
