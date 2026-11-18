@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { createHash, randomBytes } from 'node:crypto'
 import { verify } from 'argon2'
 import { createDatabase } from '../../src/db/client.ts'
+import { Prisma } from '../../src/generated/prisma/client.ts'
 import { seedAdministrator, SeedConflictError } from '../../src/db/seed.ts'
 import { integrationEnvironment } from './support.ts'
 
@@ -22,7 +23,7 @@ const isPrismaError = (code: string) => (error: unknown) =>
     error.code === code,
   )
 
-test('migration creates twelve domain tables and four migration records', async () => {
+test('migration creates twelve domain tables and seven migration records', async () => {
   const tables = await db.$queryRaw<{ name: string }[]>`
     SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()`
   assert.deepEqual(
@@ -53,7 +54,7 @@ test('migration creates twelve domain tables and four migration records', async 
   assert.equal(zones[0]!.zone, '+00:00')
   const migrations = await db.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*) AS count FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`
-  assert.equal(Number(migrations[0]!.count), 4)
+  assert.equal(Number(migrations[0]!.count), 7)
   assert.equal(await db.user.count(), 0)
 })
 
@@ -324,6 +325,8 @@ test('all remaining model relations, UTC snapshots and unique source-order links
   await db.order.create({
     data: {
       ...order,
+      formSchemaSnapshot: order.formSchemaSnapshot ?? Prisma.DbNull,
+      formData: order.formData ?? Prisma.DbNull,
       id: undefined,
       orderNo: 'TEST-RENEWAL',
       kind: 'RENEWAL',

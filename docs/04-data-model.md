@@ -4,12 +4,14 @@ This is the approved data model for the first persistent, local-only operating v
 
 Phase 2 user/subscription fields and migration rules below follow [14-user-subscription-core.md](14-user-subscription-core.md), which supersedes the earlier order-first subscription and suspension design. Other order/payment models remain reserved and their business APIs are not implemented in this phase.
 
+**Latest model override (2026-11-18):** [Stage 1 order/subscription foundation](15-order-subscription-foundation.md) adds the future order-first workflow to this schema. All Phase 2 services remain compatible; new workflow constraints require the next separately authorized service stage. This migration does not convert Phase 2 history or implement order APIs.
+
 ## 1. Design boundaries
 
 - Single merchant: the site owner is the only ADMIN and seller. There is no Merchant, CustomerWallet, merchant balance, withdrawal, or sub-merchant model.
 - A customer is a User with role CUSTOMER. There is no separate customers table.
 - Customers may have orders and subscriptions while their account status is PENDING_ACTIVATION.
-- Task 1.2 records offline transactions only. Order source is OFFLINE_MANUAL. Online payment is not implemented.
+- Transactions remain offline/manual. OFFLINE_MANUAL is retained for legacy orders; USER, ADMIN and SYSTEM_RENEWAL identify future order creators, not payment providers. Online payment is not implemented.
 - Payment transactions record customer money received/refunded outside the app. The app never moves money.
 - No supplier costs, supplier transfers, supplier fulfillment, email outbox, SMTP, or payment-provider credentials in this schema.
 
@@ -74,6 +76,7 @@ Only one unexpired, unused invitation should remain active per user. Enforce by 
 | priceFen | Int | Initial/one-time selling price in CNY fen |
 | renewalPriceFen | Int?, nullable | Required for SUBSCRIPTION; null for ONE_TIME |
 | termLabel | VarChar(40) | Human-readable service term |
+| servicePeriodUnit / servicePeriodCount | Nullable DAY / MONTH / YEAR and Int | Fixed days / calendar months / calendar years plus positive quantity; NULL pair is unknown legacy data |
 | targetField | EMAIL / TEXT / NONE | Non-sensitive target information needed |
 | listed | Boolean | Public catalog visibility only; default false |
 | sortOrder | Int, default 0 | Nonnegative display order; ties use createdAt then id |
@@ -93,19 +96,39 @@ Do not add supplierCost. Product API never hard-deletes any product. Product has
 | productId | String FK Product | Product reference; deletion restricted |
 | subscriptionId | String?, FK Subscription | Required for RENEWAL; null for initial/one-time |
 | kind | INITIAL / RENEWAL / ONE_TIME | Order purpose |
-| source | OFFLINE_MANUAL | Only supported source in Task 1.2 |
+| source | OFFLINE_MANUAL / USER / ADMIN / SYSTEM_RENEWAL | Legacy/manual compatibility and future creation origin |
+| hidden | Boolean, default false | System renewal orders are persisted but hidden from ordinary customer listings; ADMIN visibility/ownership rules are deferred |
 | productNameSnapshot | VarChar(120) | Immutable product name |
+| productDescriptionSnapshot / priceSnapshotFen | Nullable Text / Int Fen | Frozen description and configured price; NULL on old orders |
 | productTypeSnapshot | SUBSCRIPTION / ONE_TIME | Immutable product type |
 | termSnapshot | VarChar(40) | Immutable term |
+| servicePeriodUnitSnapshot / servicePeriodCountSnapshot | Nullable ServicePeriodUnit / Int | Frozen structured period, never inferred from termSnapshot |
+| formSchemaSnapshot / formData | Nullable JSON | Frozen form structure and entered non-sensitive data; NULL means unknown, not an empty historic submission |
+| renewalPeriodStartAt / renewalPeriodEndAt | Nullable UTC DateTime(3) | Required increasing purchased target-cycle bounds for SYSTEM_RENEWAL |
+| renewalForPeriodStartAt | Nullable UTC DateTime(3) | Current cycle consuming its one advance-renewal entitlement; required for SYSTEM_RENEWAL |
+| billingAnchorSnapshotAt / billingTimezoneSnapshot / billingRevisionSnapshot | Nullable UTC instant / canonical IANA zone / positive Int | Frozen renewal calendar context, independent of mutable Subscription.version |
+| renewalRequestKeyHash / renewalRequestHash | Nullable VarChar(64), first unique | Stable server-scoped request identity and canonical intent hashes; required and immutable for system renewals |
 | amountFen | Int | Agreed order amount in CNY fen |
 | renewalPriceSnapshotFen | Int?, nullable | Renewal price snapshot where applicable |
 | contactEmailSnapshot | VarChar(254) | Contact email at order creation |
 | targetIdentifier | VarChar(254), nullable | Service target identifier; never a password/token |
 | paymentStatus | UNPAID / PENDING_VERIFICATION / PAID / REFUND_PENDING / REFUNDED | Summary derived from transaction records and updated transactionally |
 | fulfillmentStatus | NOT_STARTED / PROCESSING / COMPLETED / FAILED / CANCELLED | Service progress |
+| paidAt | Nullable UTC DateTime(3) | Actual full-payment occurrence; frozen copy of the corresponding confirmed PAYMENT transaction's occurredAt. Unknown history stays NULL. |
+| paymentConfirmedAt / fulfilledAt / cancelledAt | Nullable UTC DateTime(3) | Administrator receipt confirmation / actual fulfillment completion / cancellation time |
+| paymentRecordedAt | Nullable UTC DateTime(3), deprecated | Legacy entry timestamp retained unchanged. New flows neither write it nor treat it as paidAt; no fallback or backfill. |
+| cancellationReason | Nullable VarChar(500) | Cancellation explanation |
 | internalNote | Text?, nullable | Admin-only note |
-| createdByAdminId | String FK User | Creating admin |
+| createdByAdminId / createdByUserId | Nullable restrictive User FKs | ADMIN or USER creator; system needs no fake account; legacy admin references preserved |
 | createdAt / updatedAt | DateTime(3) | Timestamps |
+
+The sixth migration requires visible USER/ADMIN orders with INITIAL/SUBSCRIPTION or ONE_TIME/ONE_TIME, no subscription link and no renewal-only snapshots. SYSTEM_RENEWAL requires RENEWAL/SUBSCRIPTION, hidden=true, the original subscription and complete cycle/anchor/revision snapshots. OFFLINE_MANUAL is exempt, retaining all old combinations. New subscription-product orders must have a positive structured period. Cross-table ownership/roles/payment verification remain service checks.
+
+The seventh migration adds nullable Order.paidAt without backfill and replaces the sixth migration's provisional paymentRecordedAt-based final-state check. SYSTEM_RENEWAL must be inserted as PAID/COMPLETED with non-NULL paidAt, paymentConfirmedAt and fulfilledAt, NULL cancelledAt, and paidAt <= paymentConfirmedAt <= fulfilledAt. Every required timestamp has an explicit non-NULL guard to prevent MySQL CHECK's UNKNOWN result from accepting incomplete rows. paymentRecordedAt is not consulted. Unpaid, processing, not-started, failed, cancelled or refund-state system renewals cannot be inserted. New USER/ADMIN orders also reject reversed known payment/confirmation/fulfillment pairs while permitting unknown timestamps. OFFLINE_MANUAL history is exempt; its old fields are not rewritten.
+
+For a new confirmed full PAYMENT, Order.paidAt must equal PaymentTransaction.occurredAt and Order.paymentConfirmedAt must match its confirmedAt, written in the same future business transaction. The deliberate frozen order copy is not a second independent payment clock. The row-local SQL CHECK does not enforce cross-table equality; the future service must validate the trusted payment, amount and relationship before committing. No order API or payment service is added here.
+
+Renewal snapshots are protected against UPDATE by a database trigger, including byte-level text changes. Valid SYSTEM_RENEWAL rows reject every UPDATE and DELETE from their initial INSERT. A future renewal transaction therefore inserts the final PAID/COMPLETED order after verifying payment, then updates Subscription and writes payment/events/audit without another Order UPDATE. Do not disable triggers to rewrite purchase history. Refunds remain future work and cannot mutate these frozen renewal rows.
 
 Payment and fulfillment are independent. A newly created unpaid order is not “待发货”. Only paid pending orders enter the fulfillment queue. Admin may change fulfillment with a required reason and audit record. Only paid orders may be completed.
 
@@ -120,12 +143,12 @@ Payment and fulfillment are independent. A newly created unpaid order is not “
 | amountFen | Int | Transaction amount in CNY fen |
 | status | PENDING / CONFIRMED / FAILED | Manual verification/result |
 | externalReference | VarChar(120)?, nullable | Transaction reference if available |
-| occurredAt | DateTime(3) | Actual payment/refund time |
+| occurredAt | DateTime(3) | Actual payment/refund time; the corresponding confirmed full PAYMENT's occurrence equals Order.paidAt |
 | confirmedAt | DateTime(3)?, nullable | Admin confirmation time |
 | createdByAdminId | String FK User | Admin who recorded it |
 | confirmedByAdminId | String?, FK User | Admin who verified it |
 | note | VarChar(500)?, nullable | Admin-only explanation |
-| createdAt / updatedAt | DateTime(3) | Timestamps |
+| createdAt / updatedAt | DateTime(3) | Payment record database entry/update times; createdAt is not actual payment time and may follow confirmation for a system renewal |
 
 This table records customer money only, not supplier transfers. In Task 1.2, payment is manually verified and refund is manually recorded after external action. Support full-order refunds only; no partial payments or partial refunds. The order paymentStatus summary must be recomputed in the same database transaction whenever a transaction changes.
 
@@ -134,14 +157,20 @@ This table records customer money only, not supplier transfers. In Task 1.2, pay
 | Field | Type / rule | Meaning |
 |---|---|---|
 | id / userId / productId | UUID / restrictive FKs | Independent entitlement; no customer/product uniqueness |
-| sourceOrderId | Nullable unique Order FK | Preserved historical link; admin API cannot set it |
-| sourceType | ADMIN / SYSTEM | API creates ADMIN only; SYSTEM is reserved |
+| sourceOrderId | Nullable unique Order FK | Required by DB CHECK for new ORDER source; historical unlinked rows remain unchanged |
+| sourceType | ADMIN / SYSTEM / ORDER | Legacy/direct compatibility and future order-driven creation; existing API still creates ADMIN |
 | createdByAdminId | Nullable User FK | ADMIN creator; future SYSTEM creation leaves null |
 | productNameSnapshot / productDescriptionSnapshot | VarChar(120) / nullable Text | Frozen product copy |
 | productTypeSnapshot / priceSnapshotFen / termSnapshot | ProductType / Int Fen / VarChar(40) | Product price at subscription creation, never proof of payment |
+| servicePeriodUnitSnapshot / servicePeriodCountSnapshot | Nullable ServicePeriodUnit / positive Int | Frozen period; unknown historical period remains NULL |
+| billingAnchorAt / billingTimezone | Nullable UTC DateTime(3) / VarChar(64) | Original calendar anchor instant and IANA timezone snapshot; both unknown for legacy rows |
+| billingRevision | Nullable positive Int | Explicit 1 for new ORDER subscriptions; increments only on manual anchor reset, independently of general version |
+| earlyRenewalUsed | Nullable Boolean | Explicit false for a new ORDER cycle; NULL preserves unknown legacy eligibility |
+| currentPeriodStartAt / currentPeriodEndAt | Nullable UTC DateTime(3) | Current cycle bounds, independent of paid-through expiresAt |
+| earlyRenewedPeriodStartAt / earlyRenewalOrderId | Nullable DateTime(3) / unique restrictive Order FK | Successful advance-renewal marker; new ORDER records require false + NULL/NULL when unused, true + current-period start/order when used; reset on rollover/anchor correction |
 | formSchemaSnapshot / formData | JSON | Frozen schema and strictly validated non-sensitive values |
 | targetIdentifier | Nullable legacy VarChar(254) | Preserved read-only, not repurposed or collected by new API |
-| startedAt / expiresAt | UTC DateTime(3) | Explicit administrator-entered service dates |
+| startedAt / expiresAt | UTC DateTime(3) | Existing manual service dates; future order-driven service dates require separately reviewed period arithmetic |
 | renewalPriceFen | Nonnegative integer Fen | Current subscription renewal amount |
 | note | Nullable VarChar(2000) | Administrator-only service note, not copied verbatim into audit/history |
 | status | ACTIVE / TERMINATED | Entitlement additionally requires expiresAt > database now |
@@ -149,7 +178,9 @@ This table records customer money only, not supplier transfers. In Task 1.2, pay
 | version | Int, initial 1 | Optimistic concurrency, increment every successful change |
 | createdAt / updatedAt | UTC DateTime(3) | Existing timestamps preserved by migration |
 
-New subscriptions snapshot current product fields. Legacy rows can only snapshot the referenced product at migration time: prior product history cannot be reconstructed. Legacy targetIdentifier remains intact, formData starts empty, and later edits validate supplied formData against the frozen schema. Never invent historic submitted values or payments.
+ORDER subscriptions require SUBSCRIPTION, an existing unique sourceOrderId, complete positive period, anchor, supported canonical IANA timezone, positive billingRevision, increasing current-cycle bounds and explicitly initialized earlyRenewalUsed. ADMIN/SYSTEM history remains exempt. The migration carries a versioned canonical timezone allowlist (Node 24 ICU, plus UTC aliases); the future service must normalize valid aliases before saving. It does not depend on MySQL timezone tables.
+
+Phase 2 direct subscriptions snapshot current product fields. Future ORDER subscriptions must copy the source order's frozen product/period/form/data snapshots, never today's Product. The initial sourceOrderId remains stable; later renewal orders use Order.subscriptionId without replacing the initial source link. Legacy rows could only snapshot the referenced product at the Phase 2 migration time: prior product history cannot be reconstructed. Legacy targetIdentifier remains intact, formData started empty, and later edits validate supplied formData against the frozen schema. Stage 1 does not rewrite these snapshots. Never invent historic submitted values or payments.
 
 ### SubscriptionEvent
 
@@ -165,8 +196,9 @@ UUID id, restrictive actorAdminId FK, SHA-256 keyHash, SHA-256 canonical request
 |---|---|---|
 | id | String PK | Internal ID |
 | orderId | String FK Order, indexed with createdAt | Related order |
-| eventType | ORDER_CREATED / PAYMENT_RECORDED / PAYMENT_CONFIRMED / REFUND_RECORDED / REFUND_CONFIRMED / FULFILLMENT_CHANGED / COMPLETED / NOTE | Timeline event |
-| actorAdminId | String FK User | Admin actor |
+| eventType | ORDER_CREATED / PAYMENT_RECORDED / PAYMENT_CONFIRMED / REFUND_RECORDED / REFUND_CONFIRMED / FULFILLMENT_CHANGED / COMPLETED / NOTE / CANCELLED | All old event types retained; cancellation appended |
+| actorType | USER / ADMIN / SYSTEM, default ADMIN | Explicit actor; old records were ADMIN |
+| actorAdminId / actorUserId | Nullable restrictive User FKs | Exactly the actor appropriate to actorType; SYSTEM has neither |
 | fromStateJson / toStateJson | Json?, nullable | Safe status snapshots |
 | note | VarChar(500)?, nullable | Operator explanation |
 | createdAt | DateTime(3) | Event time |
@@ -198,6 +230,7 @@ Singleton row, initialized with id = 1.
 | storeName | VarChar(80) | Store display name |
 | ownerEmail | VarChar(254) | Owner/notification address |
 | timezone | VarChar(64) | Default Asia/Shanghai |
+| paymentInstructions | VarChar(4000), default empty string | Site-wide plain text only; no secrets, HTML rendering or payment execution |
 | updatedAt | DateTime(3) | Last update |
 
 No SMTP or payment credentials belong in AppSettings.
@@ -224,14 +257,15 @@ No SMTP or payment credentials belong in AppSettings.
   - failed refund returns the summary to PAID if the original payment remains confirmed.
 - Order.fulfillmentStatus is independent. Only PAID orders can become COMPLETED. A confirmed full refund before completion sets fulfillment to CANCELLED; a refund after completion does not erase the historical completion.
 - Confirming payment, confirming refund, completing an order, and applying a renewal date update must use database transactions and append the corresponding OrderEvent/SubscriptionEvent/AdminAuditLog atomically.
-- Renewal expiry is entered from supplier-confirmed information; never infer by adding a fixed number of days.
-- Phase 2 direct subscription creation/renewal creates no order/payment rows. Changes/events/audits/idempotency commit together; database-clock expiry and version predicates arbitrate concurrent admin/worker actions.
+- Existing Phase 2 direct renewal still accepts a manually confirmed expiry. Future structured-period arithmetic must use frozen unit/count/anchor/timezone, with explicitly reviewed calendar-boundary rules. Unknown legacy periods must not participate in automatic calculations.
+- Phase 2 compatibility APIs still create/renew directly without order/payment rows. Future new business must use ORDER subscriptions after full payment and fulfillment; service integration, ownership, ordinary-order snapshot immutability, concurrency and atomic renewal markers are deferred to the next stage. Database-clock expiry/version behavior is unchanged.
 - Legacy sources all migrate to ADMIN with existing creators/references/dates/prices/states intact. SUSPENDED blocks before persistent schema/data changes.
 - All money uses integer fen. All timestamps are stored in UTC and displayed in configured business timezone.
 
 ## 5. Indexes and deletion rules
 
-- Unique: User.loginEmail, Session.tokenHash, InvitationToken.tokenHash, Product.slug, Order.orderNo, Subscription.sourceOrderId.
+- Renewal unique claims: Order(subscriptionId,billingRevisionSnapshot,renewalForPeriodStartAt) and Order(subscriptionId,billingRevisionSnapshot,renewalPeriodStartAt). Both survive marker reset and use NULL compatibility for old orders. New system orders represent successful purchases only; payment attempts are not committed as system renewal orders.
+- Unique: User.loginEmail, Session.tokenHash, InvitationToken.tokenHash, Product.slug, Order.orderNo, Subscription.sourceOrderId, Subscription.earlyRenewalOrderId.
 - Index: Order(userId, createdAt), Order(paymentStatus, createdAt), Order(fulfillmentStatus, createdAt), Order(subscriptionId, createdAt), PaymentTransaction(orderId, kind, status), Subscription(userId, status), Subscription(expiresAt, status), SubscriptionEvent(subscriptionId, createdAt), OrderEvent(orderId, createdAt), AdminAuditLog(actorAdminId, createdAt).
 - Use restrictive foreign keys for orders, payments, subscriptions, and events. Disable users and archive products; do not cascade-delete business history.
 - Prisma migrations are the only schema-change mechanism. Never use destructive schema push against the local data volume.

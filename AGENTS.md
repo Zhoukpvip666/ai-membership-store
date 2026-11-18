@@ -100,3 +100,11 @@ A task is complete only when:
 - Versioned migration and tests run on isolated databases only during implementation. Never migrate/reset the development database or edit its .env.
 - Subscription writes, events, sanitized audits and idempotency responses commit atomically. Enforce optimistic version checks and database-time expiry checks, including races with the minute expiry worker.
 - No order/payment, email/SMTP, notifications, verification codes, upstream API or API-key feature in this phase. Stop at the new PR for review.
+
+## Order/subscription model stage 1 override (2026-11-18)
+
+- Follow docs/15-order-subscription-foundation.md for the separately authorized additive database model stage. Future business uses order → confirmed full offline payment → fulfillment → order-linked subscription; this supersedes Phase 2 direct creation/renewal for the future workflow.
+- This stage implements schema, versioned migration, compatibility tests and documentation only. Do not implement new pages, order/payment APIs, calendar calculations, renewal jobs or fulfillment services.
+- Retain OFFLINE_MANUAL orders, ADMIN/SYSTEM subscriptions, all old states/columns/records and nullable legacy sourceOrderId. Add USER/ADMIN/SYSTEM_RENEWAL order sources and ORDER subscription source without converting history.
+- Unknown historical periods/anchors/order forms stay NULL. Never infer from termLabel, invent source orders/payments or alter original snapshots.
+- Only isolated databases may be migrated/tested during development. Preserve the original checkout, .env, running services and data volume. Review and backup precede any separately authorized development migration.

@@ -2,7 +2,9 @@
 
 A private, independently operated storefront and order-management system for AI membership services and other digital services.
 
-**Project status:** Tasks 1.2.1–1.2.3 are merged. Phase 2 user-model refactoring and administrator subscription management is implemented for review. See [Phase 2 implementation and operation guide](docs/14-user-subscription-core.md). Products/customers/settings/subscriptions use the local API; overview/orders remain Mock. No order/payment/notification/verification-code/API-key development is included.
+**Project status:** Tasks 1.2.1–1.2.3 and Phase 2 user-model refactoring/administrator subscription management are merged. See [Phase 2 implementation and operation guide](docs/14-user-subscription-core.md). Products/customers/settings/subscriptions use the local API; overview/orders remain Mock. Order/subscription model stage 1 below is pending review; no order/payment/notification/verification-code/API-key API development is included.
+
+**Order/subscription model stage 1:** [Database foundation and compatibility guide](docs/15-order-subscription-foundation.md). Adds structured periods, order snapshots/actors, billing anchors and renewal markers through additive fifth/sixth/seventh migrations. The review follow-up adds strict source/kind/completeness checks, immutable renewal-cycle snapshots, a separate billing revision and durable per-cycle unique claims. SYSTEM_RENEWAL must be inserted in final PAID/COMPLETED state with paidAt <= paymentConfirmedAt <= fulfilledAt (all non-NULL); updates/deletes remain forbidden. paidAt is actual payment occurrence; PaymentTransaction.createdAt is entry time, and deprecated paymentRecordedAt is retained only for history. The future order → full manual payment confirmation → fulfillment → subscription workflow supersedes direct subscriptions for new business once its services are implemented. This stage adds no order/payment APIs or pages and does not migrate the development database. Existing Phase 2 APIs remain in compatibility mode; the new business workflow is not operational yet.
 
 ## Operating model: single merchant
 
@@ -83,6 +85,7 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 12. docs/12-authentication-customers-invitations.md — Task 1.2.2 implementation, local operation, security boundaries and verification.
 13. docs/13-products-settings-forms.md — Task 1.2.3 product/settings persistence, dynamic form contract, migration and isolated verification.
 14. docs/14-user-subscription-core.md — Phase 2 user names, frozen subscription forms, direct renewal, concurrency, migration and operation guide.
+15. docs/15-order-subscription-foundation.md — order-first model foundation, additive migration, legacy compatibility and deferred service constraints.
 
 ## Important launch gates
 
@@ -113,7 +116,9 @@ Before accepting real orders, the operator must verify that the supplier is auth
     ├── 10-local-operations-mvp.md
     ├── 11-database-foundation.md
     ├── 12-authentication-customers-invitations.md
-    └── 13-products-settings-forms.md
+    ├── 13-products-settings-forms.md
+    ├── 14-user-subscription-core.md
+    └── 15-order-subscription-foundation.md
 ```
 
 ## Local development — Phase 2

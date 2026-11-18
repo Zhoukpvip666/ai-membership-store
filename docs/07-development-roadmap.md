@@ -1,8 +1,24 @@
 # Development Roadmap
 
+## Order/subscription refactoring — Stage 1 database foundation
+
+**Scope: schema/migration/compatibility/tests only; review before further development.** See [stage guide](15-order-subscription-foundation.md).
+
+- Structured DAY/MONTH/YEAR periods and quantities; retain termLabel and unknown legacy NULLs.
+- Order product/period/form/data snapshots; USER/ADMIN/SYSTEM_RENEWAL origins, hidden renewals, lifecycle times and USER/ADMIN/SYSTEM events.
+- ORDER subscription source requiring a unique source order, frozen billing period/anchor/timezone, current cycle and early-renewal marker. Retain legacy unlinked ADMIN/SYSTEM records.
+- Site-wide plain-text paymentInstructions; preserve PaymentTransaction and all old states/records.
+- Fifth foundation, sixth review-integrity and seventh actual-payment-time migrations; verify all twelve populated legacy business tables, repeated deploy and fresh installation in isolated MySQL 8.4 only.
+- Review follow-up: strict source/kind/visibility, complete ORDER subscriptions, validated timezone, independent billingRevision/explicit renewal eligibility, immutable renewal target/anchor/revision snapshots, two durable unique cycle claims and paid-renewal update/delete guards.
+- P1 final-state and payment-time repair: SYSTEM_RENEWAL INSERT requires PAID/COMPLETED and non-NULL paidAt <= paymentConfirmedAt <= fulfilledAt with no cancellation; keep immutable triggers. paidAt is actual payment, matching the confirmed PAYMENT's occurredAt in the future transaction; PaymentTransaction.createdAt is entry time. Retain deprecated paymentRecordedAt unchanged and unused by new flows. Verify populated upgrades and fresh installs with --models-only (no Seed), including rejected intermediate states, distinct occurrence/entry/confirmation times and complete transaction rollback.
+- Verification includes a populated six-migration upgrade and fresh seven-migration installation, SQL rejection/immutability/concurrent uniqueness/transaction rollback fixtures. No historical actual payment time is inferred or backfilled.
+- No new page, order/payment API, calendar algorithm, automatic fulfillment or renewal worker. Do not begin the next service stage without approval.
+
+The new business target is order → confirmed full offline payment → fulfillment → order-linked subscription. Older direct-subscription descriptions below document the Phase 2 compatibility runtime, not the future workflow.
+
 ## Phase 2 — User Model Refactoring & Subscription Management Core
 
-**Status: Implemented for owner review; not merged.** [Design, migration, tests and operation guide](14-user-subscription-core.md).
+**Status: Merged; preserved as compatibility runtime while the model stage above is reviewed.** [Design, migration, tests and operation guide](14-user-subscription-core.md).
 
 This separately authorized phase supersedes the earlier order-first subscription sequence. Deliver user names/privacy, additive migration with SUSPENDED preflight, immutable subscription snapshots/eight-type form data, ADMIN list/create/detail/edit/renew/terminate/history, optimistic versions, persistent idempotency and minute expiry termination. Preserve accounts/sessions/invitations/history. Only isolated databases are migrated/tested; development migration is a manual post-review step. Run format/typecheck/lint/unit/database/E2E/build. Stop at a new PR; no order/payment, notification, verification-code, API-key or upstream work.
 
