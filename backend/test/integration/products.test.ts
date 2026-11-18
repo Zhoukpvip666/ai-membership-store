@@ -154,7 +154,7 @@ test('every product/settings endpoint requires ADMIN session and mutations requi
   const token = newToken()
   const customer = await db.user.create({
     data: {
-      displayName: 'Permission fixture',
+      adminLabel: 'Permission fixture',
       loginEmail: randomUUID() + '@example.com',
       role: 'CUSTOMER',
       status: 'ACTIVE',
@@ -432,7 +432,11 @@ test('editing configuration and archiving preserve accounts, invitations, sessio
     data: {
       userId: user.id,
       productId,
-      sourceType: 'MANUAL_GRANT',
+      sourceType: 'ADMIN',
+      productNameSnapshot: 'Frozen subscription',
+      productTypeSnapshot: 'SUBSCRIPTION',
+      priceSnapshotFen: 1234,
+      termSnapshot: 'Frozen term',
       targetIdentifier: 'history@example.com',
       startedAt: new Date(),
       expiresAt: new Date(Date.now() + 86400000),

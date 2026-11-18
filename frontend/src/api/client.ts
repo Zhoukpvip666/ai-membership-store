@@ -12,6 +12,7 @@ export async function api<T>(
   path: string,
   method = 'GET',
   body?: unknown,
+  idempotencyKey?: string,
 ): Promise<T> {
   let response: Response
   try {
@@ -25,6 +26,7 @@ export async function api<T>(
           : {
               'Content-Type': 'application/json',
               'X-Requested-With': 'MembershipStore',
+              ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
             },
       body: body === undefined ? undefined : JSON.stringify(body),
     })
@@ -46,7 +48,7 @@ export async function api<T>(
 
 export interface Account {
   id: string
-  displayName: string
+  username: string | null
   loginEmail: string
   notificationEmail: string | null
   role: 'ADMIN' | 'CUSTOMER'
@@ -62,6 +64,7 @@ export interface Invitation {
   revokedAt: string | null
 }
 export interface Customer extends Account {
+  adminLabel: string | null
   _count: { orders: number; subscriptions: number }
   invitations?: Invitation[]
 }

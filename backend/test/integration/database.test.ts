@@ -22,7 +22,7 @@ const isPrismaError = (code: string) => (error: unknown) =>
     error.code === code,
   )
 
-test('migration creates exactly eleven domain tables and three migration records', async () => {
+test('migration creates twelve domain tables and four migration records', async () => {
   const tables = await db.$queryRaw<{ name: string }[]>`
     SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()`
   assert.deepEqual(
@@ -31,6 +31,7 @@ test('migration creates exactly eleven domain tables and three migration records
       'AdminAuditLog',
       'AppSettings',
       'InvitationToken',
+      'IdempotencyRecord',
       'Order',
       'OrderEvent',
       'PaymentTransaction',
@@ -52,7 +53,7 @@ test('migration creates exactly eleven domain tables and three migration records
   assert.equal(zones[0]!.zone, '+00:00')
   const migrations = await db.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*) AS count FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`
-  assert.equal(Number(migrations[0]!.count), 3)
+  assert.equal(Number(migrations[0]!.count), 4)
   assert.equal(await db.user.count(), 0)
 })
 
@@ -146,7 +147,7 @@ test('schema keeps documented types, unique/index keys, singleton and restrictiv
 
 test('seed refuses a customer email collision without promoting or partially seeding', async () => {
   const customer = await db.user.create({
-    data: { loginEmail: env.ADMIN_EMAIL, displayName: 'Collision fixture' },
+    data: { loginEmail: env.ADMIN_EMAIL, adminLabel: 'Collision fixture' },
   })
   await assert.rejects(seedAdministrator(db, env), SeedConflictError)
   assert.equal(await db.user.count({ where: { role: 'ADMIN' } }), 0)
@@ -178,7 +179,7 @@ test('concurrent and repeated seeds create one Argon2id administrator and preser
   )
   await db.user.update({
     where: { id: adminId },
-    data: { displayName: 'Preserved owner profile' },
+    data: { adminLabel: 'Preserved owner profile' },
   })
   await db.appSettings.update({
     where: { id: 1 },
@@ -219,7 +220,7 @@ test('seed rejects changed admin email and multiple-admin corruption without ove
   const extra = await db.user.create({
     data: {
       loginEmail: 'corrupt-admin@example.com',
-      displayName: 'Corrupt fixture',
+      adminLabel: 'Corrupt fixture',
       role: 'ADMIN',
     },
   })
@@ -234,7 +235,7 @@ test('pending customers can hold multiple manual/import entitlements without fak
   const user = await db.user.create({
     data: {
       loginEmail: 'pending-customer@example.com',
-      displayName: 'Pending fixture',
+      adminLabel: 'Pending fixture',
       createdByAdminId: adminId,
     },
   })
@@ -263,7 +264,12 @@ test('pending customers can hold multiple manual/import entitlements without fak
       data: {
         userId: customerId,
         productId,
-        sourceType,
+        sourceType: 'ADMIN',
+        productNameSnapshot: product.name,
+        productDescriptionSnapshot: product.description,
+        productTypeSnapshot: product.type,
+        priceSnapshotFen: product.priceFen,
+        termSnapshot: product.termLabel,
         targetIdentifier: 'service@example.com',
         ...dates,
         renewalPriceFen: 9900,
@@ -327,7 +333,11 @@ test('all remaining model relations, UTC snapshots and unique source-order links
   const entitlement = {
     userId: customerId,
     productId,
-    sourceType: 'ORDER' as const,
+    sourceType: 'ADMIN' as const,
+    productNameSnapshot: 'Fixture snapshot',
+    productTypeSnapshot: 'SUBSCRIPTION' as const,
+    priceSnapshotFen: 12900,
+    termSnapshot: 'Frozen term',
     sourceOrderId: orderId,
     targetIdentifier: 'service@example.com',
     startedAt: new Date('2026-11-16T01:02:03.123Z'),
@@ -399,7 +409,7 @@ test('all remaining model relations, UTC snapshots and unique source-order links
     db.user.create({
       data: {
         loginEmail: 'PENDING-CUSTOMER@EXAMPLE.COM',
-        displayName: 'Duplicate',
+        adminLabel: 'Duplicate',
       },
     }),
     isPrismaError('P2002'),

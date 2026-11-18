@@ -63,7 +63,7 @@ async function createCustomer(page: Page) {
   const dialog = page.getByRole('dialog', { name: '新增客户', exact: true })
   await expect(dialog.locator('input[type=password]')).toHaveCount(0)
   await dialog
-    .getByRole('textbox', { name: '客户姓名', exact: true })
+    .getByRole('textbox', { name: '内部备注', exact: true })
     .fill('浏览器测试客户')
   await dialog
     .getByRole('textbox', { name: '客户登录邮箱', exact: true })
@@ -145,7 +145,7 @@ test('real customers persist pending; duplicate email, editing, disabling and re
   await page.getByRole('button', { name: '新增客户', exact: true }).click()
   const create = page.getByRole('dialog', { name: '新增客户', exact: true })
   await create
-    .getByRole('textbox', { name: '客户姓名', exact: true })
+    .getByRole('textbox', { name: '内部备注', exact: true })
     .fill('重复邮箱')
   await create
     .getByRole('textbox', { name: '客户登录邮箱', exact: true })
@@ -162,7 +162,7 @@ test('real customers persist pending; duplicate email, editing, disabling and re
     edit.getByRole('textbox', { name: '客户登录邮箱', exact: true }),
   ).toBeDisabled()
   await edit
-    .getByRole('textbox', { name: '客户姓名', exact: true })
+    .getByRole('textbox', { name: '内部备注', exact: true })
     .fill('已编辑客户')
   await edit
     .getByRole('textbox', { name: '客户通知邮箱', exact: true })

@@ -1,6 +1,8 @@
-# Local Operations Data Model (Task 1.2)
+# Local Operations Data Model (Task 1.2 and Phase 2)
 
 This is the approved data model for the first persistent, local-only operating version. It supersedes the earlier conceptual model where it conflicts with this document. Full workflow and scope rules are in [10-local-operations-mvp.md](10-local-operations-mvp.md).
+
+Phase 2 user/subscription fields and migration rules below follow [14-user-subscription-core.md](14-user-subscription-core.md), which supersedes the earlier order-first subscription and suspension design. Other order/payment models remain reserved and their business APIs are not implemented in this phase.
 
 ## 1. Design boundaries
 
@@ -18,7 +20,8 @@ This is the approved data model for the first persistent, local-only operating v
 | Field | Type / rule | Meaning |
 |---|---|---|
 | id | String PK, CUID/UUID | Internal ID |
-| displayName | VarChar(80) | Customer/admin display name |
+| username | VarChar(80), nullable | Customer-owned name; initialized NULL; new editing flow deferred |
+| adminLabel | VarChar(80), nullable | Private administrator label; migrated from displayName; never returned to customers |
 | loginEmail | VarChar(254), unique, normalized lowercase | Login identity |
 | notificationEmail | VarChar(254), nullable | Notification/contact email; defaults to loginEmail when omitted |
 | passwordHash | VarChar(255), nullable | Null until invitation activation |
@@ -130,34 +133,31 @@ This table records customer money only, not supplier transfers. In Task 1.2, pay
 
 | Field | Type / rule | Meaning |
 |---|---|---|
-| id | String PK | Internal ID |
-| userId | String FK User, indexed | Owner; may be PENDING_ACTIVATION |
-| productId | String FK Product | Product |
-| sourceType | ORDER / MANUAL_GRANT / HISTORICAL_IMPORT | Why the entitlement exists |
-| sourceOrderId | String?, unique FK Order | Required for ORDER source; null for manual grant/import unless a real historical order is recorded |
-| targetIdentifier | VarChar(254) | Actual service target, separate from login email |
-| startedAt | DateTime(3) | Confirmed service start |
-| expiresAt | DateTime(3), indexed | Confirmed expiry |
-| renewalPriceFen | Int | Current renewal price snapshot |
-| status | ACTIVE / SUSPENDED / TERMINATED | Stored state |
-| createdByAdminId | String FK User | Admin who created it |
-| createdAt / updatedAt | DateTime(3) | Timestamps |
+| id / userId / productId | UUID / restrictive FKs | Independent entitlement; no customer/product uniqueness |
+| sourceOrderId | Nullable unique Order FK | Preserved historical link; admin API cannot set it |
+| sourceType | ADMIN / SYSTEM | API creates ADMIN only; SYSTEM is reserved |
+| createdByAdminId | Nullable User FK | ADMIN creator; future SYSTEM creation leaves null |
+| productNameSnapshot / productDescriptionSnapshot | VarChar(120) / nullable Text | Frozen product copy |
+| productTypeSnapshot / priceSnapshotFen / termSnapshot | ProductType / Int Fen / VarChar(40) | Product price at subscription creation, never proof of payment |
+| formSchemaSnapshot / formData | JSON | Frozen schema and strictly validated non-sensitive values |
+| targetIdentifier | Nullable legacy VarChar(254) | Preserved read-only, not repurposed or collected by new API |
+| startedAt / expiresAt | UTC DateTime(3) | Explicit administrator-entered service dates |
+| renewalPriceFen | Nonnegative integer Fen | Current subscription renewal amount |
+| note | Nullable VarChar(2000) | Administrator-only service note, not copied verbatim into audit/history |
+| status | ACTIVE / TERMINATED | Entitlement additionally requires expiresAt > database now |
+| terminatedAt / terminationReason | Nullable DateTime(3) / VarChar(500) | Irreversible manual/system termination |
+| version | Int, initial 1 | Optimistic concurrency, increment every successful change |
+| createdAt / updatedAt | UTC DateTime(3) | Existing timestamps preserved by migration |
 
-Display EXPIRED when status is ACTIVE and expiresAt is in the past; do not require a scheduled job to calculate the display state. A subscription can exist without an order for MANUAL_GRANT or HISTORICAL_IMPORT. No uniqueness constraint on userId + productId: a customer may have multiple entitlements for the same product/target.
+New subscriptions snapshot current product fields. Legacy rows can only snapshot the referenced product at migration time: prior product history cannot be reconstructed. Legacy targetIdentifier remains intact, formData starts empty, and later edits validate supplied formData against the frozen schema. Never invent historic submitted values or payments.
 
 ### SubscriptionEvent
 
-| Field | Type / rule | Meaning |
-|---|---|---|
-| id | String PK | Internal ID |
-| subscriptionId | String FK Subscription, indexed with createdAt | Related entitlement |
-| orderId | String?, FK Order | Related initial/renewal order when applicable |
-| eventType | CREATED / ACTIVATED / RENEWED / EXPIRY_ADJUSTED / MANUAL_GRANT / HISTORICAL_IMPORT / SUSPENDED / RESUMED / TERMINATED / NOTE | Change type |
-| oldStartedAt / newStartedAt | DateTime?, nullable | Start-date change |
-| oldExpiresAt / newExpiresAt | DateTime?, nullable | Expiry-date change |
-| actorAdminId | String FK User | Admin actor |
-| reason | VarChar(500)?, nullable | Required for manual correction/termination |
-| createdAt | DateTime(3) | Event time |
+Extends the original history table, never replaces it. Existing order/date/actor/reason/timestamp columns and all old event types/rows remain. New actorType is ADMIN/SYSTEM (legacy defaults ADMIN); actorAdminId is nullable for SYSTEM. New beforeJson/afterJson cover mutable state, versions, dates and prices; formData values and note are redacted. New operations emit CREATED, UPDATED, RENEWED, EXPIRY_ADJUSTED, PRICE_CHANGED, FORM_DATA_UPDATED, TERMINATED or AUTO_TERMINATED. One edit can append UPDATED plus specific changed-field events in the same transaction. History is ADMIN-only and paginated.
+
+### IdempotencyRecord
+
+UUID id, restrictive actorAdminId FK, SHA-256 keyHash, SHA-256 canonical requestHash (including operation/target), operation, responseJson and createdAt. Unique (actorAdminId,keyHash). The stored ADMIN-only response may contain service data and must never be logged or exposed to customers. Same key/body replays the committed original response even after later changes; changed body/target/operation returns 409. No raw key/request is stored. Rows are retained for this local milestone; no automatic expiry silently removes replay protection.
 
 ### OrderEvent
 
@@ -178,7 +178,8 @@ Do not place raw invitation tokens, passwords, authentication cookies, or secret
 | Field | Type / rule | Meaning |
 |---|---|---|
 | id | String PK | Internal ID |
-| actorAdminId | String FK User, indexed with createdAt | Admin actor |
+| actorAdminId | Nullable String FK User, indexed with createdAt | Admin actor; NULL for SYSTEM |
+| actorType | ADMIN / SYSTEM, default ADMIN | Explicit actor without a fake system account |
 | action | VarChar(80) | Action key |
 | entityType | VarChar(40) | User/Product/Order/PaymentTransaction/Subscription/Settings |
 | entityId | VarChar(40) | Target ID |
@@ -224,7 +225,8 @@ No SMTP or payment credentials belong in AppSettings.
 - Order.fulfillmentStatus is independent. Only PAID orders can become COMPLETED. A confirmed full refund before completion sets fulfillment to CANCELLED; a refund after completion does not erase the historical completion.
 - Confirming payment, confirming refund, completing an order, and applying a renewal date update must use database transactions and append the corresponding OrderEvent/SubscriptionEvent/AdminAuditLog atomically.
 - Renewal expiry is entered from supplier-confirmed information; never infer by adding a fixed number of days.
-- Manual grant and historical import create subscription/event records, not fake order/payment rows.
+- Phase 2 direct subscription creation/renewal creates no order/payment rows. Changes/events/audits/idempotency commit together; database-clock expiry and version predicates arbitrate concurrent admin/worker actions.
+- Legacy sources all migrate to ADMIN with existing creators/references/dates/prices/states intact. SUSPENDED blocks before persistent schema/data changes.
 - All money uses integer fen. All timestamps are stored in UTC and displayed in configured business timezone.
 
 ## 5. Indexes and deletion rules

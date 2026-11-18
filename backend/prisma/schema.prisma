@@ -78,14 +78,17 @@ enum TransactionStatus {
 }
 
 enum SubscriptionSource {
-  ORDER
-  MANUAL_GRANT
-  HISTORICAL_IMPORT
+  ADMIN
+  SYSTEM
+}
+
+enum ActorType {
+  ADMIN
+  SYSTEM
 }
 
 enum SubscriptionStatus {
   ACTIVE
-  SUSPENDED
   TERMINATED
 }
 
@@ -101,6 +104,10 @@ enum OrderEventType {
 }
 
 enum SubscriptionEventType {
+  UPDATED
+  PRICE_CHANGED
+  FORM_DATA_UPDATED
+  AUTO_TERMINATED
   CREATED
   ACTIVATED
   RENEWED
@@ -115,7 +122,8 @@ enum SubscriptionEventType {
 
 model User {
   id                String        @id @default(uuid()) @db.VarChar(36)
-  displayName       String        @db.VarChar(80)
+  username          String?       @db.VarChar(80)
+  adminLabel        String?       @db.VarChar(80)
   loginEmail        String        @unique @db.VarChar(254)
   notificationEmail String?       @db.VarChar(254)
   passwordHash      String?       @db.VarChar(255)
@@ -140,6 +148,7 @@ model User {
   orderEvents           OrderEvent[]
   subscriptionEvents    SubscriptionEvent[]
   auditLogs             AdminAuditLog[]
+  idempotencyRecords    IdempotencyRecord[]
 }
 
 model Session {
@@ -268,26 +277,39 @@ model OrderEvent {
 }
 
 model Subscription {
-  id               String              @id @default(uuid()) @db.VarChar(36)
-  userId           String              @db.VarChar(36)
-  productId        String              @db.VarChar(36)
-  sourceOrderId    String?             @unique @db.VarChar(36)
-  sourceType       SubscriptionSource
-  targetIdentifier String              @db.VarChar(254)
-  startedAt        DateTime            @db.DateTime(3)
-  expiresAt        DateTime            @db.DateTime(3)
-  renewalPriceFen  Int
-  status           SubscriptionStatus  @default(ACTIVE)
-  createdByAdminId String              @db.VarChar(36)
-  createdAt        DateTime            @default(now()) @db.DateTime(3)
-  updatedAt        DateTime            @updatedAt @db.DateTime(3)
-  user             User                @relation("SubscriptionCustomer", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  product          Product             @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  sourceOrder      Order?              @relation("SubscriptionSourceOrder", fields: [sourceOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  createdByAdmin   User                @relation("SubscriptionCreator", fields: [createdByAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  renewalOrders    Order[]             @relation("RenewalOrders")
-  events           SubscriptionEvent[]
+  id                         String              @id @default(uuid()) @db.VarChar(36)
+  userId                     String              @db.VarChar(36)
+  productId                  String              @db.VarChar(36)
+  sourceOrderId              String?             @unique @db.VarChar(36)
+  productNameSnapshot        String              @db.VarChar(120)
+  productDescriptionSnapshot String?             @db.Text
+  productTypeSnapshot        ProductType
+  priceSnapshotFen           Int
+  termSnapshot               String              @db.VarChar(40)
+  formSchemaSnapshot         Json                @default("{\"version\":1,\"fields\":[]}")
+  formData                   Json                @default("{}")
+  note                       String?             @db.VarChar(2000)
+  terminatedAt               DateTime?           @db.DateTime(3)
+  terminationReason          String?             @db.VarChar(500)
+  version                    Int                 @default(1)
+  sourceType                 SubscriptionSource
+  targetIdentifier           String?             @db.VarChar(254) // Retained read-only for legacy records.
+  startedAt                  DateTime            @db.DateTime(3)
+  expiresAt                  DateTime            @db.DateTime(3)
+  renewalPriceFen            Int
+  status                     SubscriptionStatus  @default(ACTIVE)
+  createdByAdminId           String?             @db.VarChar(36)
+  createdAt                  DateTime            @default(now()) @db.DateTime(3)
+  updatedAt                  DateTime            @updatedAt @db.DateTime(3)
+  user                       User                @relation("SubscriptionCustomer", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  product                    Product             @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceOrder                Order?              @relation("SubscriptionSourceOrder", fields: [sourceOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdByAdmin             User?               @relation("SubscriptionCreator", fields: [createdByAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  renewalOrders              Order[]             @relation("RenewalOrders")
+  events                     SubscriptionEvent[]
 
+  @@index([productId, status])
+  @@index([sourceType, createdAt])
   @@index([userId, status])
   @@index([expiresAt, status])
 }
@@ -301,28 +323,32 @@ model SubscriptionEvent {
   newStartedAt   DateTime?             @db.DateTime(3)
   oldExpiresAt   DateTime?             @db.DateTime(3)
   newExpiresAt   DateTime?             @db.DateTime(3)
-  actorAdminId   String                @db.VarChar(36)
+  actorAdminId   String?               @db.VarChar(36)
+  actorType      ActorType             @default(ADMIN)
+  beforeJson     Json?
+  afterJson      Json?
   reason         String?               @db.VarChar(500)
   createdAt      DateTime              @default(now()) @db.DateTime(3)
   subscription   Subscription          @relation(fields: [subscriptionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   order          Order?                @relation(fields: [orderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  actorAdmin     User                  @relation(fields: [actorAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorAdmin     User?                 @relation(fields: [actorAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([subscriptionId, createdAt])
 }
 
 model AdminAuditLog {
-  id           String   @id @default(uuid()) @db.VarChar(36)
-  actorAdminId String   @db.VarChar(36)
-  action       String   @db.VarChar(80)
-  entityType   String   @db.VarChar(40)
-  entityId     String   @db.VarChar(40)
+  id           String    @id @default(uuid()) @db.VarChar(36)
+  actorAdminId String?   @db.VarChar(36)
+  actorType    ActorType @default(ADMIN)
+  action       String    @db.VarChar(80)
+  entityType   String    @db.VarChar(40)
+  entityId     String    @db.VarChar(40)
   beforeJson   Json?
   afterJson    Json?
-  reason       String?  @db.VarChar(500)
-  requestId    String?  @db.VarChar(64)
-  createdAt    DateTime @default(now()) @db.DateTime(3)
-  actorAdmin   User     @relation(fields: [actorAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reason       String?   @db.VarChar(500)
+  requestId    String?   @db.VarChar(64)
+  createdAt    DateTime  @default(now()) @db.DateTime(3)
+  actorAdmin   User?     @relation(fields: [actorAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([actorAdminId, createdAt])
 }
@@ -333,4 +359,17 @@ model AppSettings {
   ownerEmail String   @db.VarChar(254)
   timezone   String   @default("Asia/Shanghai") @db.VarChar(64)
   updatedAt  DateTime @updatedAt @db.DateTime(3)
+}
+
+model IdempotencyRecord {
+  id           String   @id @default(uuid()) @db.VarChar(36)
+  actorAdminId String   @db.VarChar(36)
+  keyHash      String   @db.VarChar(64)
+  requestHash  String   @db.VarChar(64)
+  operation    String   @db.VarChar(160)
+  responseJson Json
+  createdAt    DateTime @default(now()) @db.DateTime(3)
+  actorAdmin   User     @relation(fields: [actorAdminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([actorAdminId, keyHash])
 }

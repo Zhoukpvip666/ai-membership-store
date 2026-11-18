@@ -24,10 +24,18 @@ async function logout() {
     <div v-if="auth.state.user" class="panel profile-panel">
       <div class="profile-user">
         <span class="avatar large">{{
-          auth.state.user.displayName.slice(0, 1)
+          (
+            auth.state.user.username ||
+            auth.state.user.loginEmail.split('@')[0]!
+          ).slice(0, 1)
         }}</span>
         <div>
-          <h2>{{ auth.state.user.displayName }}</h2>
+          <h2>
+            {{
+              auth.state.user.username ||
+              auth.state.user.loginEmail.split('@')[0]
+            }}
+          </h2>
           <span class="muted">{{
             auth.state.user.role === 'ADMIN' ? '管理员' : '客户账户'
           }}</span>

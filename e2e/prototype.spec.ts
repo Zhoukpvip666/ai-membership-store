@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
         json: {
           user: {
             id: '00000000-0000-4000-8000-000000000001',
-            displayName: 'Prototype admin',
+            username: 'Prototype admin',
             loginEmail: 'owner@example.com',
             role: 'ADMIN',
             status: 'ACTIVE',
@@ -28,7 +28,13 @@ test.beforeEach(async ({ page }) => {
           },
         },
       })
-    if (path === '/api/v1/admin/users' || path === '/api/v1/admin/products')
+    if (
+      [
+        '/api/v1/admin/users',
+        '/api/v1/admin/products',
+        '/api/v1/admin/subscriptions',
+      ].includes(path)
+    )
       return route.fulfill({
         json: { items: [], total: 0, page: 1, pageSize: 20 },
       })

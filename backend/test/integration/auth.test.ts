@@ -51,7 +51,7 @@ const rawToken = (cookie: string) => cookie.slice(COOKIE_NAME.length + 1)
 async function customer() {
   const loginEmail = randomUUID() + '@example.com'
   const result = await request('/admin/users', 'POST', {
-    displayName: '测试客户',
+    adminLabel: '测试客户',
     loginEmail,
   })
   assert.equal(result.status, 201)
@@ -219,7 +219,7 @@ test('customers stay pending without passwords; duplicate/normalized emails and 
   assert.equal(
     (
       await request('/admin/users', 'POST', {
-        displayName: '重复',
+        adminLabel: '重复',
         loginEmail: ' ' + user.loginEmail.toUpperCase() + ' ',
       })
     ).status,
@@ -229,7 +229,7 @@ test('customers stay pending without passwords; duplicate/normalized emails and 
     assert.equal(
       (
         await request('/admin/users', 'POST', {
-          displayName: '注入',
+          adminLabel: '注入',
           loginEmail: randomUUID() + '@example.com',
           [field]: 'forbidden',
         })
@@ -248,7 +248,7 @@ test('customers stay pending without passwords; duplicate/normalized emails and 
 test('customer editing is limited to profile fields and admin changes are audited without secrets', async () => {
   const user = await customer()
   const result = await request('/admin/users/' + user.id, 'PATCH', {
-    displayName: '更新姓名',
+    adminLabel: '更新姓名',
     notificationEmail: ' Notice@Example.com ',
   })
   assert.equal(result.status, 200)
@@ -595,7 +595,7 @@ test('duplicate concurrent creation and audit failure leave no partial customer 
   const loginEmail = randomUUID() + '@example.com'
   const results = await Promise.all(
     [1, 2].map(() =>
-      request('/admin/users', 'POST', { displayName: '并发客户', loginEmail }),
+      request('/admin/users', 'POST', { adminLabel: '并发客户', loginEmail }),
     ),
   )
   assert.deepEqual(results.map((result) => result.status).sort(), [201, 409])
@@ -603,7 +603,7 @@ test('duplicate concurrent creation and audit failure leave no partial customer 
   const rejectedEmail = randomUUID() + '@example.com'
   await assert.rejects(
     customerService(db, env.APP_BASE_URL).create(
-      { displayName: '回滚测试', loginEmail: rejectedEmail },
+      { adminLabel: '回滚测试', loginEmail: rejectedEmail },
       adminId,
       'x'.repeat(100),
     ),

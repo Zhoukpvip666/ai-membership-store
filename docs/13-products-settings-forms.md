@@ -1,5 +1,7 @@
 # Task 1.2.3 — Products, settings and dynamic form configuration
 
+> Historical milestone report. The current user/subscription contract and fourth incremental migration are documented in [Phase 2](14-user-subscription-core.md). Prior table/test counts and displayName/source/status descriptions below describe their original milestone, not the current schema.
+
 Implemented for owner review. Stop after the PR; Task 1.2.4 is not started.
 
 ## Delivered behavior

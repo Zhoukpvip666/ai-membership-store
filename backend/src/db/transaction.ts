@@ -10,11 +10,23 @@ export async function transaction<T>(
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       })
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2034' &&
-        attempt < 3
-      )
+      const known = error instanceof Prisma.PrismaClientKnownRequestError
+      const adapter = known
+        ? (error.meta?.driverAdapterError as
+            | {
+                cause?: { originalCode?: string; kind?: string }
+              }
+            | undefined)
+        : undefined
+      // Prisma 7 driver adapters nest raw SQL deadlocks in driverAdapterError.
+      const rawConflict =
+        known &&
+        error.code === 'P2010' &&
+        (adapter?.cause?.kind === 'TransactionWriteConflict' ||
+          ['1213', '1205'].includes(
+            String(error.meta?.code ?? adapter?.cause?.originalCode),
+          ))
+      if (known && (error.code === 'P2034' || rawConflict) && attempt < 3)
         continue
       throw error
     }

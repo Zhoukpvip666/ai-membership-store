@@ -82,6 +82,43 @@ async function verifyApiRestart() {
         (await settings.json()).settings.storeName,
         'Persisted settings',
       )
+      const subscriptions = await fetch(
+        origin +
+          '/api/v1/admin/subscriptions?search=Phase%202%20restart%20subscription',
+        { headers: { cookie } },
+      )
+      assert.equal(subscriptions.status, 200)
+      const persisted = (await subscriptions.json()).items
+      assert.equal(persisted.length, 1)
+      const subscription = persisted[0]
+      assert.equal(
+        subscription.productNameSnapshot,
+        'Phase 2 restart subscription',
+      )
+      assert.equal(subscription.formData.contact, 'non-sensitive@example.com')
+      assert.equal(subscription.version, 1)
+      // Replay after both database and API process restarts, without creating another row.
+      const replay = await fetch(origin + '/api/v1/admin/subscriptions', {
+        method: 'POST',
+        headers: {
+          cookie,
+          origin: env.APP_BASE_URL,
+          'content-type': 'application/json',
+          'x-requested-with': 'MembershipStore',
+          'Idempotency-Key': 'phase2-restart-persistence',
+        },
+        body: JSON.stringify({
+          userId: subscription.userId,
+          productId: subscription.productId,
+          startedAt: subscription.startedAt,
+          expiresAt: subscription.expiresAt,
+          renewalPriceFen: subscription.renewalPriceFen,
+          formData: subscription.formData,
+          note: subscription.note,
+        }),
+      })
+      assert.equal(replay.status, 201)
+      assert.equal((await replay.json()).subscription.id, subscription.id)
     } finally {
       if (child.exitCode === null && !failed) {
         const exited = once(child, 'exit')
@@ -91,7 +128,7 @@ async function verifyApiRestart() {
     }
   }
 }
-test('real MySQL restart retains product JSON, archive state, settings and all eleven business tables', async () => {
+test('real MySQL/API restarts retain products, settings, subscriptions, idempotent responses and all twelve business tables', async () => {
   const db = createDatabase(integrationEnvironment().DATABASE_URL)
   try {
     const p = await db.product.findUniqueOrThrow({
@@ -115,7 +152,7 @@ test('real MySQL restart retains product JSON, archive state, settings and all e
     const tables = await db.$queryRaw<
       { count: bigint }[]
     >`SELECT COUNT(*) AS count FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME <> '_prisma_migrations'`
-    assert.equal(Number(tables[0]!.count), 11)
+    assert.equal(Number(tables[0]!.count), 12)
     await verifyApiRestart()
   } finally {
     await db.$disconnect()

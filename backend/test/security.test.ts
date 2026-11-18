@@ -41,7 +41,7 @@ test('passwords are salted Argon2id and wrong passwords/hashes fail closed', asy
 test('customer inputs normalize identities and reject injected passwords, roles and statuses', () => {
   assert.equal(
     schemas.createCustomer.parse({
-      displayName: ' 客户 ',
+      adminLabel: ' 客户 ',
       loginEmail: ' Customer@Example.com ',
     }).loginEmail,
     'customer@example.com',
@@ -55,7 +55,7 @@ test('customer inputs normalize identities and reject injected passwords, roles 
   ])
     assert.equal(
       schemas.createCustomer.safeParse({
-        displayName: '客户',
+        adminLabel: '客户',
         loginEmail: 'customer@example.com',
         [key]: 'untrusted',
       }).success,

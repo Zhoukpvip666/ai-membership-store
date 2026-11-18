@@ -1,5 +1,7 @@
 # Task 1.2.1 — Prisma 与本地数据库基础
 
+> Historical milestone report. The current user/subscription contract and fourth incremental migration are documented in [Phase 2](14-user-subscription-core.md). Prior table/test counts and displayName/source/status descriptions below describe their original milestone, not the current schema.
+
 > 本文是 Task 1.2.1 的历史实施报告。认证与客户管理的当前实现见 [Task 1.2.2 报告](12-authentication-customers-invitations.md)；下文未实现项描述当时的交付边界。
 
 本次仅交付数据库基础，待人工审查。Task 1.2.2 未开始。前端保留 Task 1.1 的独立 Mock 交互，不读取数据库，不提供真实登录、客户/商品/订单 CRUD、邀请激活、付款、退款、邮件或上游操作。
