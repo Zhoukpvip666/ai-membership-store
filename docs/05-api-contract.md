@@ -14,7 +14,7 @@ Base path: /api/v1. All payloads are JSON. Timestamps are UTC ISO-8601. Money is
 
 ## Planned order edit API (not implemented)
 
-The next approved order-write stage is PATCH `/customer/orders/:id` and PATCH `/admin/orders/:id`, specified in [docs/20-order-edit-api.md](20-order-edit-api.md). CUSTOMER may replace only the complete formData of their own eligible order; ADMIN may replace formData and optionally change amountFen in the same atomic edit. Both require expectedVersion and Idempotency-Key. Validation uses the order's frozen formSchemaSnapshot. internalNote remains a separate D48 operation. Cancellation, timeout, payment, refund and fulfillment are out of scope.
+The next approved order-write stage is PATCH `/customer/orders/:id` and PATCH `/admin/orders/:id`, specified in [docs/20-order-edit-api.md](20-order-edit-api.md). CUSTOMER may replace only the complete formData of their own eligible order; ADMIN may replace formData and optionally change amountFen in the same atomic edit. Both require expectedVersion and Idempotency-Key. Validation uses the order's frozen formSchemaSnapshot. internalNote remains a separate D48 endpoint; its own update still increments Order.version and appends Revision/Event/AdminAuditLog atomically, but is outside T15. Cancellation, timeout, payment, refund and fulfillment are out of scope.
 
 ## Model review follow-up (no new endpoints)
 
