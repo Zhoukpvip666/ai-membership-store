@@ -206,6 +206,7 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 | T10 | 自然周期算法 | 月末、闰年、时区/DST、原始锚点和人工调整后账期修订的精确算法 |
 | T11 | 商品/价格快照重算 | 明确 ADMIN 修改 amountFen 的上下限、原因字段与审计 DTO |
 | T12 | 订单创建请求幂等身份 | 明确 actorUserId、角色、操作名称、keyHash、requestHash 的规范化和并发回放响应 |
+| T13 | 商品结构化周期管理 | 补齐 Product 管理 API、DTO 和前端对 servicePeriodUnit/servicePeriodCount 的读写；新建订阅商品要求完整周期，ONE_TIME 为 NULL；历史 NULL 不推断，需管理员显式补录后才能创建订阅订单 |
 
 ## 5.1 技术实现默认方案（依据 D50，由助手负责常规设计）
 
@@ -244,6 +245,58 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 - `amountFen > 0` 的订单必须走 UNPAID + NOT_STARTED，付款确认后才进入 PAID + PROCESSING。
 - 用数据库 CHECK 约束状态、金额、付款时间和交易记录可验证的同一行条件；跨表“不得存在 PAYMENT 交易”等条件由事务服务保证并测试。
 
+### F. 商品快照字段契约
+
+订单创建时从同一份已校验的 Product 记录复制购买约定字段；订单详情和后续订阅兑现只能读取订单快照，不能回读当前 Product 来覆盖历史。
+
+| Product 来源字段 | Order 字段 | 规则 |
+| --- | --- | --- |
+| `id` | `productId` | 保留稳定外键；Product 禁止硬删除，足以定位商品记录 |
+| `name` | `productNameSnapshot` | 创建时名称快照 |
+| `description` | `productDescriptionSnapshot` | 创建时说明快照，可为 NULL |
+| `type` | `productTypeSnapshot` | SUBSCRIPTION / ONE_TIME，履约分流依据 |
+| `priceFen` | `priceSnapshotFen` | 创建时商品原始售价，不等于管理员可调整的最终应付金额 |
+| `renewalPriceFen` | `renewalPriceSnapshotFen` | 订阅商品的续费价格快照；ONE_TIME 必须为 NULL |
+| `termLabel` | `termSnapshot` | 人类可读的周期描述，仅展示，不参与日期计算 |
+| `servicePeriodUnit` | `servicePeriodUnitSnapshot` | DAY / MONTH / YEAR 结构化周期单位 |
+| `servicePeriodCount` | `servicePeriodCountSnapshot` | 正整数周期数量；SUBSCRIPTION 新订单必须完整有效，绝不从 termLabel 推断 |
+| `formSchema` | `formSchemaSnapshot` | 创建时完整表单结构，包含字段 ID、类型、标签、必填、提示、选项和默认值 |
+| 经服务端 Schema 校验及规范化的提交值 | `formData` | 按稳定字段 ID 存储；不得包含密码、Token 或其他被表单契约禁止的敏感凭证 |
+
+其他订单级字段：
+
+- `amountFen`：最终应付金额，独立于 `priceSnapshotFen`；用户按商品原价，管理员可按 D5/D13 调整。
+- `contactEmailSnapshot`：订单创建时的客户联系邮箱快照，采用客户 `notificationEmail`，为空时回退 `loginEmail`。它与商品表单中客户填写的第三方会员邮箱是不同概念。
+- `targetIdentifier`：保留现有旧字段兼容性；新订单以 `formData` 为动态商品信息的唯一来源，不把旧 `Product.targetField` 当作新表单配置。
+- `internalNote`：管理员内部备注，按 D48/D49 管理，不属于商品表单，也不进入客户 DTO。
+- `OrderRevision.snapshotJson`：按 D40/D44 保存完整订单业务状态及上述快照，不重复读取可变 Product。
+
+明确不复制为订单快照的 Product 字段：
+
+- `slug`：服务端生成且稳定；`productId` 已是稳定外键，不需要重复存储。
+- `targetField`：旧兼容字段；新商品使用 formSchema，targetField 对新流程固定 NONE。
+- `listed`、`sortOrder`、`archivedAt`：商品目录/选择资格元数据，不属于客户购买的商品条款。创建事务中按 D3 检查资格；商品之后下架或归档不改变既有订单。
+- Product 的 `createdAt` / `updatedAt`：商品记录元数据，不属于订单购买快照。订单自身的 createdAt 记录购买约定创建时间。
+
+### G. 商品周期能力缺口（创建订单前置任务）
+
+当前数据库 Product 已有 `servicePeriodUnit` 和 `servicePeriodCount`，但本次检查的 main 分支产品管理 API 与前端尚未暴露这两个字段：
+
+- `backend/src/modules/products/schemas.ts` 的 create/edit Zod 字段没有周期单位和数量。
+- `backend/src/modules/products/service.ts` 的 Product select 没有返回这两个字段。
+- `frontend/src/api/products.ts` 的 Product 类型没有这两个字段。
+- `frontend/src/views/admin/Products.vue` 仍只编辑展示说明性 `termLabel`，并明确提示“服务周期仅作说明，不推算到期日期”。
+
+因此，在订单创建 API 之前必须先补齐商品周期管理能力：
+
+1. 新建 SUBSCRIPTION 商品时，必须提供 DAY/MONTH/YEAR 和正整数数量。
+2. ONE_TIME 商品的结构化服务周期为 NULL。
+3. 对已有周期字段为 NULL 的历史商品，不从 termLabel 猜测；管理员必须显式补录后，才能创建新的订阅订单。
+4. 产品详情/列表 DTO 和管理表单显示结构化周期；编辑其他字段时允许历史 NULL 暂时保留，但订单创建服务拒绝缺少周期的 SUBSCRIPTION 商品。
+5. 不需要新增 Product 表字段；现有数据库列和 CHECK 已提供存储基础。
+
+该任务属于订单创建的必要前置工作，应单独实现和验收，不应让订单创建 API 临时解析 termLabel。
+
 ### E. 内部备注
 
 - `internalNote` 只出现在管理员 DTO，客户 DTO 和客户查询投影中不得包含。
@@ -252,14 +305,15 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 
 ## 6. 开发顺序与验收门槛
 
-1. 订单创建 API：ADMIN 和 USER 两种来源、客户/商品资格、价格、表单快照、必填 Idempotency-Key。
-2. 订单编辑 API：待付款期间 formData 和管理员 amountFen 编辑、version 冲突、历史审计。
-3. 取消与超时：用户/管理员取消、系统 24 小时超时取消。
-4. 付款确认：人工全额核对、渠道、流水号、paidAt、paymentConfirmedAt、PaymentTransaction。
-5. 履约：管理员确认，事务内完成订单和订阅兑现。
-6. 续费：用户/管理员触发、系统生成隐藏续费订单、明确订阅目标和周期幂等。
-7. 前端：管理员订单管理与用户订单中心。
-8. 上线准备：完整 API/DB/E2E、并发与恢复测试、生产备份恢复演练和安全配置。
+1. 商品结构化周期管理前置任务：补齐 Product API/DTO/前端对 servicePeriodUnit/servicePeriodCount 的支持，并显式补录需要继续销售的历史订阅商品。
+2. 订单创建 API：ADMIN 和 USER 两种来源、客户/商品资格、价格、表单快照、必填 Idempotency-Key。
+3. 订单编辑 API：待付款期间 formData 和管理员 amountFen 编辑、version 冲突、历史审计。
+4. 取消与超时：用户/管理员取消、系统 24 小时超时取消。
+5. 付款确认：人工全额核对、渠道、流水号、paidAt、paymentConfirmedAt、PaymentTransaction。
+6. 履约：管理员确认，事务内完成订单和订阅兑现。
+7. 续费：用户/管理员触发、系统生成隐藏续费订单、明确订阅目标和周期幂等。
+8. 前端：管理员订单管理与用户订单中心。
+9. 上线准备：完整 API/DB/E2E、并发与恢复测试、生产备份恢复演练和安全配置。
 
 每个阶段单独授权、单独 PR、独立测试和审查。订单 API 尚未完整实现、验收前，不部署正式版本，不接入真实客户订单。
 
