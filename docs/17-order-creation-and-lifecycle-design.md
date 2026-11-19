@@ -116,7 +116,7 @@
 | D66 | 取消原因规则 | CUSTOMER 主动取消未付款订单时 reason 可选；ADMIN 主动取消任何订单时必须填写非空取消原因，最多 500 字符；SYSTEM 因 24 小时超时取消时使用固定原因 `PAYMENT_TIMEOUT`，不接受客户端输入。原因写入 Order.cancellationReason、OrderRevision、OrderEvent 和适用的 AdminAuditLog；客户取消不写 AdminAuditLog | ACTIVE |
 | D67 | 已付款订单取消权限与退款状态 | 只有 ADMIN 可以取消已确认全额付款但尚未完成履约的普通订单，CUSTOMER 不得取消或发起该取消 API。取消必须与订单状态/付款事实在同一事务中校验；成功后 fulfillmentStatus=CANCELLED、cancelledAt 写入，paymentStatus=REFUND_PENDING，保留原始已确认 PAYMENT 交易，不在取消事务中伪造退款成功或删除付款记录。后续线下实际退款完成后，才由独立退款流程登记退款交易并转为 REFUNDED，遵守 D17/D18/D59 | ACTIVE |
 | D68 | 零元订单取消 API 语义 | 对 `NOT_REQUIRED + PROCESSING` 且未完成履约的零元订单，仅 ADMIN 可按 D53 取消；必须填写原因，成功后 fulfillmentStatus=CANCELLED 并记录管理员主体、版本、事件和审计，paymentStatus 保持 NOT_REQUIRED，不创建退款交易、不创建订阅。CUSTOMER 不得取消零元待履约订单；已完成或已取消订单不可再次取消 | ACTIVE |
-| D69 | 每分钟 SYSTEM 超时取消任务 | 后台任务每分钟扫描并取消已达到 `createdAt + 24 hours` 且仍未完成付款确认的到期普通订单；截止时间使用数据库 UTC 时间，编辑不延长。每笔成功取消在一个事务中完成条件状态更新、version+1、OrderRevision、OrderEvent 和待核实付款交易的关闭处理；actorType=SYSTEM、actorUserId/actorAdminId 均为 NULL，不写 AdminAuditLog，不创建退款。任务可多实例运行，依靠行锁/条件更新保证每笔订单只成功一次；重复扫描不得重复事件或版本。到期时仍为 PENDING_VERIFICATION 的未确认 PAYMENT 交易须保留原记录并标记 FAILED（注明 PAYMENT_TIMEOUT），禁止事后确认；没有付款交易的 UNPAID 订单直接取消。遵守 D10/D39，超时取消后不得恢复或迟延确认 | ACTIVE |
+| D69 | 每分钟 SYSTEM 超时取消任务 | 后台任务每分钟扫描并取消已达到 `createdAt + 24 hours` 且仍未完成付款确认的到期普通订单；截止时间使用数据库 UTC 时间，编辑不延长。每笔成功取消在一个事务中完成条件状态更新、version+1、OrderRevision、OrderEvent 和待核实付款交易的关闭处理；actorType=SYSTEM、actorUserId/actorAdminId 均为 NULL，不写 AdminAuditLog，不创建退款。任务可多实例运行，依靠行锁/条件更新保证每笔订单只成功一次；重复扫描不得重复事件或版本。到期时仍为 PENDING_VERIFICATION 的未确认 PAYMENT 交易须保留原记录并标记 FAILED（注明 PAYMENT_TIMEOUT），订单汇总 paymentStatus 同步回到 UNPAID，再将 fulfillmentStatus 设为 CANCELLED；禁止事后确认。没有付款交易的 UNPAID 订单保持 UNPAID 直接取消。遵守 D10/D39，超时取消后不得恢复或迟延确认 | ACTIVE |
 ## 2. 关键概念与字段语义
 
 ### 2.1 订单、付款、履约、订阅是不同维度
