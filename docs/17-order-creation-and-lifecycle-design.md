@@ -84,6 +84,8 @@
 | D35 | 幂等记录保留 | 订单创建幂等记录永久保留，不设置 TTL，不自动清理 | ACTIVE |
 | D36 | 幂等模型调整 | 现有 IdempotencyRecord.actorAdminId 需要迁移为通用 actorUserId，保留既有管理员记录及其关联；使用新增 Migration，不改写已应用迁移 | ACTIVE |
 
+| D37 | 零元订单 | 当管理员将订单最终应付金额设为 0 时，该订单无需实际付款；付款状态采用无需付款语义，不创建虚假 PaymentTransaction，不填写 paidAt/paymentConfirmedAt，并直接进入待履约状态；管理员仍须正常确认履约 | ACTIVE |
+
 ## 2. 关键概念与字段语义
 
 ### 2.1 订单、付款、履约、订阅是不同维度
@@ -120,7 +122,7 @@
 
 ### 3.1 初始状态
 
-所有普通新订单：
+所有普通新订单（不含零元订单）：
 
 - `paymentStatus = UNPAID`
 - `fulfillmentStatus = NOT_STARTED`
@@ -128,6 +130,8 @@
 - `paymentConfirmedAt = NULL`
 - `fulfilledAt = NULL`
 - `cancelledAt = NULL`
+
+零元订单例外：管理员将 `amountFen` 设为 0 时，无需实际付款，不创建 `PaymentTransaction`，`paidAt` 和 `paymentConfirmedAt` 保持 NULL；付款状态使用“无需付款”语义，并直接进入 `PROCESSING` 待履约状态。管理员仍须按普通规则确认履约。具体枚举名称及兼容迁移属于技术实现，不得把零元订单伪装成已付款。
 
 ### 3.2 状态转换摘要
 
@@ -138,6 +142,7 @@
 | UNPAID + NOT_STARTED | USER（本人）/ ADMIN | 取消 | CANCELLED |
 | UNPAID + NOT_STARTED，超过 24 小时 | SYSTEM | 自动取消 | CANCELLED |
 | UNPAID + NOT_STARTED，未超时 | ADMIN | 确认全额收款 | PAID + PROCESSING |
+| 零元无需付款订单 | SYSTEM（创建事务） | 建立无需付款状态 | 无需付款 + PROCESSING |
 | PAID + PROCESSING | ADMIN | 取消无法履约订单 | 取消，保留付款交易并待退款处理 |
 | PAID + PROCESSING | ADMIN | 确认履约完成 | COMPLETED，并按商品类型兑现 |
 | COMPLETED / CANCELLED | 任意普通业务主体 | 再次履约/恢复/普通取消 | 拒绝 |
@@ -204,5 +209,6 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 | 日期 | 变更 |
 | --- | --- |
 | 2026-11-18 | 初版：将本轮已确认业务规则登记为 D1–D36；未确认技术项登记为 T1–T12。 |
+| 2026-11-18 | 新增 D37：明确零元订单无需付款且直接进入待履约状态；补充对应技术设计待确认项。 |
 
 后续每次业务决定都必须分配新的 D 编号，并按第 1.3 节维护冲突、替代和撤销关系。
