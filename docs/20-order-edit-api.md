@@ -19,7 +19,7 @@ Implement exactly:
 
 Use one shared domain service with separate strict role DTOs and authorization. Preserve existing GET and POST routes.
 
-internalNote is expressly excluded. It remains a separate ADMIN-only concern under D48 and must not be accepted by either core edit DTO.
+internalNote is expressly excluded from both core edit DTOs. It remains a separate ADMIN-only endpoint under D48. That separate endpoint must still require expectedVersion, increment Order.version, append a complete OrderRevision and OrderEvent, and atomically write AdminAuditLog plus idempotency response. It is outside this T15 implementation.
 
 ## 2. Authentication and ownership
 
@@ -109,7 +109,7 @@ Both DTOs are strict. Reject unknown/server-managed fields rather than silently 
 - Only ADMIN can edit amountFen.
 - priceSnapshotFen and all Product price/period snapshots remain immutable.
 - A changed amountFen requires a reason, including discount, markup or changing to zero.
-- Do not change paymentStatus as a side effect of setting amountFen to zero. D51/D37 zero-price initial-order semantics apply at order creation. An existing positive-price UNPAID order edited to amountFen=0 remains within the UNPAID pre-fulfillment model unless a separate approved decision explicitly defines conversion to NOT_REQUIRED. Do not infer or silently convert it to a zero-price gift order.
+- If ADMIN changes an eligible UNPAID + NOT_STARTED order amountFen from a positive value to 0, the same atomic edit must transition it to NOT_REQUIRED + PROCESSING under D37/D51 and D64. Keep paidAt/paymentConfirmedAt NULL and create no PaymentTransaction. This is one version increment and one revision/event/audit/idempotency transaction. The order then leaves the editable state and enters manual fulfillment. If any payment fact/PaymentTransaction already exists, reject the conversion and require cancellation/refund under D17/D18/D59.
 - CUSTOMER never sees priceAdjustmentReason or admin audit details unless the existing safe DTO contract explicitly allows a non-sensitive customer-visible field (default: do not expose).
 
 ## 7. Atomic transaction, revision and concurrency
@@ -163,7 +163,7 @@ Do not leak order existence across customer ownership boundaries.
 ## 10. Explicit non-goals
 
 This task does not implement:
-- Internal note edits (D48 separate).
+- Internal note edits (D48 separate; must still increment version and append revision/event/audit).
 - Order cancellation or 24-hour expiry worker.
 - Payment confirmation, PaymentTransaction or refunds.
 - Fulfillment, supplier APIs or subscription entitlement.
@@ -177,6 +177,7 @@ This task does not implement:
 - Both role-specific PATCH routes work over real HTTP with persisted Session and strict DTOs.
 - CUSTOMER ownership is enforced without order-existence leakage.
 - Admin may edit formData and amountFen together in one version; customer can edit only formData.
+- An eligible unpaid order changed to amountFen=0 transitions atomically to NOT_REQUIRED + PROCESSING under D64; orders with existing payment facts cannot be converted.
 - Form replacement validates against frozen formSchemaSnapshot.
 - All eligibility/time/status checks are rechecked while holding the order lock.
 - expectedVersion concurrency permits only one winner and leaves no side effects for stale loser.
