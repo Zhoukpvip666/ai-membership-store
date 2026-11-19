@@ -2,7 +2,7 @@
 
 - Document: ORDER-EDIT-API
 - Version: 1.1
-- Status: T15 implemented for review; no development deployment
+- Status: T15 merged in PR #14 (`5826593cbebcf9d8f4770dace10d85433813121f`); no development deployment
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order creation API](19-order-creation-api.md), [Order revision foundation](18-order-revision-foundation.md), [Order read API](16-order-read-api.md)
 
@@ -190,7 +190,7 @@ This task does not implement:
 - Existing order creation, read, revision, subscription and browser regression suites pass.
 - Run isolated fresh and historical database migration verification only as required by code changes; never use development .env, database, volume or Seed.
 - Update API contract, data model if needed, roadmap and implementation report.
-- Stop at a PR for review; do not merge or proceed to cancellation/payment/fulfillment without separate authorization.
+- T15 merged in PR #14. Do not proceed to cancellation/payment/fulfillment without separate authorization.
 
 ## 12. T15 implementation report (2026-11-19)
 
