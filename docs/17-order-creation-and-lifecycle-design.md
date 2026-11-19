@@ -169,7 +169,7 @@
 | PAID + PROCESSING | ADMIN | 确认履约完成 | COMPLETED，并按商品类型兑现 |
 | COMPLETED / CANCELLED | 任意普通业务主体 | 再次履约/恢复/普通取消 | 拒绝 |
 
-具体状态枚举和取消后的退款待处理表达，须在 API 阶段对照现有 Schema 确认，不得擅自新增或复用错误状态。超时取消不得转入待核实状态。
+取消已付款订单时沿用现有 REFUND_PENDING 表达待退款状态（D18/D59）；只有线下退款实际完成后才转为 REFUNDED。具体取消/退款 API 尚未实现。超时取消仍按 D39 处理，不转入待核实状态。
 
 ## 4. 已有数据库基础与待实现事项
 
@@ -179,19 +179,16 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 
 ### 4.2 尚未实现
 
-本文件的业务决策不表示 API 已存在。当前尚待实现的主要内容：
+订单创建 API 已于 PR #11 合并；第十二条 Migration 已进入 main，但尚未应用到开发数据库。当前尚待实现的主要内容：
 
-1. 订单创建 API 已在独立功能分支实现，待 PR 审查；契约、边界和实际测试见 [19-order-creation-api.md](19-order-creation-api.md)。
-2. 通用 actorUserId 幂等模型已由订单版本基础设施实现；订单创建接入尚未实现。
-3. OrderRevision 完整版本快照表及增量迁移已实现；订单写入事务接入尚未实现。
-4. 待付款订单编辑 API 和 version 并发控制。
-4. 订单 24 小时自动取消任务。
-5. 用户/管理员取消 API。
-6. 管理员全额付款确认与 PaymentTransaction 原子写入。
-7. 管理员履约 API 与订单到订阅原子兑现。
-8. 订阅商品自然周期计算与月底/闰年规则。
-9. 订单及订阅管理前端。
-10. 完整并发、回滚、权限、API、浏览器 E2E 验收。
+1. 待付款订单编辑 API 和 version 并发控制。
+2. 订单 24 小时自动取消任务。
+3. 用户/管理员取消 API，以及已付款订单取消后的线下退款登记流程（D17/D18/D59）。
+4. 管理员全额付款确认与 PaymentTransaction 原子写入。
+5. 管理员履约 API 与订单到订阅原子兑现。
+6. 订阅商品自然周期计算与月底/闰年规则。
+7. 订单及订阅管理前端。
+8. 完整并发、回滚、权限、API、浏览器 E2E 验收。
 
 ## 5. 待确认技术设计清单
 
@@ -329,7 +326,7 @@ npm run build
 ## 6. 开发顺序与验收门槛
 
 1. [x] T13 商品结构化周期管理：已合并 PR #8（`c426ae0`）；历史 NULL 周期商品仍须由管理员显式补录后才能创建新的订阅订单。
-2. [x] 订单创建 API（待独立 PR 审查）：ADMIN 和 USER 两种来源、客户/商品资格、价格、表单快照、必填 Idempotency-Key；第十二条增量迁移补充 NOT_REQUIRED 零元语义。
+2. [x] 订单创建 API：已合并 PR #11（`b1f5d14`）；ADMIN/USER 创建、资格/价格/表单校验、V1 快照、事件/审计和幂等均已实现；第十二条增量 Migration 加入 NOT_REQUIRED 零元语义。
 3. 订单编辑 API：待付款期间 formData 和管理员 amountFen 编辑、version 冲突、历史审计。
 4. 取消与超时：用户/管理员取消、系统 24 小时超时取消。
 5. 付款确认：人工全额核对、渠道、流水号、paidAt、paymentConfirmedAt、PaymentTransaction。
@@ -377,12 +374,12 @@ npm run build
 
 ## 8. 订单版本与幂等基础设施（2026-11-19）
 
-本次独立完成 T1/T5/T12/T14 的存储与保护基础，以及 T15 的既有读取 DTO 补强，详见 [18-order-revision-foundation.md](18-order-revision-foundation.md)。第十一条增量 Migration 增加 Order.version 和 OrderRevision，并原地重命名 IdempotencyRecord.actorAdminId 为 actorUserId，前十条 Migration 不变。历史订单仅初始化 version=1，不补造历史操作或 V1 快照。新业务必须在未来创建事务中写 V1；所有成功修改（包括备注和状态）必须 version+1，与 Revision/Event/适用的 AdminAuditLog/幂等响应一起提交。
+T1/T5/T12/T14 的存储与保护基础，以及 T15 的既有读取 DTO 补强，详见 [18-order-revision-foundation.md](18-order-revision-foundation.md)。第十一条增量 Migration 增加 Order.version 和 OrderRevision，并原地重命名 IdempotencyRecord.actorAdminId 为 actorUserId，前十条 Migration 不变。PR #11 随后合并第十二条增量 Migration，加入 NOT_REQUIRED 零元订单语义；前十一条 Migration 不变。历史订单仅初始化 version=1，不补造历史操作或 V1 快照。新业务必须在未来创建事务中写 V1；所有成功修改（包括备注和状态）必须 version+1，与 Revision/Event/适用的 AdminAuditLog/幂等响应一起提交。
 
 版本历史使用 V1 明确白名单 JSON 和数据库不可变 Trigger；不开放浏览、比较、恢复 API 或界面。当前数据库要求订单每次更新恰好递增一版，revision 对应父订单当前版本；跨表“每次写入必须有完整历史”的原子性仍须由未来事务服务实现，不能把这些存储约束宣称为完整订单写业务。
 
-四个订单 GET 接口新增 version、expiresAt、remainingSeconds；管理员额外返回 internalNote，客户永不返回。截止时间从原 createdAt +24h 推导，服务端计算秒数；已付款、取消、完成等非可付款状态返回 0。没有实现订单创建/编辑/取消/付款/履约/续费 API，没有新增前端页面。开发数据库保持未访问、未迁移状态，待单独审查授权。
+四个订单 GET 接口新增 version、expiresAt、remainingSeconds；管理员额外返回 internalNote，客户永不返回。截止时间从原 createdAt +24h 推导，服务端计算秒数；已付款、取消、完成等非可付款状态返回 0。PR #11 已实现并合并两个订单创建 POST；订单编辑/取消/付款/履约/续费 API 和前端订单页面仍未实现。第十一、十二条 Migration 已合并到 main，但开发数据库仍未迁移，须单独审查授权。
 
 ## 9. 订单创建实现状态（2026-11-19）
 
-本次仅实现 docs/19 的两个创建 POST；一次事务完成订单 V1、完整版本快照、事件、仅管理员操作的审计及原始响应幂等记录。普通订单 UNPAID/NOT_STARTED，零元订单 NOT_REQUIRED/PROCESSING；不创建付款或订阅。新增第十二条增量 Migration，不改前十一条历史 SQL，不迁移开发数据库。OrderEvent 沿用互斥主体列：ADMIN 使用 actorAdminId，USER 使用 actorUserId；Revision/IdempotencyRecord 使用通用 actorUserId。后续编辑、取消、超时、付款、履约、续费和前端接入仍待单独授权。实际隔离测试及已知边界见 docs/19 的实现报告。
+PR #11 已合并 docs/19 的两个创建 POST；一次事务完成订单 V1、完整版本快照、事件、仅管理员操作的审计及原始响应幂等记录。普通订单 UNPAID/NOT_STARTED，零元订单 NOT_REQUIRED/PROCESSING；不创建付款或订阅。新增第十二条增量 Migration，不改前十一条历史 SQL，不迁移开发数据库。OrderEvent 沿用互斥主体列：ADMIN 使用 actorAdminId，USER 使用 actorUserId；Revision/IdempotencyRecord 使用通用 actorUserId。后续编辑、取消、超时、付款、履约、续费和前端接入仍待单独授权。历史升级与全新安装隔离测试均已通过；实际测试及已知边界见 docs/19 的实现报告。

@@ -1,8 +1,8 @@
 # Development Roadmap
 
-## Order creation API — implemented for review
+## Order creation API — merged
 
-**Status: Implemented and isolated verification passed; stop at PR review.** [Implementation contract](19-order-creation-api.md).
+**Status: Merged in PR #11 (`b1f5d14`); historical and fresh isolated verification passed. Development database remains unmigrated.** [Implementation contract](19-order-creation-api.md).
 
 - Implement POST `/customer/orders` and POST `/admin/orders` only; retain existing GET routes.
 - USER self-order requires ACTIVE account and listed/unarchived Product. ADMIN may target ACTIVE/PENDING_ACTIVATION CUSTOMER and listed/unlisted unarchived Product; DISABLED/archived are rejected.
@@ -12,16 +12,16 @@
 - Return complete role-safe order resource DTO with HTTP 201. Exact idempotent replay retains the original response; clients may GET detail for a fresh countdown.
 - No order edit/cancel/expiry worker/payment/refund/fulfillment/renewal/frontend integration or development DB migration.
 - Twelfth incremental migration adds NOT_REQUIRED and compatible zero-price/revision CHECKs; no historical rewrite or development deployment.
-- Stop at PR review; actual isolated HTTP/MySQL, concurrency/replay/rollback, DTO, browser and regression results are recorded in the implementation report.
+- Implementation merged; actual isolated HTTP/MySQL, concurrency/replay/rollback, DTO, browser and regression results are recorded in the implementation report.
 
 ## Order revision / generic idempotency foundation
 
-**Status: Implemented for review; development database is not migrated.** [Schema, immutable history and test guide](18-order-revision-foundation.md).
+**Status: Merged in PR #9; development database migration remains a separately authorized operation.** [Schema, immutable history and test guide](18-order-revision-foundation.md).
 
 - Eleventh incremental migration: Order.version, strict V1 append-only OrderRevision, in-place actorUserId idempotency rename. Ten historical migration files unchanged.
 - Existing order GET DTOs add version and server-derived deadline/countdown; ADMIN additionally receives internalNote, CUSTOMER excludes it.
 - New isolated historical/fresh tests and existing subscription idempotency/read API regressions; no order write API or frontend change.
-- Stop at the independent PR for review; next order creation stage requires separate authorization.
+- Order creation has since been implemented in PR #11; the next lifecycle stage requires separate authorization.
 
 ## Order API stage 1 — lists and details
 
@@ -34,7 +34,7 @@
 
 ## T13 — Product structured service periods
 
-**Status: Product periods merged in PR #8 (`c426ae0`); order creation is implemented for independent review as described above.** See [T13 contract and isolated verification](17-order-creation-and-lifecycle-design.md#g-商品周期能力缺口创建订单前置任务).
+**Status: Product periods merged in PR #8 (`c426ae0`); order creation is merged as described above.** See [T13 contract and isolated verification](17-order-creation-and-lifecycle-design.md#g-商品周期能力缺口创建订单前置任务).
 
 - Product ADMIN API/DTO/editor expose DAY/MONTH/YEAR and positive integer count; termLabel remains descriptive.
 - New subscriptions require complete periods. ONE_TIME stores NULL periods and renewal price. Type changes validate the merged record.

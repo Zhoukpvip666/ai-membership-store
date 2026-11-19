@@ -2,7 +2,7 @@
 
 - Document: ORDER-CREATE-API
 - Version: 1.0
-- Status: Implemented for PR review; development database not migrated
+- Status: Merged in PR #11 (`b1f5d147ce8be27780740d187ebace63c29629cf`); development database not migrated
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order read API](16-order-read-api.md), [Order revision foundation](18-order-revision-foundation.md)
 
@@ -211,7 +211,7 @@ One implementation task and one PR:
 6. Verify duplicate requests sequentially and concurrently, same key/different payload conflict, separate actor namespaces, historical subscription idempotency regression, and response replay after Product changes.
 7. Run format, typecheck, lint, unit tests, focused isolated database tests, relevant full regression suites and frontend/backend builds.
 8. Update API contract, data model if needed, roadmap and implementation report with actual results.
-9. Stop at a PR for review. Do not apply the migration to the development database or proceed to order editing/payment/fulfillment without separate authorization.
+9. Implementation was merged in PR #11. Do not apply the migration to the development database or proceed to order editing/payment/fulfillment without separate authorization.
 
 Definition of done:
 - Both POST routes work over real HTTP with Session/role enforcement.
@@ -278,7 +278,7 @@ Initial creation tests uncovered a mismatch with the existing exclusive OrderEve
 
 ### Remaining scope and manual setup
 
-No order editing/cancellation/expiry task/payment confirmation/refund/fulfillment/entitlement/renewal/email/notification/provider API or order frontend integration is added. The future admin creation UI must explicitly submit amountFen, initially prefilled from the selected product; this API task does not add that UI. The original shopping checkout, three layout edits, configuration and running services are preserved. No development database, root `.env` content, original data volume, grants or global MySQL configuration is accessed/changed. Stop at the independent PR and await review; do not automatically begin the next lifecycle stage.
+No order editing/cancellation/expiry task/payment confirmation/refund/fulfillment/entitlement/renewal/email/notification/provider API or order frontend integration is added. The future admin creation UI must explicitly submit amountFen, initially prefilled from the selected product; this API task does not add that UI. The original shopping checkout, three layout edits, configuration and running services are preserved. No development database, root `.env` content, original data volume, grants or global MySQL configuration is accessed/changed. PR #11 is merged. Do not automatically begin the next lifecycle stage; each subsequent lifecycle stage still requires separate authorization.
 
 ### Changed files
 
