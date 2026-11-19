@@ -70,7 +70,7 @@
 | D21 | 付款时间 | paidAt 表示实际付款发生时间，由管理员填写，默认当前时间；paymentConfirmedAt 由服务器生成；PaymentTransaction.occurredAt 必须等于 paidAt；createdAt 是付款记录入库时间 | ACTIVE |
 | D22 | 付款渠道与凭证 | 付款渠道必填，支持 WECHAT、ALIPAY、BANK_TRANSFER、CASH、OTHER；交易流水号和付款备注选填；流水号不能单独作为到账证明 | ACTIVE |
 | D23 | 付款后状态 | 人工确认收款成功后 paymentStatus=PAID，fulfillmentStatus=PROCESSING；付款交易、订单状态、订单事件和管理员审计在同一事务提交 | ACTIVE |
-| D24 | 履约权限与状态 | 第一版由 ADMIN 手动确认履约；仅 PAID + PROCESSING + 未取消订单可履约；已完成或已取消订单不能重复履约 | ACTIVE |
+| D24 | 履约权限与状态 | 第一版由 ADMIN 手动确认履约；普通付款订单须 PAID + PROCESSING，零元订单须 NOT_REQUIRED + PROCESSING（D52）；两种情况均要求未取消、未完成；已完成或已取消订单不能重复履约 | ACTIVE |
 | D25 | 履约原子性 | 订单完成、订阅创建/更新、订单事件、订阅事件和审计记录必须在同一事务；任何一步失败整体回滚；重复请求不能重复兑现 | ACTIVE |
 | D26 | 首次订阅起点 | 首次订阅 startedAt 等于实际 fulfilledAt；expiresAt 按订单冻结的服务周期快照计算 | ACTIVE |
 | D27 | 一次性商品履约 | ONE_TIME 履约完成后订单变为 COMPLETED，不创建订阅 | ACTIVE |
@@ -99,6 +99,7 @@
 | D49 | 创建订单时填写内部备注 | 管理员创建订单时可以同时填写可选的内部备注；不填写也可创建。备注独立于商品表单，客户不可见，之后仍按 D48 规则修改和审计 | ACTIVE |
 | D50 | 常规细节决策授权 | 项目负责人授权助手自行决定不改变已确认业务规则、资金安全、用户权限/隐私、数据不可逆性或长期维护成本的常规实现细节；助手应选择简单、一致、可测试的方案并记录在技术设计/实现文档中。涉及上述重大边界、与 ACTIVE 决策冲突、需要新增收费/通知/数据收集、或可能造成数据丢失的事项，仍须先向项目负责人确认。任何变更既有 D 决策仍须新增 D 编号并明确 Supersedes/Revokes 关系 | ACTIVE |
 | D51 | 用户自主创建零元订单 | CUSTOMER 可以自主创建售价本身为 0 的已上架、未归档商品订单；ADMIN 也可按 D5 将订单最终应付金额调整为 0。两种零元订单均无需实际付款、不创建 PaymentTransaction、paidAt/paymentConfirmedAt 保持 NULL，创建事务中直接进入无需付款/PROCESSING 待履约状态；仍须由 ADMIN 手动确认履约 | ACTIVE |
+| D52 | 零元订单履约资格（澄清 D24） | D24 的普通履约前置条件适用于实际付款订单；零元订单按 D37/D51 进入无需付款 + PROCESSING 后，也具备管理员手动确认履约的资格。履约服务必须分别验证 PAID + PROCESSING 或 NOT_REQUIRED + PROCESSING，且订单未取消、未完成；两条路径均执行 D25 的同一原子履约事务 | ACTIVE |
 ## 2. 关键概念与字段语义
 
 ### 2.1 订单、付款、履约、订阅是不同维度
@@ -197,7 +198,7 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 | T4 | 超时取消调度 | 定时任务、并发条件更新、补偿和停机恢复策略 |
 | T5 | 幂等响应存储 | 复用/迁移 IdempotencyRecord 时，明确 responseJson、事务、唯一键冲突和永久保留 |
 | T6 | 订单创建/编辑 DTO 与路由 | 明确字段白名单、权限、状态码、错误码和响应结构；客户详情按 D46、管理员详情按 D47 提供展示数据；明确剩余有效时间计算契约和管理员额外字段白名单 |
-| T7 | 0 元订单技术实现 | 按 D37、D51 实现 USER 商品原价为 0 与 ADMIN 调整 amountFen 为 0 两种路径；无需 PaymentTransaction，paidAt/paymentConfirmedAt 保持 NULL，创建事务直接进入无需付款/PROCESSING；明确付款状态枚举/约束、事件记录和兼容迁移，不得伪装为已付款 |
+| T7 | 0 元订单技术实现 | 按 D37、D51、D52 实现 USER 商品原价为 0 与 ADMIN 调整 amountFen 为 0 两种路径；新增明确的 NOT_REQUIRED 付款状态，禁止生成 PaymentTransaction，paidAt/paymentConfirmedAt 保持 NULL，创建事务直接进入 NOT_REQUIRED + PROCESSING；明确 CHECK/事件记录和增量迁移，不得伪装为已付款 |
 | T8 | 订单超时自动取消实现 | 实现 createdAt + 24 hours 到期自动取消；以条件更新/事务防止超时取消与付款确认竞态；取消后禁止恢复或迟延确认；迟到付款争议走订单系统外的线下人工处理；不实现用户上传付款凭证 |
 | T9 | 取消原因与事件类型 | 对照已有 OrderEvent 枚举，确认 USER/ADMIN/SYSTEM 的事件记录和原因要求 |
 | T10 | 自然周期算法 | 月末、闰年、时区/DST、原始锚点和人工调整后账期修订的精确算法 |
@@ -239,5 +240,6 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 | 2026-11-18 | 新增 D49：管理员创建订单时可选填写内部备注，后续按 D48 管理。 |
 | 2026-11-18 | 新增 D50：项目负责人授权助手处理不改变重大业务、安全、隐私和数据边界的常规细节；重大事项和既有决策冲突仍须确认并编号记录。 |
 | 2026-11-18 | 新增 D51：确认 CUSTOMER 可以自主创建售价为 0 的已上架商品订单；与管理员赠送订单一样无需付款交易，直接进入待履约，仍由管理员确认履约。 |
+| 2026-11-18 | 新增 D52：澄清 D24 的履约资格；除 PAID + PROCESSING 外，零元订单 NOT_REQUIRED + PROCESSING 也允许管理员确认履约，均受同一原子事务保护。 |
 
 后续每次业务决定都必须分配新的 D 编号，并按第 1.3 节维护冲突、替代和撤销关系。
