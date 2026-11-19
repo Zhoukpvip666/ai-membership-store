@@ -28,6 +28,18 @@
 
 T15 reuses all twelve committed migrations unchanged. Actual amount changes require a reason; supplied reasons without a price change are rejected, as are effective no-ops. Database-time eligibility is checked after the row lock and again in the conditional UPDATE. Fault-injection, real concurrent HTTP, exact DTO/replay and desktop/mobile browser coverage accompany the implementation. The read regression suite runs in its own isolated database to retain its complete-dataset assertions without deleting protected order history. No internal-note, cancel, timeout, payment, fulfillment or frontend order-management feature is included.
 
+## Order cancellation and timeout — approved design, implementation not started
+
+**Status: D65-D69 confirmed and documented; awaiting one implementation PR.** [Implementation contract](21-order-cancellation-timeout.md).
+
+- POST `/customer/orders/:id/cancel`: owner-only cancellation of eligible unpaid order; reason optional.
+- POST `/admin/orders/:id/cancel`: ADMIN cancellation of eligible unpaid, paid-before-fulfillment or zero-price order; reason mandatory.
+- Both require expectedVersion and Idempotency-Key; cancellation is terminal and versioned.
+- Paid cancellation enters CANCELLED + REFUND_PENDING; confirmed payment transaction is retained. Refund completion is separate and not included.
+- Zero-price cancellation follows D53; no refund.
+- SYSTEM timeout worker runs every minute using DB UTC time; cancels expired UNPAID/PENDING_VERIFICATION ordinary orders, closes pending payment attempts as FAILED, and writes SYSTEM Revision/Event without AdminAuditLog.
+- Payment confirmation, refund, fulfillment, notifications and frontend remain out of scope. Stop at PR review; no development DB deployment.
+
 ## Order revision / generic idempotency foundation
 
 **Status: Merged in PR #9; development database migration remains a separately authorized operation.** [Schema, immutable history and test guide](18-order-revision-foundation.md).
