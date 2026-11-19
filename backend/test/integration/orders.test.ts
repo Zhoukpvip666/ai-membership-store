@@ -15,6 +15,7 @@ import {
 } from '../../src/modules/auth/security.ts'
 import { integrationEnvironment } from './support.ts'
 import { businessSnapshot } from './order-source-support.ts'
+import { buildOrderSnapshot } from '../../src/modules/orders/revisions.ts'
 
 const env = integrationEnvironment(),
   db = createDatabase(env.DATABASE_URL)
@@ -604,6 +605,7 @@ test('partial order number, customer email and frozen product name match; whites
         )
       }
     }
+    const comparisonStarted = Date.now()
     const baseline = await request(
       prefix + '/orders?sort=asc&pageSize=100',
       cookie,
@@ -620,7 +622,24 @@ test('partial order number, customer email and frozen product name match; whites
     assert.equal(baseline.status, 200)
     assert.equal(blank.status, 200)
     assert.equal(blank.body.total, own.length)
-    assert.deepEqual(blank.body, baseline.body)
+    // Countdown is sampled on the server for each HTTP request, so wall time
+    // may advance between otherwise identical queries. All static fields match.
+    const stable = (body: typeof blank.body) => ({
+      ...body,
+      items: body.items.map((item: Record<string, unknown>) => ({
+        ...item,
+        remainingSeconds: 0,
+      })),
+    })
+    assert.deepEqual(stable(blank.body), stable(baseline.body))
+    for (const [index, item] of blank.body.items.entries()) {
+      const previous = baseline.body.items[index].remainingSeconds
+      assert(item.remainingSeconds <= previous)
+      assert(
+        previous - item.remainingSeconds <=
+          Math.ceil((Date.now() - comparisonStarted) / 1000),
+      )
+    }
   }
 })
 
@@ -842,6 +861,9 @@ test('DTOs retain frozen product/period/schema/data and real timestamps after pr
 test('ADMIN and CUSTOMER list/detail DTOs match independent complete key allowlists, including nested customer and creator', async () => {
   // Keep the contract independent of production selects/DTOs: extra keys must fail.
   const customerKeys = [
+    'version',
+    'expiresAt',
+    'remainingSeconds',
     'id',
     'orderNo',
     'productId',
@@ -867,7 +889,12 @@ test('ADMIN and CUSTOMER list/detail DTOs match independent complete key allowli
     'fulfilledAt',
     'cancelledAt',
   ]
-  const adminOnlyKeys = ['customer', 'creator', 'cancellationReason']
+  const adminOnlyKeys = [
+    'customer',
+    'creator',
+    'cancellationReason',
+    'internalNote',
+  ]
   const adminKeys = [...customerKeys, ...adminOnlyKeys]
   function assertKeys(value: unknown, expected: string[]) {
     assert(value !== null && typeof value === 'object' && !Array.isArray(value))
@@ -898,6 +925,10 @@ test('ADMIN and CUSTOMER list/detail DTOs match independent complete key allowli
           'notificationEmail',
         ])
         assertKeys(order.creator, ['source', 'adminId', 'userId'])
+        assert.equal(
+          order.internalNote,
+          orders.find((row) => row.id === order.id)!.internalNote,
+        )
       } else {
         for (const key of adminOnlyKeys) assert(!Object.hasOwn(order, key))
       }
@@ -905,7 +936,7 @@ test('ADMIN and CUSTOMER list/detail DTOs match independent complete key allowli
   }
 })
 
-test('list/detail DTOs contain no hashes, tokens, internal notes, audits, payment references, private labels or other customer data', async () => {
+test('DTOs exclude authentication, audit, payment references and private labels; only ADMIN receives internalNote', async () => {
   for (const [prefix, cookie] of [
     ['/admin', cookies.admin],
     ['/customer', cookies.alice],
@@ -921,7 +952,6 @@ test('list/detail DTOs contain no hashes, tokens, internal notes, audits, paymen
         'passwordHash',
         'tokenHash',
         'membership_session',
-        'internalNote',
         'adminLabel',
         'beforeJson',
         'afterJson',
@@ -929,13 +959,18 @@ test('list/detail DTOs contain no hashes, tokens, internal notes, audits, paymen
         'renewalRequestKeyHash',
         'renewalRequestHash',
         'paymentRecordedAt',
-        'PRIVATE_',
+        'PRIVATE_ALICE_LABEL',
+        'PRIVATE_EVENT_',
+        'PRIVATE_AUDIT_',
+        'PRIVATE_PAYMENT_',
         'synthetic-not-a-login-hash',
       ])
         assert(!text.includes(banned), 'DTO exposed forbidden data: ' + banned)
       assert.equal(result.headers.get('cache-control'), 'no-store')
       assert(result.headers.get('x-request-id'))
       if (prefix === '/customer') {
+        assert(!text.includes('internalNote'))
+        assert(!text.includes('PRIVATE_ORDER_NOTE'))
         for (const other of [
           bob.id,
           bob.loginEmail,
@@ -955,8 +990,99 @@ test('list/detail DTOs contain no hashes, tokens, internal notes, audits, paymen
   }
 })
 
-test('GET queries write no business records, Session or audits, and no order mutation endpoint is added', async () => {
-  const before = await businessSnapshot(db)
+test('HTTP DTO deadlines come from original createdAt and server time; payment/cancellation/completion stop countdown; edits preserve deadline', async () => {
+  const createdAt = new Date(Date.now() - 3600000)
+  const active = await db.order.create({
+    data: {
+      orderNo: randomUUID(),
+      userId: alice.id,
+      productId,
+      source: 'USER',
+      createdByUserId: alice.id,
+      kind: 'ONE_TIME',
+      productNameSnapshot: 'Countdown fixture',
+      productTypeSnapshot: 'ONE_TIME',
+      termSnapshot: 'Display only',
+      amountFen: 100,
+      contactEmailSnapshot: alice.loginEmail,
+      createdAt,
+    },
+  })
+  const expired = await db.order.create({
+    data: {
+      orderNo: randomUUID(),
+      userId: alice.id,
+      productId,
+      source: 'USER',
+      createdByUserId: alice.id,
+      kind: 'ONE_TIME',
+      productNameSnapshot: 'Expired fixture',
+      productTypeSnapshot: 'ONE_TIME',
+      termSnapshot: 'Display only',
+      amountFen: 100,
+      contactEmailSnapshot: alice.loginEmail,
+      createdAt: new Date(Date.now() - 86401000),
+    },
+  })
+  await db.$transaction(async (tx) => {
+    const updated = await tx.order.update({
+      where: { id: active.id, version: 1 },
+      data: {
+        internalNote: 'Admin-only later note',
+        version: { increment: 1 },
+      },
+    })
+    await tx.orderRevision.create({
+      data: {
+        orderId: updated.id,
+        version: 2,
+        snapshotSchemaVersion: 1,
+        snapshotJson: buildOrderSnapshot(updated),
+        actorUserId: admin.id,
+        actorType: 'ADMIN',
+      },
+    })
+  })
+  for (const [prefix, cookie] of [
+    ['/admin', cookies.admin],
+    ['/customer', cookies.alice],
+  ]) {
+    const start = Date.now()
+    const current = (await request(prefix + '/orders/' + active.id, cookie))
+      .body.order
+    const end = Date.now()
+    const deadline = createdAt.getTime() + 86400000
+    assert.equal(current.expiresAt, new Date(deadline).toISOString())
+    assert.equal(current.version, 2)
+    assert(current.remainingSeconds >= Math.floor((deadline - end) / 1000))
+    assert(current.remainingSeconds <= Math.floor((deadline - start) / 1000))
+    assert.equal(Object.hasOwn(current, 'internalNote'), prefix === '/admin')
+    if (prefix === '/admin')
+      assert.equal(current.internalNote, 'Admin-only later note')
+    for (const row of [expired, orders[1], orders[3], orders[8]]) {
+      const result = (await request(prefix + '/orders/' + row.id, cookie)).body
+        .order
+      assert.equal(result.remainingSeconds, 0)
+      assert.equal(
+        result.expiresAt,
+        new Date(row.createdAt.getTime() + 86400000).toISOString(),
+      )
+    }
+    const listing = await request(
+      prefix + '/orders?search=Countdown%20fixture',
+      cookie,
+    )
+    assert.equal(listing.body.total, 1)
+    assert.equal(listing.body.items[0].version, 2)
+    assert.equal(listing.body.items[0].expiresAt, current.expiresAt)
+  }
+})
+
+test('GET queries write no business records, Session, revisions or audits, and no order mutation endpoint is added', async () => {
+  const before = {
+    ...(await businessSnapshot(db)),
+    revisions: await db.orderRevision.findMany(),
+  }
   for (const [prefix, cookie] of [
     ['/admin', cookies.admin],
     ['/customer', cookies.alice],
@@ -975,7 +1101,13 @@ test('GET queries write no business records, Session or audits, and no order mut
       assert.equal((await request(prefix + suffix, cookie, method)).status, 404)
   }
   assert(
-    isDeepStrictEqual(await businessSnapshot(db), before),
+    isDeepStrictEqual(
+      {
+        ...(await businessSnapshot(db)),
+        revisions: await db.orderRevision.findMany(),
+      },
+      before,
+    ),
     'Read API or absent mutation path changed persisted records.',
   )
 })

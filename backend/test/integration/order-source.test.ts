@@ -265,7 +265,10 @@ test('only three permanent order sources and append-only order records', async (
       )
       const updated = await db.order.update({
         where: { id: normal.id },
-        data: { internalNote: 'Same-source update remains valid' },
+        data: {
+          internalNote: 'Same-source update remains valid',
+          version: { increment: 1 },
+        },
       })
       assert.equal(updated.source, 'ADMIN')
       assert.equal(updated.internalNote, 'Same-source update remains valid')
@@ -287,15 +290,32 @@ test('only three permanent order sources and append-only order records', async (
           .sort((a, b) => Number(a.position) - Number(b.position))
           .map((row) => row.name)
       assert(triggers.every((row) => row.timing === 'BEFORE'))
-      assert.deepEqual(group('INSERT'), ['Order_new_source_insert'])
+      assert.deepEqual(group('INSERT'), [
+        'Order_new_source_insert',
+        'Order_version_insert',
+      ])
       assert.deepEqual(group('UPDATE'), [
         'Order_renewal_immutable_update',
         'Order_source_immutable_update',
+        'Order_version_update',
       ])
       assert.deepEqual(group('DELETE'), [
         'Order_paid_renewal_delete',
         'Order_delete_guard',
       ])
+      const revisionTriggers = await db.$queryRaw<
+        { name: string; event: string; timing: string }[]
+      >`
+        SELECT TRIGGER_NAME AS name, EVENT_MANIPULATION AS event, ACTION_TIMING AS timing
+        FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = 'OrderRevision'`
+      assert.deepEqual(
+        revisionTriggers.map((row) => [row.name, row.event, row.timing]).sort(),
+        [
+          ['OrderRevision_current_version_insert', 'INSERT', 'BEFORE'],
+          ['OrderRevision_immutable_update', 'UPDATE', 'BEFORE'],
+          ['OrderRevision_immutable_delete', 'DELETE', 'BEFORE'],
+        ].sort(),
+      )
       const definitions = await db.$queryRaw<
         { body: string }[]
       >`SELECT ACTION_STATEMENT AS body FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = 'Order'`
@@ -320,6 +340,7 @@ test('only three permanent order sources and append-only order records', async (
         const processing = await db.order.update({
           where: { id: row.id },
           data: {
+            version: { increment: 1 },
             paymentStatus: 'PAID',
             paidAt,
             paymentConfirmedAt,
@@ -330,6 +351,7 @@ test('only three permanent order sources and append-only order records', async (
         const completed = await db.order.update({
           where: { id: row.id },
           data: {
+            version: { increment: 1 },
             fulfillmentStatus: 'COMPLETED',
             fulfilledAt,
             internalNote: 'Valid same-source maintenance',

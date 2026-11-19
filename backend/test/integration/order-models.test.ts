@@ -322,6 +322,7 @@ test('additive order/subscription model foundation', async (t) => {
       const paid = await db.order.update({
         where: { id: initial.id },
         data: {
+          version: { increment: 1 },
           paidAt: payment.occurredAt,
           paymentConfirmedAt: periodEnd,
           fulfilledAt: paidThrough,

@@ -138,7 +138,7 @@ try {
     }
     assert.equal(actual.AppSettings![0]!.paymentInstructions, '')
     // Leave the original eleven-table fixture for its independent legacy checks/cleanup.
-    await db.idempotencyRecord.delete({ where: { id: expected.id } })
+    await db.$executeRaw`DELETE FROM IdempotencyRecord WHERE id = ${expected.id}`
     console.info(
       'Paid-at migration preserved every old column in all 12 populated business tables; historical paidAt stays NULL despite existing transactions/entry timestamps, no actual payment times fabricated.',
     )

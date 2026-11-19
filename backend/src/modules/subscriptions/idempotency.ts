@@ -33,7 +33,7 @@ export async function mutation<T>(
   const lookup = async (tx: Prisma.TransactionClient) =>
     keyHash
       ? tx.idempotencyRecord.findUnique({
-          where: { actorAdminId_keyHash: { actorAdminId: actorId, keyHash } },
+          where: { actorUserId_keyHash: { actorUserId: actorId, keyHash } },
         })
       : null
   const replay = (record: {
@@ -52,7 +52,7 @@ export async function mutation<T>(
       if (keyHash)
         await tx.idempotencyRecord.create({
           data: {
-            actorAdminId: actorId,
+            actorUserId: actorId,
             keyHash,
             requestHash,
             operation,

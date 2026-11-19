@@ -62,8 +62,9 @@ export function orderReadService(database: PrismaClient) {
         }),
         database.order.count({ where }),
       ])
+      const now = new Date()
       return {
-        items: rows.map(adminOrderDto),
+        items: rows.map((row) => adminOrderDto(row, now)),
         total,
         page: input.page,
         pageSize: input.pageSize,
@@ -89,8 +90,9 @@ export function orderReadService(database: PrismaClient) {
         }),
         database.order.count({ where }),
       ])
+      const now = new Date()
       return {
-        items: rows.map(customerOrderDto),
+        items: rows.map((row) => customerOrderDto(row, now)),
         total,
         page: input.page,
         pageSize: input.pageSize,

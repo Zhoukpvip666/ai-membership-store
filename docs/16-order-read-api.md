@@ -53,11 +53,17 @@ Both roles receive:
 - Integer CNY Fen amountFen, independent paymentStatus/fulfillmentStatus.
 - UTC ISO-8601 createdAt, paidAt, paymentConfirmedAt, fulfilledAt, cancelledAt. Unknown values remain NULL. Deprecated paymentRecordedAt is never a paidAt fallback.
 
-ADMIN additionally receives `customer:{id,username,loginEmail,notificationEmail}`, `creator:{source,adminId,userId}`, and cancellationReason. These customer fields are public profile fields; no adminLabel or actor account details are returned.
+ADMIN additionally receives `internalNote`, `customer:{id,username,loginEmail,notificationEmail}`, `creator:{source,adminId,userId}`, and cancellationReason. These customer fields are public profile fields; no adminLabel or actor account details are returned.
 
-Neither role receives internalNote, audit/event JSON, request metadata in the DTO, payment transaction notes/references, password/token hashes, sessions/invitations or renewal request hashes. Existing request headers/error envelopes retain safe correlation. CUSTOMER receives no customer relation, creator/source or cancellationReason. ADMIN can search private adminLabel without returning it.
+Neither role receives audit/event JSON, request metadata in the DTO, payment transaction notes/references, password/token hashes, sessions/invitations or renewal request hashes. Existing request headers/error envelopes retain safe correlation. CUSTOMER receives no internalNote, customer relation, creator/source or cancellationReason. ADMIN can search private adminLabel without returning it.
 
 Changed/archived/delisted products never hide an existing ordinary order. Unknown historic price/form/period/paidAt values stay NULL; never parse termSnapshot or invent forms/payments. Current customer identity is used only for ADMIN search/public projection, never in place of frozen contact/target data.
+
+## Revision foundation DTO extension (2026-11-19)
+
+Both list/detail DTOs now include `version` (positive integer), `expiresAt` (UTC ISO timestamp equal to original createdAt + exactly 24 hours), and `remainingSeconds` (nonnegative integer, floor of server-time difference). Only UNPAID + NOT_STARTED with no payment/confirmation/fulfillment/cancellation timestamp has a live countdown. All other states and expired orders return 0, while expiresAt still records the derived original deadline. List items share one server clock sample per response; updatedAt never resets the deadline. The countdown is informational: it does not confirm payment or cancel an order. All future writes must recheck eligibility/deadline in their transaction.
+
+ADMIN alone additionally receives nullable `internalNote` in both list and detail. CUSTOMER query projection and DTO still exclude it. Existing complete DTO key allowlists were updated independently, and nested customer/creator allowlists remain exact. No routes or frontend were added. Schema now includes migration eleven; orders-only isolation applies all eleven migrations. Earlier results below describe the earlier read-only API delivery; current execution evidence is in [revision foundation](18-order-revision-foundation.md).
 
 ## Verification and isolation
 

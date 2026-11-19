@@ -89,6 +89,8 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 14. docs/14-user-subscription-core.md — Phase 2 user names, frozen subscription forms, direct renewal, concurrency, migration and operation guide.
 15. docs/15-order-subscription-foundation.md — order-first model foundation, additive migration, legacy compatibility and deferred service constraints.
 16. docs/16-order-read-api.md — administrator/customer order list/detail, safe DTOs, hidden-order/ownership rules and isolated no-Seed API tests.
+17. docs/17-order-creation-and-lifecycle-design.md — approved order lifecycle decisions and implementation boundaries.
+18. docs/18-order-revision-foundation.md — immutable order revisions, generic idempotency, version/deadline DTOs and isolated tests.
 
 ## Important launch gates
 
@@ -163,3 +165,5 @@ Database/E2E tests use random isolated MySQL 8.4 projects/volumes and temporary 
 Build artifacts are frontend/dist and backend/dist. Preview can use `npm run preview -w frontend` with the port matching APP_BASE_URL and `npm start -w backend`; these are local previews, not production deployment configuration.
 
 The read API adds no frontend history integration. Order creation/payment/fulfillment/renewal, customer subscription reads, notifications and API keys remain unimplemented. Use `npm run test:db -w backend -- --orders-only` for focused order HTTP tests without Seed or development configuration. Stop for acceptance before another stage.
+
+**Order revision foundation:** [Order versions, append-only history and generic idempotency](docs/18-order-revision-foundation.md). Migration eleven and existing order DTO extensions only; order write APIs remain unimplemented.

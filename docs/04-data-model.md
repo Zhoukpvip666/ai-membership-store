@@ -6,6 +6,8 @@ Phase 2 user/subscription fields and migration rules below follow [14-user-subsc
 
 **Latest model override (2026-11-18):** [Stage 1 order/subscription foundation](15-order-subscription-foundation.md) adds the future order-first workflow to this schema. All Phase 2 services remain compatible; new workflow constraints require the next separately authorized service stage. This migration does not convert Phase 2 history or implement order APIs.
 
+**Order revision foundation (2026-11-19):** [Revision/idempotency guide](18-order-revision-foundation.md) adds migration eleven, append-only OrderRevision, Order.version and generic actorUserId idempotency. No order write API is implemented.
+
 ## 1. Design boundaries
 
 - Single merchant: the site owner is the only ADMIN and seller. There is no Merchant, CustomerWallet, merchant balance, withdrawal, or sub-merchant model.
@@ -92,6 +94,7 @@ Do not add supplierCost. Product API never hard-deletes any product. Product has
 |---|---|---|
 | id | String PK | Internal ID |
 | orderNo | VarChar(40), unique | Server-generated order number |
+| version | Int, non-null default 1 | Every successful row update requires exactly +1; append matching OrderRevision atomically |
 | userId | String FK User, indexed with createdAt | Customer, including pending-activation users |
 | productId | String FK Product | Product reference; deletion restricted |
 | subscriptionId | String?, FK Subscription | Required for RENEWAL; null for initial/one-time |
@@ -188,9 +191,15 @@ Phase 2 direct subscriptions snapshot current product fields. Future ORDER subsc
 
 Extends the original history table, never replaces it. Existing order/date/actor/reason/timestamp columns and all old event types/rows remain. New actorType is ADMIN/SYSTEM (legacy defaults ADMIN); actorAdminId is nullable for SYSTEM. New beforeJson/afterJson cover mutable state, versions, dates and prices; formData values and note are redacted. New operations emit CREATED, UPDATED, RENEWED, EXPIRY_ADJUSTED, PRICE_CHANGED, FORM_DATA_UPDATED, TERMINATED or AUTO_TERMINATED. One edit can append UPDATED plus specific changed-field events in the same transaction. History is ADMIN-only and paginated.
 
+### OrderRevision
+
+Append-only internal full-state history: UUID id; restrictive orderId and nullable actorUserId FKs; positive version; snapshotSchemaVersion=1; snapshotJson; OrderActorType USER/ADMIN/SYSTEM; optional reason (500 characters); UTC createdAt. Unique (orderId,version), indexes (orderId,createdAt) and (actorUserId,createdAt). Human actors require an existing User; SYSTEM may use NULL. Actor role/ownership authorization remains the future trusted service's responsibility.
+
+Order.version is non-null, initially 1 for old/new orders. An INSERT trigger requires 1; an UPDATE trigger requires exactly old version + 1. A revision INSERT locks/reads the parent and requires its current version. Snapshot JSON has a strict, versioned business whitelist in TypeScript and MySQL JSON Schema; IDs/versions must match its columns. UPDATE/DELETE triggers reject all history mutation, including conflicting UPSERT/REPLACE. These guards do not implement deferred cross-table completeness: future writes must atomically update Order, append revision/events/audits and store any idempotency response. Historical orders get version 1 without invented revision/actor history. See the guide for the full V1 field list and deployment limitations.
+
 ### IdempotencyRecord
 
-UUID id, restrictive actorAdminId FK, SHA-256 keyHash, SHA-256 canonical requestHash (including operation/target), operation, responseJson and createdAt. Unique (actorAdminId,keyHash). The stored ADMIN-only response may contain service data and must never be logged or exposed to customers. Same key/body replays the committed original response even after later changes; changed body/target/operation returns 409. No raw key/request is stored. Rows are retained for this local milestone; no automatic expiry silently removes replay protection.
+UUID id, restrictive actorUserId FK, SHA-256 keyHash, SHA-256 canonical requestHash (including operation/target), operation, responseJson and createdAt. Unique (actorUserId,keyHash), shared by ADMIN and CUSTOMER but scoped independently to each identity. Migration eleven renames the old actorAdminId column/index/FK in place without deleting/reinserting rows. Original administrator IDs, hashes, responses and dates remain unchanged. Stored sanitized responses may contain business data: never log them or expose across identities. Same identity/key/body replays the exact committed original response even after later changes; changed body/target/operation returns 409. No raw key is stored. Records are permanent, with no TTL or automatic cleanup. Existing subscription canonicalization, atomic writes, conflict handling and replay are unchanged.
 
 ### OrderEvent
 
