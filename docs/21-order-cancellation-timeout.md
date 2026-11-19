@@ -40,14 +40,14 @@ All eligibility is rechecked after locking the Order row inside the transaction.
 
 | Starting state | Actor/action | Result | Payment transaction behavior |
 |---|---|---|---|
-| UNPAID + NOT_STARTED | CUSTOMER cancel | fulfillmentStatus=CANCELLED; paymentStatus remains UNPAID | No confirmed payment exists; any pending unconfirmed PAYMENT attempt is marked FAILED and retained |
-| UNPAID + NOT_STARTED | ADMIN cancel | fulfillmentStatus=CANCELLED; paymentStatus remains UNPAID | Same as above; no refund |
+| UNPAID + NOT_STARTED | CUSTOMER cancel | fulfillmentStatus=CANCELLED; paymentStatus remains UNPAID | No confirmed payment exists; no pending payment verification may remain confirmable |
+| UNPAID + NOT_STARTED | ADMIN cancel | fulfillmentStatus=CANCELLED; paymentStatus remains UNPAID | Any pending unconfirmed PAYMENT attempt is marked FAILED and retained; no refund |
 | PAID + PROCESSING | ADMIN cancel | fulfillmentStatus=CANCELLED; paymentStatus=REFUND_PENDING | Preserve confirmed PAYMENT; do not create/confirm refund |
 | NOT_REQUIRED + PROCESSING | ADMIN cancel | fulfillmentStatus=CANCELLED; paymentStatus remains NOT_REQUIRED | No payment/refund transaction |
 
 Every successful cancellation sets `cancelledAt` from database UTC time and persists the reason in `cancellationReason`. Do not overwrite `paidAt`, `paymentConfirmedAt`, `fulfilledAt`, or original `createdAt`. Cancellation is terminal and cannot be reversed or deleted.
 
-An unconfirmed PENDING PAYMENT transaction must not remain confirmable after the order is cancelled. Mark it FAILED in the same transaction, retain the row and its external details, and record a clear timeout/cancellation failure note. Never treat a PENDING transaction as proof that money was received. If the customer claims money was actually transferred but the order never reached confirmed PAID before cancellation, handling that money/claim remains outside the order system under D39.
+An unconfirmed PENDING PAYMENT transaction must not remain confirmable after the order is cancelled. Mark it FAILED in the same transaction, retain the row and its external details, and record a clear timeout/cancellation failure note. If the order summary was PENDING_VERIFICATION, recompute it to UNPAID because no payment was confirmed. Never treat a PENDING transaction as proof that money was received. If the customer claims money was actually transferred but the order never reached confirmed PAID before cancellation, handling that money/claim remains outside the order system under D39.
 
 ## 4. Refund boundary
 
@@ -70,7 +70,7 @@ Eligible timeout rows:
 Use bounded batches with deterministic ordering and row-level locking (`FOR UPDATE SKIP LOCKED`, or an equivalent proven MySQL 8.4 pattern). Each order is processed in its own short transaction or a bounded transaction batch. The transaction must recheck the complete eligibility predicate against database time after acquiring the lock.
 
 For each eligible order, atomically:
-1. Update fulfillmentStatus to CANCELLED, set cancelledAt to UTC_TIMESTAMP(3), set cancellationReason to the fixed `PAYMENT_TIMEOUT`, preserve paymentStatus as UNPAID or PENDING_VERIFICATION only if the chosen payment-state invariant permits it; otherwise apply the pending-attempt close rule below.
+1. Update fulfillmentStatus to CANCELLED, set cancelledAt to UTC_TIMESTAMP(3), set cancellationReason to the fixed `PAYMENT_TIMEOUT`; paymentStatus remains UNPAID, or changes from PENDING_VERIFICATION back to UNPAID after pending attempts are marked FAILED.
 2. Increment Order.version exactly once.
 3. Mark every unconfirmed PENDING PAYMENT transaction for that order FAILED, preserving the transaction row and setting a sanitized `PAYMENT_TIMEOUT` note. Confirmed transactions must never be altered by this worker.
 4. Append exactly one complete OrderRevision with actorType=SYSTEM and actorUserId=NULL.
