@@ -112,6 +112,11 @@
 | D62 | 管理员一次请求修改多个订单字段 | ADMIN 可以在同一次订单编辑请求中同时提交 formData 与 amountFen；两者作为一次原子业务编辑，成功后 Order.version 只递增一次，只创建一条对应 OrderRevision 和一条 OrderEvent，并在同一事务中写入适用的 AdminAuditLog 与幂等响应。CUSTOMER 仍只能提交 formData。任何一个字段验证失败则整个请求回滚 | ACTIVE |
 | D63 | 订单核心编辑 API 与内部备注隔离 | 核心订单编辑使用 PATCH `/api/v1/customer/orders/:id` 和 PATCH `/api/v1/admin/orders/:id`。CUSTOMER 只能修改本人订单 formData；ADMIN 可修改订单 formData 和 amountFen。两个接口都必须提交 expectedVersion，并遵守 D13-D15/D40/D42/D43/D54/D60-D62。internalNote 不属于核心订单编辑 payload，继续按 D48 使用独立 ADMIN 接口修改；备注修改同样必须使用 expectedVersion、递增 Order.version、追加完整 OrderRevision 和 OrderEvent，并在同一事务写入 AdminAuditLog 与幂等响应。独立接口不代表绕过订单版本历史或并发控制；该备注接口不属于本次 T15 实现范围 | ACTIVE |
 | D64 | 管理员编辑将未付款订单金额调整为零 | 对符合 D13/D14 编辑条件的 UNPAID + NOT_STARTED 普通订单，ADMIN 将 amountFen 从正数调整为 0 时，必须按 D37/D51 的无需付款语义在同一编辑事务中将 paymentStatus 转为 NOT_REQUIRED、fulfillmentStatus 转为 PROCESSING，并保持 paidAt/paymentConfirmedAt 为 NULL、不创建 PaymentTransaction；该请求仍只递增一次 version，并生成一条完整 OrderRevision、一条 OrderEvent、AdminAuditLog 和幂等响应。零元状态提交后订单进入待人工履约队列，不再允许通过核心编辑 API 修改；取消遵循 D53。若原订单已经存在任何付款事实/PaymentTransaction，则不得通过金额编辑转换为零元状态，必须走已付款取消与线下退款流程（D17/D18/D59） | ACTIVE |
+| D65 | 订单取消 API | 客户取消使用 POST `/api/v1/customer/orders/:id/cancel`，仅可取消本人符合 D16 的未付款订单；管理员取消使用 POST `/api/v1/admin/orders/:id/cancel`，按 D16/D17/D53 校验订单类别和状态。两个接口均要求 expectedVersion 与 Idempotency-Key，必须由服务端从 Session 确定操作者；取消成功后订单不可恢复、不可物理删除。系统超时取消由后台任务执行，不暴露 SYSTEM 取消 HTTP 接口 | ACTIVE |
+| D66 | 取消原因规则 | CUSTOMER 主动取消未付款订单时 reason 可选；ADMIN 主动取消任何订单时必须填写非空取消原因，最多 500 字符；SYSTEM 因 24 小时超时取消时使用固定原因 `PAYMENT_TIMEOUT`，不接受客户端输入。原因写入 Order.cancellationReason、OrderRevision、OrderEvent 和适用的 AdminAuditLog；客户取消不写 AdminAuditLog | ACTIVE |
+| D67 | 已付款订单取消权限与退款状态 | 只有 ADMIN 可以取消已确认全额付款但尚未完成履约的普通订单，CUSTOMER 不得取消或发起该取消 API。取消必须与订单状态/付款事实在同一事务中校验；成功后 fulfillmentStatus=CANCELLED、cancelledAt 写入，paymentStatus=REFUND_PENDING，保留原始已确认 PAYMENT 交易，不在取消事务中伪造退款成功或删除付款记录。后续线下实际退款完成后，才由独立退款流程登记退款交易并转为 REFUNDED，遵守 D17/D18/D59 | ACTIVE |
+| D68 | 零元订单取消 API 语义 | 对 `NOT_REQUIRED + PROCESSING` 且未完成履约的零元订单，仅 ADMIN 可按 D53 取消；必须填写原因，成功后 fulfillmentStatus=CANCELLED 并记录管理员主体、版本、事件和审计，paymentStatus 保持 NOT_REQUIRED，不创建退款交易、不创建订阅。CUSTOMER 不得取消零元待履约订单；已完成或已取消订单不可再次取消 | ACTIVE |
+| D69 | 每分钟 SYSTEM 超时取消任务 | 后台任务每分钟扫描并取消已达到 `createdAt + 24 hours` 且仍未完成付款确认的到期普通订单；截止时间使用数据库 UTC 时间，编辑不延长。每笔成功取消在一个事务中完成条件状态更新、version+1、OrderRevision、OrderEvent 和待核实付款交易的关闭处理；actorType=SYSTEM、actorUserId/actorAdminId 均为 NULL，不写 AdminAuditLog，不创建退款。任务可多实例运行，依靠行锁/条件更新保证每笔订单只成功一次；重复扫描不得重复事件或版本。到期时仍为 PENDING_VERIFICATION 的未确认 PAYMENT 交易须保留原记录并标记 FAILED（注明 PAYMENT_TIMEOUT），订单汇总 paymentStatus 同步回到 UNPAID，再将 fulfillmentStatus 设为 CANCELLED；禁止事后确认。没有付款交易的 UNPAID 订单保持 UNPAID 直接取消。遵守 D10/D39，超时取消后不得恢复或迟延确认 | ACTIVE |
 ## 2. 关键概念与字段语义
 
 ### 2.1 订单、付款、履约、订阅是不同维度
@@ -375,6 +380,7 @@ npm run build
 | 2026-11-19 | 新增 D59：明确第一阶段线下人工收款、人工全额退款；无法履约由管理员取消，已付款订单进入 REFUND_PENDING，只有线下退款实际完成后才登记退款交易并转为 REFUNDED；零元订单沿用 D53。 |
 | 2026-11-19 | 新增 D60-D63：订单表单编辑采用完整替换；调价原因仅在金额实际变化时必填（澄清 D5/D42/D57）；管理员可在一个原子请求中同时改表单和价格且只递增一个版本；核心编辑接口与内部备注独立接口隔离，内部备注遵循 D48。 |
 | 2026-11-19 | 新增 D64：管理员将符合编辑条件的未付款订单调价为 0 时，同一事务转为 NOT_REQUIRED + PROCESSING；已有付款事实不得转零元，须走取消退款流程。 |
+| 2026-11-19 | 新增 D65-D69：定义客户/管理员取消 API、客户原因可选与管理员原因必填、已付款订单仅管理员取消并进入 REFUND_PENDING、零元订单按 D53 取消，以及每分钟 SYSTEM 超时任务和待核实付款交易关闭规则。均补充 D16-D18/D39/D53/D59，不替代既有规则。 |
 
 后续每次业务决定都必须分配新的 D 编号，并按第 1.3 节维护冲突、替代和撤销关系。
 
