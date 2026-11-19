@@ -56,7 +56,7 @@
 | D7 | 商品周期 | 创建订单时使用商品当前周期单位和数量；创建订单时 USER/ADMIN 均不能临时改周期；周期写入订单快照 | ACTIVE |
 | D8 | 动态表单填写 | USER 与 ADMIN 遵守同一商品表单必填规则；ADMIN 可以代客户填写；服务端按商品 Schema 校验 | ACTIVE |
 | D9 | 订单初始状态 | 所有新订单均为 UNPAID + NOT_STARTED；paidAt、paymentConfirmedAt、fulfilledAt、cancelledAt 初始为 NULL | ACTIVE |
-| D10 | 待付款有效期 | 自最初 createdAt 起 24 小时；任何编辑不重置期限；超过期限系统自动取消 | ACTIVE |
+| D10 | 待付款有效期（原规则） | 自最初 createdAt 起 24 小时；任何编辑不重置期限；原定超过期限自动取消。其超时取消部分已由 D38 取代；24 小时期限及编辑不重置规则继续有效 | SUPERSEDED（部分规则由 D38 取代） |
 | D11 | 订单商品不可变 | 订单创建后 productId 永久锁定；商品选错只能取消原订单并重新创建 | ACTIVE |
 | D12 | 订单客户归属不可变 | 订单创建后 userId 永久锁定；客户选错只能取消原订单并为正确客户新建订单 | ACTIVE |
 | D13 | 待付款编辑权限 | 有效期内 USER 可编辑自己的 formData；ADMIN 可编辑待付款订单 formData 和 amountFen；用户不能改价；双方都不能换商品或客户 | ACTIVE |
@@ -85,7 +85,7 @@
 | D36 | 幂等模型调整 | 现有 IdempotencyRecord.actorAdminId 需要迁移为通用 actorUserId，保留既有管理员记录及其关联；使用新增 Migration，不改写已应用迁移 | ACTIVE |
 
 | D37 | 零元订单 | 当管理员将订单最终应付金额设为 0 时，该订单无需实际付款；付款状态采用无需付款语义，不创建虚假 PaymentTransaction，不填写 paidAt/paymentConfirmedAt，并直接进入待履约状态；管理员仍须正常确认履约 | ACTIVE |
-
+| D38 | 订单到期后的付款核实（Supersedes D10 的超时自动取消部分） | 订单有效期仍为最初 createdAt 起 24 小时，编辑不重置期限；到期后立即禁止编辑和发起新的付款，但不因单纯超时直接不可逆取消，而是转入待核实状态。管理员可核实客户实际付款时间：仅当有实际到账证据且 paidAt ≤ 订单截止时间时，允许在截止后确认收款；没有按时付款（paidAt 为空或晚于截止时间）的订单由管理员取消。订单截止时间按 createdAt + 24 hours 计算 | ACTIVE |
 ## 2. 关键概念与字段语义
 
 ### 2.1 订单、付款、履约、订阅是不同维度
@@ -140,7 +140,9 @@
 | UNPAID + NOT_STARTED，未超时 | USER（本人） | 编辑 formData | 保持待付款 |
 | UNPAID + NOT_STARTED，未超时 | ADMIN | 编辑 formData / amountFen | 保持待付款 |
 | UNPAID + NOT_STARTED | USER（本人）/ ADMIN | 取消 | CANCELLED |
-| UNPAID + NOT_STARTED，超过 24 小时 | SYSTEM | 自动取消 | CANCELLED |
+| UNPAID + NOT_STARTED，达到 24 小时截止时间 | SYSTEM | 禁止编辑/新付款并转入待核实 | PENDING_VERIFICATION（待核实；不得直接标记为已取消） |
+| PENDING_VERIFICATION，管理员核实 `paidAt <= expiresAt` 且有到账证据 | ADMIN | 确认全额收款 | PAID + PROCESSING |
+| PENDING_VERIFICATION，未按时付款 | ADMIN | 取消并记录原因 | CANCELLED |
 | UNPAID + NOT_STARTED，未超时 | ADMIN | 确认全额收款 | PAID + PROCESSING |
 | 零元无需付款订单 | SYSTEM（创建事务） | 建立无需付款状态 | 无需付款 + PROCESSING |
 | PAID + PROCESSING | ADMIN | 取消无法履约订单 | 取消，保留付款交易并待退款处理 |
@@ -183,7 +185,7 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 | T5 | 幂等响应存储 | 复用/迁移 IdempotencyRecord 时，明确 responseJson、事务、唯一键冲突和永久保留 |
 | T6 | 订单创建/编辑 DTO 与路由 | 明确字段白名单、权限、状态码、错误码和响应结构 |
 | T7 | 0 元订单 | D5 允许管理员设为 0，但 0 元订单是否跳过付款确认、如何进入履约，尚未确认 |
-| T8 | 付款有效期边界 | 实际转账时间早于截止时间但管理员在截止后才确认时如何处理，尚未确认 |
+| T8 | 过期订单待核实实现 | 实现订单到期后转入待核实状态、管理员核实实际付款时间及取消未按时付款订单；以条件更新/事务防止到期任务与付款确认竞态，并保证仅 paidAt ≤ expiresAt 可确认 |
 | T9 | 取消原因与事件类型 | 对照已有 OrderEvent 枚举，确认 USER/ADMIN/SYSTEM 的事件记录和原因要求 |
 | T10 | 自然周期算法 | 月末、闰年、时区/DST、原始锚点和人工调整后账期修订的精确算法 |
 | T11 | 商品/价格快照重算 | 明确 ADMIN 修改 amountFen 的上下限、原因字段与审计 DTO |
@@ -210,5 +212,6 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 | --- | --- |
 | 2026-11-18 | 初版：将本轮已确认业务规则登记为 D1–D36；未确认技术项登记为 T1–T12。 |
 | 2026-11-18 | 新增 D37：明确零元订单无需付款且直接进入待履约状态；补充对应技术设计待确认项。 |
+| 2026-11-18 | 新增 D38：取代 D10 的“超时立即自动取消”部分；24 小时后禁止编辑和新付款，转入待核实，管理员可依据真实付款时间决定确认或取消。 |
 
 后续每次业务决定都必须分配新的 D 编号，并按第 1.3 节维护冲突、替代和撤销关系。
