@@ -12,7 +12,7 @@ Base path: /api/v1. All payloads are JSON. Timestamps are UTC ISO-8601. Money is
 
 `GET /api/v1/health` and its `/health` alias retain their database-readiness behavior. Each request probes MySQL through Prisma. Successful connectivity returns HTTP 200 with `{"status":"ok","database":"ready"}`. Connection/query failure returns HTTP 503 with `{"status":"degraded","database":"unavailable"}`; driver errors and credentials are never returned. This does not verify migration currency: use the local `db:status` command. Authentication, customer/invitation, product/settings, Phase 2 subscription and the four order GETs above are implemented. Order mutations other than the two creation POSTs and two core-edit PATCHes, payment, dashboard and customer subscription APIs remain unimplemented and return404. All /admin routes, including unimplemented paths, first require a valid ADMIN session.
 
-## Order edit API (implemented for review)
+## Order edit API (implemented and merged in PR #14)
 
 PATCH `/customer/orders/:id` and PATCH `/admin/orders/:id` are implemented as specified in [docs/20-order-edit-api.md](20-order-edit-api.md). CUSTOMER may replace only the complete formData of their own eligible order; ADMIN may replace formData and optionally change amountFen in the same atomic edit. Both require expectedVersion and Idempotency-Key. Strict body shapes are `{expectedVersion,formData}` for CUSTOMER and `{expectedVersion,formData,amountFen?,priceAdjustmentReason?}` for ADMIN; unknown fields are rejected. Changed amount requires a nonblank reason (max500); a reason without an actual price change is rejected with 400 INVALID_INPUT. No effective change also returns 400. Validation uses the order's frozen formSchemaSnapshot, never current Product data or defaults. Missing/non-owned orders return the same 404. Ineligible/expired orders return 409 ORDER_NOT_EDITABLE; stale eligible versions return 409 VERSION_CONFLICT.
 
@@ -204,7 +204,7 @@ Do not implement public checkout, online payment intent, payment webhook, automa
 Migration eleven adds Order.version, permanent append-only OrderRevision and actorUserId-scoped idempotency (D34–D36). There are no new HTTP routes. Existing four order GET endpoints return the additional role-specific fields documented in [order read API](16-order-read-api.md); no history, order creation/edit, payment, cancellation or fulfillment endpoint is added. Full snapshot history is internal and never reused as a customer DTO.
 
 
-## Order creation API (implemented for review)
+## Order creation API (implemented and merged in PR #11)
 
 This implemented write stage is limited to POST `/customer/orders` and POST `/admin/orders`. Use [the complete order creation contract](19-order-creation-api.md) and ACTIVE decisions D1-D10, D33-D36, D40, D44, D51-D58. ADMIN must explicitly submit final `amountFen`; the future integrated UI must pre-fill Product.priceFen. The first successful request returns a complete role-safe order resource DTO with HTTP 201. Same-key retries replay the exact stored original response. No order editing, cancellation, payment, fulfillment, renewal, notifications or frontend order-center integration is included in that stage.
 
