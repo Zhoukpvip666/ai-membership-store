@@ -217,10 +217,10 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 ### A. IdempotencyRecord
 
 1. 将现有 `actorAdminId` / `actorAdmin` 改为通用 `actorUserId` / `actorUser`，外键指向 `User.id`，唯一键为 `(actorUserId, keyHash)`。新增增量 Migration，保留现有管理员记录的 actor ID、keyHash、requestHash、operation、responseJson、createdAt；不改写已应用 Migration。
-2. `keyHash` 使用 SHA-256 对“规范化 operation + 原始 Idempotency-Key”计算，原始 Key 不落库。这样同一用户在不同订单创建操作之间不会因重复使用原始 Key 发生意外冲突，同时数据库唯一范围仍符合 D34。
+2. `keyHash` 使用 SHA-256 对原始 Idempotency-Key 计算，原始 Key 不落库；唯一范围严格按 D34 使用 `(actorUserId, keyHash)`。`requestHash` 包含 operation 和规范化业务请求，因此同一主体复用同一个 Key 调用不同操作时会得到幂等冲突，与现有订阅幂等实现保持一致。
 3. `requestHash` 使用 SHA-256 对经过 Zod 校验和默认值规范化后的业务请求 JSON 计算；对象键递归排序，数组顺序保留。包含会影响订单创建意图的字段（例如 customer/product/formData/管理员 amountFen/内部备注），不包含 requestId、网络地址、客户端时间等传输元数据，也不包含从 Product 读取的实时价格或 Schema。这样商品在首次请求后发生变化时，同一请求重试仍能命中原幂等记录。
-4. 幂等检查必须在读取当前商品并重新计算价格/快照之前进行：若已有相同 actor + operation-scoped key，先比较 requestHash；相同则按 responseJson 中的 orderId 读取并返回原订单当前详情，不再次验证当前商品状态或重新创建；不同则返回 409。
-5. 首次请求在一个 Prisma 事务中完成订单、OrderRevision V1、ORDER_CREATED OrderEvent、（仅 ADMIN 操作时）AdminAuditLog 和 IdempotencyRecord 写入。responseJson 只保存稳定资源标识及响应版本信息（至少 orderId），不保存原始 Key。
+4. 幂等检查必须在读取当前商品并重新计算价格/快照之前进行：若已有相同 actor + keyHash，先比较包含 operation 的 requestHash；相同则原样回放已提交的 responseJson（首次成功创建时的原始响应），不再次验证当前商品状态或重新创建；不同则返回 409。
+5. 首次请求在一个 Prisma 事务中完成订单、OrderRevision V1、ORDER_CREATED OrderEvent、（仅 ADMIN 操作时）AdminAuditLog 和 IdempotencyRecord 写入。responseJson 保存首次成功创建时的完整、已脱敏 API 响应，以满足 D34 的原始响应回放语义；仅服务端按 actor + keyHash 读取，禁止日志输出或跨用户暴露，不保存原始 Key。
 6. 并发重复请求由数据库唯一键裁决：竞争失败的一方回滚整个事务；事务外捕获唯一键冲突后重新读取幂等记录并比较 requestHash。相同请求返回原订单，不同请求返回 409。不能仅靠进程内 Map/锁。
 7. Key 建议由客户端使用密码学随机 UUID 生成；服务端限制长度/字符集并只保存哈希。幂等记录永久保留，不做定期清理。
 
