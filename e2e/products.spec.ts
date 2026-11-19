@@ -450,9 +450,17 @@ test('unlisted products remain manageable; archive unlists irreversibly and reta
   expect(product).not.toHaveProperty('purchaseEnabled')
   expect(product).not.toHaveProperty('renewalEnabled')
   const path = '/api/v1/admin/products/' + product.id
-  await page.getByRole('textbox', { name: '搜索商品', exact: true }).fill(name)
-  await page.getByRole('button', { name: '查询', exact: true }).click()
   const row = page.locator('tbody tr').filter({ hasText: name })
+  // Navigation/reload resets search. Other suites retain their protected product
+  // fixtures, so the target is not necessarily on the first 20-item page.
+  const findProduct = async () => {
+    await page
+      .getByRole('textbox', { name: '搜索商品', exact: true })
+      .fill(name)
+    await page.getByRole('button', { name: '查询', exact: true }).click()
+    await expect(row).toBeVisible()
+  }
+  await findProduct()
   await expect(row.getByRole('switch')).toHaveCount(1)
   await row.getByRole('button', { name: '编辑', exact: true }).click()
   const editor = page.getByRole('dialog', { name: '编辑商品', exact: true })
@@ -462,6 +470,7 @@ test('unlisted products remain manageable; archive unlists irreversibly and reta
   const card = page.locator('.product-card').filter({ hasText: name })
   await expect(card).toHaveCount(0)
   await page.goto('/admin/products')
+  await findProduct()
   const listing = row.getByRole('switch', { name: name + '上架', exact: true })
   const updated = page.waitForResponse(
     (r) =>
@@ -471,6 +480,7 @@ test('unlisted products remain manageable; archive unlists irreversibly and reta
   expect((await updated).status()).toBe(200)
   await expect(listing).toBeChecked()
   await page.reload()
+  await findProduct()
   await expect(listing).toBeChecked()
   await page.goto('/')
   await page.getByRole('button', { name: '订阅服务', exact: true }).click()
@@ -479,6 +489,7 @@ test('unlisted products remain manageable; archive unlists irreversibly and reta
     card.getByRole('button', { name: '暂未开放线上购买', exact: true }),
   ).toBeDisabled()
   await page.goto('/admin/products')
+  await findProduct()
   await row.getByRole('button', { name: '归档', exact: true }).click()
   await expect(
     page.getByRole('dialog', { name: '归档商品', exact: true }),
@@ -514,6 +525,7 @@ test('unlisted products remain manageable; archive unlists irreversibly and reta
   ).toBe(409)
   expect((await (await page.request.get(query)).json()).total).toBe(0)
   await page.reload()
+  await findProduct()
   await choose(
     page,
     page.getByRole('combobox', { name: '归档状态', exact: true }),

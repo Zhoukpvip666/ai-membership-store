@@ -10,11 +10,13 @@ Base path: /api/v1. All payloads are JSON. Timestamps are UTC ISO-8601. Money is
 
 **Order creation stage — implemented (PR #11):** [Order creation API contract](19-order-creation-api.md) defines POST `/customer/orders` for ACTIVE CUSTOMER self-order and POST `/admin/orders` for ADMIN-created orders. Both use server-derived source/actor, strict role-specific DTOs, full form validation, frozen Product snapshots, required Idempotency-Key, atomic Order + V1 Revision + Event + applicable Audit + idempotency response. ADMIN may select ACTIVE or PENDING_ACTIVATION customers and unlisted/unarchived Products; CUSTOMER must be ACTIVE and may select listed/unarchived Products. Creation returns the complete role-safe order DTO with HTTP 201 (D58). Merged in PR #11; migration is included in main but development deployment requires separate authorization. Zero amount uses NOT_REQUIRED/PROCESSING without PaymentTransaction or payment times; positive amount uses UNPAID/NOT_STARTED. Responses are `{order}` and exact persisted role-specific DTOs are replayed for the same actor/key/input. See the contract for strict request/error definitions and isolated verification.
 
-`GET /api/v1/health` and its `/health` alias retain their database-readiness behavior. Each request probes MySQL through Prisma. Successful connectivity returns HTTP 200 with `{"status":"ok","database":"ready"}`. Connection/query failure returns HTTP 503 with `{"status":"degraded","database":"unavailable"}`; driver errors and credentials are never returned. This does not verify migration currency: use the local `db:status` command. Authentication, customer/invitation, product/settings, Phase 2 subscription and the four order GETs above are implemented. Order mutations other than the two creation POSTs, payment, dashboard and customer subscription APIs remain unimplemented and return404. All /admin routes, including unimplemented paths, first require a valid ADMIN session.
+`GET /api/v1/health` and its `/health` alias retain their database-readiness behavior. Each request probes MySQL through Prisma. Successful connectivity returns HTTP 200 with `{"status":"ok","database":"ready"}`. Connection/query failure returns HTTP 503 with `{"status":"degraded","database":"unavailable"}`; driver errors and credentials are never returned. This does not verify migration currency: use the local `db:status` command. Authentication, customer/invitation, product/settings, Phase 2 subscription and the four order GETs above are implemented. Order mutations other than the two creation POSTs and two core-edit PATCHes, payment, dashboard and customer subscription APIs remain unimplemented and return404. All /admin routes, including unimplemented paths, first require a valid ADMIN session.
 
-## Planned order edit API (not implemented)
+## Order edit API (implemented for review)
 
-The next approved order-write stage is PATCH `/customer/orders/:id` and PATCH `/admin/orders/:id`, specified in [docs/20-order-edit-api.md](20-order-edit-api.md). CUSTOMER may replace only the complete formData of their own eligible order; ADMIN may replace formData and optionally change amountFen in the same atomic edit. Both require expectedVersion and Idempotency-Key. Validation uses the order's frozen formSchemaSnapshot. internalNote remains a separate D48 endpoint; its own update still increments Order.version and appends Revision/Event/AdminAuditLog atomically, but is outside T15. Cancellation, timeout, payment, refund and fulfillment are out of scope.
+PATCH `/customer/orders/:id` and PATCH `/admin/orders/:id` are implemented as specified in [docs/20-order-edit-api.md](20-order-edit-api.md). CUSTOMER may replace only the complete formData of their own eligible order; ADMIN may replace formData and optionally change amountFen in the same atomic edit. Both require expectedVersion and Idempotency-Key. Strict body shapes are `{expectedVersion,formData}` for CUSTOMER and `{expectedVersion,formData,amountFen?,priceAdjustmentReason?}` for ADMIN; unknown fields are rejected. Changed amount requires a nonblank reason (max500); a reason without an actual price change is rejected with 400 INVALID_INPUT. No effective change also returns 400. Validation uses the order's frozen formSchemaSnapshot, never current Product data or defaults. Missing/non-owned orders return the same 404. Ineligible/expired orders return 409 ORDER_NOT_EDITABLE; stale eligible versions return 409 VERSION_CONFLICT.
+
+Success returns HTTP 200 `{order}` using the existing exact role-specific DTO. Locking, database-time expiry checks, one version increment, complete Revision, sanitized Event, ADMIN-only audit and the original idempotency response commit together. Exact retries replay the stored response even after later edits or zero conversion; another intent using the same actor/key returns 409 IDEMPOTENCY_CONFLICT. A positive-to-zero ADMIN change atomically enters NOT_REQUIRED/PROCESSING without payment timestamps, transactions or subscriptions; any existing PaymentTransaction prevents conversion. New events reuse NOTE with an ORDER_EDITED operation marker; no internal notes are changed. internalNote remains a separate D48 endpoint; its own update still increments Order.version and appends Revision/Event/AdminAuditLog atomically, but is outside T15. Cancellation, timeout, payment, refund and fulfillment are out of scope. No new migration is added.
 
 ## Model review follow-up (no new endpoints)
 
@@ -84,7 +86,7 @@ Creating a user and creating a subscription are independent. A pending customer 
 - Revoke: JSON `{}`; HTTP 204. Already used/revoked invitations return 409. The UI retains no recoverable URL after closing the detail.
 - Customer creation/edit/disable/restore, invitation issue/revoke and administrator login/logout append sanitized audit records transactionally. Audit snapshots omit names/emails, raw tokens and password/token hashes; edit logs name changed fields only.
 
-Customer order reads are implemented at `/customer/orders` as documented above; customer subscription reads remain future work. Customer UI remains a placeholder with no frontend integration in this stage. Administrator products/subscriptions, order GETs and the two order-creation POSTs are implemented; other order mutations remain unimplemented.
+Customer order reads are implemented at `/customer/orders` as documented above; customer subscription reads remain future work. Customer UI remains a placeholder with no frontend integration in this stage. Administrator products/subscriptions, order GETs, the two order-creation POSTs and the two core-edit PATCHes are implemented; other order mutations remain unimplemented.
 
 ## 4. Admin products and settings
 
@@ -114,13 +116,14 @@ Settings PATCH is nonempty and accepts only storeName (1–80), ownerEmail (norm
 
 ## 5. Admin offline orders and payment transactions
 
-The two GET routes and ordinary-order creation POST below are implemented. Other mutation/payment/fulfillment routes and rules remain future contracts.
+The two GET routes, ordinary-order creation POST and core-edit PATCH below are implemented. Other mutation/payment/fulfillment routes and rules remain future contracts.
 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | /admin/orders | Implemented: ordinary order search, pagination, kind/payment/fulfillment filters and creation-time sorting |
 | POST | /admin/orders | Implemented: create ADMIN ordinary order (INITIAL/ONE_TIME) |
 | GET | /admin/orders/:id | Implemented: safe frozen order DTO; transaction/event/linked-subscription expansion deferred |
+| PATCH | /admin/orders/:id | Implemented T15: eligible ordinary-order full form replacement and optional amount edit |
 | POST | /admin/orders/:id/payment-transactions | Record offline payment transaction as pending verification |
 | POST | /admin/payment-transactions/:id/confirm | Confirm payment after checking the actual external account |
 | POST | /admin/orders/:id/refunds | Record a pending full-refund action after private agreement |
@@ -167,6 +170,7 @@ The customer login/me projection includes username but never adminLabel; adminis
 |---|---|---|
 | GET | /customer/orders | Implemented: current customer's own visible ordinary orders |
 | GET | /customer/orders/:id | Implemented: own ordinary order snapshot; no internal timeline |
+| PATCH | /customer/orders/:id | Implemented T15: own eligible ordinary-order full form replacement |
 | GET | /me/subscriptions | Current customer's own subscriptions |
 | GET | /me/subscriptions/:id | Own subscription detail and renewal history |
 
