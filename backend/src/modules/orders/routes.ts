@@ -3,6 +3,8 @@ import type { PrismaClient } from '../../generated/prisma/client.ts'
 import { id } from '../users/schemas.ts'
 import { orderReadService } from './service.ts'
 import { orderCreationService } from './create.ts'
+import { orderEditService } from './edit.ts'
+import { editAdminOrder, editCustomerOrder } from './edit-schemas.ts'
 import {
   createAdminOrder,
   createCustomerOrder,
@@ -20,6 +22,18 @@ export function adminOrderRoutes(database: PrismaClient) {
   const router = Router(),
     service = orderReadService(database)
   const create = orderCreationService(database)
+  const edit = orderEditService(database)
+  router.patch('/orders/:id', async (request, response) => {
+    response.json(
+      await edit(
+        { role: 'ADMIN', input: editAdminOrder.parse(request.body) },
+        id.parse(request.params.id),
+        response.locals.principal.user.id,
+        creationKey(request.get('Idempotency-Key')),
+        response.locals.requestId,
+      ),
+    )
+  })
   router.post('/orders', async (request, response) => {
     response
       .status(201)
@@ -48,6 +62,18 @@ export function customerOrderRoutes(database: PrismaClient) {
   const router = Router(),
     service = orderReadService(database)
   const create = orderCreationService(database)
+  const edit = orderEditService(database)
+  router.patch('/orders/:id', async (request, response) => {
+    response.json(
+      await edit(
+        { role: 'CUSTOMER', input: editCustomerOrder.parse(request.body) },
+        id.parse(request.params.id),
+        response.locals.principal.user.id,
+        creationKey(request.get('Idempotency-Key')),
+        response.locals.requestId,
+      ),
+    )
+  })
   router.post('/orders', async (request, response) => {
     const user = response.locals.principal.user
     if (user.status !== 'ACTIVE')

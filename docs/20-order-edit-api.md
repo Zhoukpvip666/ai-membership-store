@@ -1,8 +1,8 @@
 # Order edit API — implementation contract
 
 - Document: ORDER-EDIT-API
-- Version: 1.0
-- Status: Approved design baseline; implementation not started
+- Version: 1.1
+- Status: T15 implemented for review; no development deployment
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order creation API](19-order-creation-api.md), [Order revision foundation](18-order-revision-foundation.md), [Order read API](16-order-read-api.md)
 
@@ -89,7 +89,7 @@ Both requests require JSON, existing CSRF protections, no-store responses and a 
 - amountFen is optional. If omitted, current amount remains unchanged.
 - If supplied, amountFen must be a nonnegative integer Fen in the existing supported DB/API range.
 - If supplied amountFen differs from the current order amountFen, priceAdjustmentReason is required, nonblank and within the established 500-character limit.
-- If supplied amountFen equals the current amountFen, reason may be omitted. If a reason is supplied without a price change, reject it as an invalid/no-op combination or normalize it away consistently; choose one documented behavior and test it.
+- If supplied amountFen equals the current amountFen, reason may be omitted. A supplied reason without an actual price change (including omitted amountFen) is rejected with 400 INVALID_INPUT. This implementation chooses rejection, not normalization.
 - ADMIN may submit formData and amountFen together. This is one atomic edit and creates exactly one new version.
 - If neither effective formData nor amountFen changes, return a no-op validation error (400 INVALID_INPUT); do not increment version or create history.
 
@@ -103,6 +103,7 @@ Both DTOs are strict. Reject unknown/server-managed fields rather than silently 
 - No coercion, default filling, partial merge or implicit preservation of omitted fields.
 - Store the validated canonical formData as the new complete value.
 - Product edits after order creation must not affect edit validation.
+- A legacy NULL formSchemaSnapshot cannot establish valid input: return 400 INVALID_INPUT without reading the current Product or guessing a schema.
 
 ## 6. Price editing
 
@@ -129,6 +130,8 @@ Use the existing serializable transaction and idempotency helper.
 11. Commit all writes together. Any failure rolls back Order update, version, Revision, Event, applicable Audit and IdempotencyRecord.
 
 Concurrent edits with the same expectedVersion: only one succeeds. The other returns 409 with no revision/event/audit/idempotency success record. Do not automatically retry a stale-version business edit; the client must GET current order and let the user decide whether to reapply.
+
+Implementation uses parameterized SQL FOR UPDATE and an optimistic UPDATE that rechecks UTC_TIMESTAMP(3) against original createdAt. This prevents both lock waits and validation time from extending the deadline. Existing confirmed transaction facts block core editing even if a legacy order incorrectly still says UNPAID; any PaymentTransaction blocks zero conversion. Deprecated paymentRecordedAt is not inferred to mean actual paidAt. The existing NOTE event enum stores an ORDER_EDITED operation marker with version/amount/status before and after; full form values remain in the protected revision, not event/audit payloads. No internalNote update or migration is introduced.
 
 ## 8. Response contract
 
@@ -188,3 +191,50 @@ This task does not implement:
 - Run isolated fresh and historical database migration verification only as required by code changes; never use development .env, database, volume or Seed.
 - Update API contract, data model if needed, roadmap and implementation report.
 - Stop at a PR for review; do not merge or proceed to cancellation/payment/fulfillment without separate authorization.
+
+## 12. T15 implementation report (2026-11-19)
+
+### Files and architecture
+
+- `backend/src/modules/orders/edit-schemas.ts`: strict role-specific request DTOs; required full formData and positive bounded expectedVersion; optional ADMIN integer Fen/reason.
+- `backend/src/modules/orders/edit.ts`: shared edit transaction, owner-scoped lock, frozen-form validation, database-time eligibility, conditional versioned UPDATE, zero transition, immutable Revision, sanitized Event/Audit and persisted original-response idempotency.
+- `backend/src/modules/orders/routes.ts`: only the two PATCH routes, using existing Session/role/CSRF guards and shared key validation. Existing POST/GET behavior remains intact.
+- `backend/test/order-edit.test.ts`: four strict DTO unit tests.
+- `backend/test/integration/order-edit.test.ts`: nineteen real HTTP/MySQL tests, including all eight frozen form types, ownership/roles, state/deadline failures, exact role DTOs, price/no-op rules, zero conversion, concurrency/replay and all-write failure injection.
+- `backend/test/integration/orders.test.ts`: retain read-only GET assertions and unsupported DELETE/fulfillment assertions; remove the obsolete assertion that PATCH is unavailable.
+- `backend/scripts/test-database.ts`: no-Seed `--edit-only` mode. Read assertions use a separate random isolated database, then the editing/creation/Revision/subscription suites run against another. Protected history is never deleted to make test counts pass.
+- `e2e/order-edit.spec.ts`: ADMIN and CUSTOMER browser fetches through the real proxy, HttpOnly persisted Session cookies and CSRF headers on desktop and mobile. Covers full replacement after catalog changes, stale version, original-response replay, untouched V1 and no payment/subscription side effects. No order-management UI is added.
+- `e2e/products.spec.ts`: the existing listing/archive test explicitly reapplies its product-name filter after navigation/reload. New retained fixtures can exceed the first 20-item page; assertions and timeout remain unchanged.
+- `README.md`, `docs/04-data-model.md`, `docs/05-api-contract.md`, `docs/07-development-roadmap.md`, `docs/17-order-creation-and-lifecycle-design.md` and this report: current API/model boundaries and verification instructions.
+
+### Validation procedure
+
+All database tests use the existing runner's random MySQL 8.4 Compose project, disposable test-only volume, random credentials/loopback ports and fictional records. No development .env is read and no Seed command is invoked. The historical mode applies migrations one through eleven in the isolated fixture, captures every business table and immutable revision, applies twelve, compares all retained rows, repeats deployment and verifies schema diff. The browser mode verifies all twelve migrations on a separate fresh database and runs the full desktop/mobile regression suite. No migration or Prisma Schema file changes are part of T15.
+
+Commands executed in this worktree:
+
+```powershell
+npm ci
+npm run db:validate
+npm run db:generate
+npm run typecheck
+npm run lint
+npm test
+npm run format:check
+npm run build
+npm run test:db -w backend -- --edit-only
+npm run test:e2e -w backend -- --edit-only
+npm run test:e2e -w backend -- --edit-only --project=mobile-edge --grep "unlisted products remain manageable"
+```
+
+Static checks, builds and unit tests passed (backend 34/34; frontend 9/9). The final isolated HTTP/database run passed 67/67: editing 19, creation 15, Revision 9, reading 14, subscriptions 10. Historical upgrade, exact retained-row comparisons, repeat deployment and schema diff passed. The final complete browser rerun passed 42/42 on desktop/mobile Edge (7.1 minutes), including all four new order-edit cases. Vite reports existing dependency annotation warnings from Zod; build succeeds without dependency changes.
+
+During verification, the initial type check found a test snapshot return-type annotation, which was corrected. The first combined database run exposed pristine read-suite count assertions being contaminated by earlier append-only fixtures (102 versus 17 visible orders). The runner now uses separate random databases for that suite; none of its assertions were weakened. The rerun of read regression passed 14/14. Initial formatting detected Windows checkout CRLF endings; only this isolated worktree was normalized to repository LF content, with no unrelated content included in the diff. The complete format check then passed.
+
+The first full browser run passed 41/42, including all four new edit checks. Its existing mobile product archive test timed out after navigation cleared the search: the target was beyond page one among 23 retained products. The unchanged test passed by itself in a fresh isolated database (1/1), confirming the data-size dependency. Reapplying the exact name filter after each navigation/reload removes that assumption without changing product APIs, frontend behavior, assertions or timeout. After this correction, the entire 42-test suite passed, including both desktop and mobile listing/archive checks. Format, typecheck and Lint were rerun after the test-only correction and passed. Builds and unit/database tests above were executed in this task; no production code changed after those runs.
+
+### Scope and deployment limits
+
+The original shopping checkout stays on its existing main commit with its three layout changes and existing services preserved. The new worktree is based on the latest fetched origin/main; the original checkout was not advanced or overwritten. No development database inspection/write, migration, Seed, permission/global-variable change, .env read/write or original-volume operation occurs. Existing twelve migration files, Prisma Schema, dependency versions and frontend application source remain unchanged.
+
+The internal-note endpoint, cancellation/expiry worker, payments/refunds, fulfillment/subscription entitlement, renewals, notifications and frontend order editing remain separately authorized future work. In particular, T15 does not claim to implement any of those APIs merely because its zero transition enters PROCESSING.

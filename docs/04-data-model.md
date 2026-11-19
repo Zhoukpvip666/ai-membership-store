@@ -6,7 +6,11 @@ Phase 2 user/subscription fields and migration rules below follow [14-user-subsc
 
 **Latest model override (2026-11-18):** [Stage 1 order/subscription foundation](15-order-subscription-foundation.md) adds the future order-first workflow to this schema. All Phase 2 services remain compatible; new workflow constraints require the next separately authorized service stage. This migration does not convert Phase 2 history or implement order APIs.
 
-**Order revision foundation (2026-11-19):** [Revision/idempotency guide](18-order-revision-foundation.md) adds migration eleven, append-only OrderRevision, Order.version and generic actorUserId idempotency. No order write API is implemented.
+**Order revision foundation (2026-11-19):** [Revision/idempotency guide](18-order-revision-foundation.md) adds migration eleven, append-only OrderRevision, Order.version and generic actorUserId idempotency. That foundation stage itself adds no order write API.
+
+**Order write implementation override (2026-11-19):** The merged [creation API](19-order-creation-api.md) writes V1 and adds migration twelve. [T15 order editing](20-order-edit-api.md) now implements the two role-specific PATCH routes for review, without Schema or Migration changes. A row lock plus expectedVersion and a database-clock conditional UPDATE protect eligible visible USER/ADMIN orders (UNPAID/NOT_STARTED, no payment/completion/cancellation facts, before the original 24-hour deadline). One transaction replaces formData against the order's frozen schema, optionally changes ADMIN amountFen, increments version exactly once, appends a complete immutable Revision and sanitized Event, records ADMIN-only audit, and saves the exact idempotent response. Prior revisions and all frozen snapshots remain unchanged. NULL legacy form schemas are rejected without consulting current Product data.
+
+Changing a positive amount to zero atomically uses NOT_REQUIRED/PROCESSING, keeping payment times NULL and creating no PaymentTransaction or Subscription. Any existing payment transaction prevents this conversion; confirmed transaction facts also prevent other core edits. priceSnapshotFen remains unchanged. The existing NOTE event type carries an `operation: ORDER_EDITED` marker in its sanitized state JSON; this does not modify internalNote. Internal-note editing, cancellation, payment and fulfillment APIs remain outside this task.
 
 ## 1. Design boundaries
 

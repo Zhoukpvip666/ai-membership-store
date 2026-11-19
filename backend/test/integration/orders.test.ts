@@ -1078,7 +1078,7 @@ test('HTTP DTO deadlines come from original createdAt and server time; payment/c
   }
 })
 
-test('GET queries write no business records; editing, deletion and fulfillment remain unavailable', async () => {
+test('GET queries write no business records; deletion and fulfillment remain unavailable', async () => {
   const before = {
     ...(await businessSnapshot(db)),
     revisions: await db.orderRevision.findMany(),
@@ -1093,7 +1093,6 @@ test('GET queries write no business records; editing, deletion and fulfillment r
       200,
     )
     for (const [suffix, method] of [
-      ['/orders/' + orders[0].id, 'PATCH'],
       ['/orders/' + orders[0].id, 'DELETE'],
       ['/orders/' + orders[0].id + '/complete', 'POST'],
     ])

@@ -14,9 +14,9 @@
 - Twelfth incremental migration adds NOT_REQUIRED and compatible zero-price/revision CHECKs; no historical rewrite or development deployment.
 - Implementation merged; actual isolated HTTP/MySQL, concurrency/replay/rollback, DTO, browser and regression results are recorded in the implementation report.
 
-## Order edit API — approved design, implementation not started
+## Order edit API — implemented for review
 
-**Status: Design baseline documented; awaiting one implementation PR.** [Implementation contract](20-order-edit-api.md).
+**Status: T15 implemented; isolated regression and review delivery recorded in the implementation report. No development database deployment.** [Implementation contract and actual validation](20-order-edit-api.md).
 
 - PATCH `/customer/orders/:id`: owner-only formData complete replacement.
 - PATCH `/admin/orders/:id`: formData complete replacement and optional amountFen change in one atomic edit.
@@ -25,6 +25,8 @@
 - internalNote remains a separate D48 endpoint; it still increments Order.version and appends Revision/Event/AdminAuditLog atomically, but is outside T15.
 - If ADMIN changes an eligible UNPAID order amountFen to 0, the same transaction changes it to NOT_REQUIRED + PROCESSING (D64); paid orders cannot be converted this way.
 - Stop at PR review; no development database deployment.
+
+T15 reuses all twelve committed migrations unchanged. Actual amount changes require a reason; supplied reasons without a price change are rejected, as are effective no-ops. Database-time eligibility is checked after the row lock and again in the conditional UPDATE. Fault-injection, real concurrent HTTP, exact DTO/replay and desktop/mobile browser coverage accompany the implementation. The read regression suite runs in its own isolated database to retain its complete-dataset assertions without deleting protected order history. No internal-note, cancel, timeout, payment, fulfillment or frontend order-management feature is included.
 
 ## Order revision / generic idempotency foundation
 

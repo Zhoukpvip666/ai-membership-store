@@ -30,7 +30,9 @@ const modelsOnly = process.argv.includes('--models-only')
 const ordersOnly = process.argv.includes('--orders-only')
 const productsOnly = process.argv.includes('--products-only')
 const revisionsOnly = process.argv.includes('--revisions-only')
-const creationOnly = process.argv.includes('--creation-only')
+const editOnly = process.argv.includes('--edit-only')
+// Editing reuses the committed twelve-migration compatibility path, without Seed.
+const creationOnly = process.argv.includes('--creation-only') || editOnly
 const creationUpgradeSnapshot = join(directory, 'creation-upgrade.json')
 const revisionUpgradeSnapshot = join(directory, 'revision-upgrade.json')
 // Protected history cannot be deleted to prepare empty-database API/seed tests.
@@ -101,6 +103,18 @@ function runModelTests(env: NodeJS.ProcessEnv) {
 }
 
 try {
+  if (editOnly && !browserMode)
+    // Read assertions intentionally count every visible order. Keep their
+    // pristine fixtures separate from the append-only edit/creation histories.
+    console.info(
+      run(
+        process.execPath,
+        ['scripts/test-database.ts', '--orders-only'],
+        process.env,
+        cwd,
+        600000,
+      ),
+    )
   if (
     !browserMode &&
     !modelsOnly &&
@@ -542,6 +556,7 @@ try {
   }
   if (creationOnly && !browserMode) {
     for (const suite of [
+      ...(editOnly ? ['order-edit.test.ts'] : []),
       'order-creation.test.ts',
       'order-revisions.test.ts',
       'subscriptions.test.ts',
@@ -676,6 +691,7 @@ try {
                   '--products-only',
                   '--revisions-only',
                   '--creation-only',
+                  '--edit-only',
                 ].includes(argument),
             ),
         ],
