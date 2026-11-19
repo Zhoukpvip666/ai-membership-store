@@ -28,9 +28,9 @@
 
 T15 reuses all twelve committed migrations unchanged. Actual amount changes require a reason; supplied reasons without a price change are rejected, as are effective no-ops. Database-time eligibility is checked after the row lock and again in the conditional UPDATE. Fault-injection, real concurrent HTTP, exact DTO/replay and desktop/mobile browser coverage accompany the implementation. The read regression suite runs in its own isolated database to retain its complete-dataset assertions without deleting protected order history. No internal-note, cancel, timeout, payment, fulfillment or frontend order-management feature is included.
 
-## Order cancellation and timeout — approved design, implementation not started
+## Order cancellation and timeout — implemented for review
 
-**Status: D65-D69 confirmed and documented; awaiting one implementation PR.** [Implementation contract](21-order-cancellation-timeout.md).
+**Status: T16 implemented under D65-D69; isolated tests and review delivery recorded in the report. No development database deployment.** [Implementation contract and validation](21-order-cancellation-timeout.md).
 
 - POST `/customer/orders/:id/cancel`: owner-only cancellation of eligible unpaid order; reason optional.
 - POST `/admin/orders/:id/cancel`: ADMIN cancellation of eligible unpaid, paid-before-fulfillment or zero-price order; reason mandatory.
@@ -39,6 +39,8 @@ T15 reuses all twelve committed migrations unchanged. Actual amount changes requ
 - Zero-price cancellation follows D53; no refund.
 - SYSTEM timeout worker runs every minute using DB UTC time; cancels expired UNPAID/PENDING_VERIFICATION ordinary orders, closes pending payment attempts as FAILED, and writes SYSTEM Revision/Event without AdminAuditLog.
 - Payment confirmation, refund, fulfillment, notifications and frontend remain out of scope. Stop at PR review; no development DB deployment.
+
+Reuses all twelve migrations unchanged. Both manual handlers share the locked atomic cancellation service, with normalized original-response idempotency and exact role-safe DTOs. The worker processes at most 100 deterministic candidates per minute, with per-order SKIP LOCKED transactions, SYSTEM NULL actors, per-row rollback/retry and graceful shutdown. Real HTTP/MySQL tests cover payment facts, pending-attempt closure, all-stage fault injection, manual/worker/payment-lock races, repeated scans and existing write/read/subscription regressions. Payment-race tests use a synthetic writer only; no production payment-confirmation API is implemented.
 
 ## Order revision / generic idempotency foundation
 

@@ -2,7 +2,7 @@
 
 - Document: ORDER-CANCEL-TIMEOUT
 - Version: 1.0
-- Status: Approved design baseline; implementation not started
+- Status: Implemented for PR review; no development database deployment
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order creation](19-order-creation-api.md), [Order edit](20-order-edit-api.md), [Order revision foundation](18-order-revision-foundation.md), [Order read API](16-order-read-api.md)
 
@@ -146,3 +146,70 @@ Reuse existing error codes where an equivalent already exists. Never disclose an
 - Existing order creation/edit/read/revision/subscription suites pass.
 - Use random isolated MySQL and no-Seed runner; never read development .env or touch development DB/volume.
 - Update API contract, roadmap, implementation report and tests. Stop at PR for review; do not merge or start payment/refund/fulfillment UI without review.
+
+## 11. Implementation report (2026-11-19)
+
+The two role-specific POST handlers reuse the existing persisted Session/role/CSRF guards, strict DTO parsing and actorUserId-scoped idempotency helper. A shared cancellation function runs only after the caller has exclusively locked the Order. It checks the locked version and exact eligible state, then commits Order/version, pending-attempt closure, complete V1-schema Revision, CANCELLED Event, ADMIN-only sanitized Audit and the original manual response together. Frozen product/form/contact fields and existing payment timestamps are not changed. A different key with the current version cannot cancel a terminal order again; a stale expectedVersion returns VERSION_CONFLICT.
+
+Paid cancellation requires exactly one confirmed PAYMENT: its amount must equal amountFen, occurredAt must equal paidAt, confirmedAt must equal paymentConfirmedAt, and actual payment cannot follow confirmation. Inconsistent or missing facts return ORDER_NOT_CANCELLABLE. A valid paid cancellation sets REFUND_PENDING without creating a refund. CUSTOMER and SYSTEM accept PENDING_VERIFICATION without confirmed facts; ADMIN eligibility intentionally remains the narrower states in section 2. Zero-price ADMIN cancellation retains NOT_REQUIRED and creates no money/entitlement rows.
+
+Pending unconfirmed PAYMENT rows are retained. Only their status, failure note and updatedAt change; the failure note is replaced by the fixed sanitized ORDER_CANCELLED or PAYMENT_TIMEOUT marker. IDs, external references, channel, amount, occurrence/confirmation information and creation details remain intact. Existing confirmed/failed transactions and REFUND rows are not changed. Revision stores the protected full snapshot; Event/Audit state JSON contains only the operation, version, amount, statuses and cancellation time, plus the supplied cancellation reason in its dedicated field.
+
+The worker starts once after API listen and then every 60000ms. Each pass selects at most 100 deterministic candidates (createdAt/id), using database UTC time and the inclusive 24-hour boundary. Each candidate gets its own serializable transaction and FOR UPDATE SKIP LOCKED recheck. Concurrent instances share no correctness state outside MySQL. A failed row rolls back and increments the pass's failed count while healthy candidates continue; the next minute retries. The scheduler reports only a sanitized failure message and does not spin to drain a poisoned batch. Shutdown stops both order and existing subscription schedulers and waits for in-flight work before database disconnect.
+
+No Schema or Migration changed: all twelve committed migrations, CHECKs and history/source/renewal triggers are reused unchanged. No frontend page, payment/refund confirmation service, fulfillment, subscription entitlement or internal-note endpoint is added.
+
+### Reproducible isolated verification
+
+```powershell
+npm ci
+npm run db:validate
+npm run db:generate
+npm run format:check
+npm run typecheck
+npm run lint
+npm test
+npm run test:db -w backend -- --cancellation-only
+npm run build
+npm run test:e2e -w backend -- --cancellation-only
+```
+
+The new no-Seed mode first runs the existing edit/create/revision/subscription regression in a separate fresh random database (`--edit-only --fresh`), with read tests in their own pristine project. Another random database exercises migration-twelve historical upgrade, preservation of all thirteen business tables, repeated deploy and schema diff, followed by the cancellation suite. This keeps append-only cancellation fixtures out of regression suites that compare entire tables; no history is deleted to reset tests. Browser mode installs all twelve migrations fresh in a separate random environment. Neither path reads development .env or touches the development database/volume. Build before browser preview; do not rebuild its assets during E2E.
+
+Integration coverage includes role/ownership/CSRF/reason validation, paid/zero/pending states, exact safe DTO parity, immutable history, all-stage database-trigger fault injection, same-key concurrency and competing versions, inclusive database-clock expiry, bounded batches/locked rows, two concurrent worker instances, repeated/restarted sweeps and per-row failure recovery. Payment race coverage uses a **test-only** writer following the shared Order lock/deadline protocol, to demonstrate both winners and rejection after timeout. The production payment-confirmation implementation remains future work and must reapply this protocol and its own full transaction tests.
+
+### Changed files
+
+- `backend/src/modules/orders/cancel-schemas.ts`: strict role-specific cancellation bodies.
+- `backend/src/modules/orders/cancel.ts`: shared locked cancellation transaction, history and manual idempotency.
+- `backend/src/modules/orders/timeout.ts`: bounded database-time scan and minute scheduler wrapper.
+- `backend/src/modules/orders/routes.ts`: the two guarded cancellation POST handlers.
+- `backend/src/server.ts`: start/stop order worker alongside the existing subscription scheduler.
+- `backend/scripts/test-database.ts`: isolated no-Seed cancellation mode and separate existing regression databases.
+- `backend/test/order-cancellation.test.ts`: schema/scheduler unit tests.
+- `backend/test/integration/order-cancellation.test.ts`: real HTTP/MySQL state, concurrency and fault-injection tests.
+- `e2e/order-cancellation.spec.ts`: ADMIN/CUSTOMER browser cancellation and replay on both viewport projects.
+- `README.md`, `docs/04-data-model.md`, `docs/05-api-contract.md`, `docs/07-development-roadmap.md`, `docs/17-order-creation-and-lifecycle-design.md`, this report and `docs/superpowers/plans/2026-11-19-order-cancellation-timeout.md`: contract, scope, implementation status, plan and validation record.
+
+### Actual verification
+
+This report does not claim production deployment or physical-device testing. Microsoft Edge runs cover desktop and emulated mobile viewports.
+
+| Command | Actual result |
+|---|---|
+| `npm ci` | Passed; no dependency version/lockfile changes |
+| `npm run db:validate` | Passed |
+| `npm run db:generate` | Passed; Prisma Client 7.10.1 |
+| `npm run format:check` | Passed |
+| `npm run typecheck` | Passed frontend, backend and E2E; backend rechecked after the final lock-wait fixture |
+| `npm run lint` | Passed |
+| `npm test` | Backend 37/37; frontend 9/9 |
+| `npm run test:db -w backend -- --cancellation-only` | 90/90: read 14, edit 19, creation 15, Revision 9, subscription 10, cancellation/timeout 23; three independent random MySQL projects, no Seed |
+| `npm run build` | Frontend and backend passed |
+| `npm run test:e2e -w backend -- --cancellation-only` | 46/46 passed, desktop Edge + mobile viewport; fresh random MySQL, no Seed |
+
+The first run exposed two fixture issues (compound MySQL CLI delimiter and an adapter idle timeout from holding a test lock across 100 other writes). They were corrected while retaining the throughput and short-lock assertions. A later mixed-history run passed cancellation 22/22 but hit the existing edit subprocess's 180-second limit while comparing the enlarged fixture tables. The final runner gives cancellation and existing write regressions separate random databases without deleting history or changing suite timeouts. Final cancellation coverage also includes the post-lock deadline test: 23/23 passed in 86 seconds. The complete command exited 0, preserving all thirteen historical business tables through migration twelve, with no pending migrations on repeat deploy and no Prisma schema difference. All runner-owned projects/volumes were removed afterward; the development volume was not addressed.
+
+The independent whole-branch review found no blockers. Both suggested tests (concurrent different cancellation reasons sharing a key, and paid cancellation final-stage rollback) were added and passed. A follow-up verified the no-Seed nested runner and the test-only payment writer's separate post-lock database-time query. No known production-code failure remains in this scope; the future payment service must still supply its own implementation and validation.
+
+Original-worktree checks confirmed the same three unstaged layout files and identical SHA-256 values. Existing API/frontend PIDs 1936/1720 were preserved. Development .env was neither read nor modified; no development database/volume operation or service restart was performed. There is no development deployment or manual database setup in this PR. Future payment confirmation must implement the tested lock/deadline protocol in its own production transaction; refund confirmation, fulfillment and subscription entitlement remain out of scope.
