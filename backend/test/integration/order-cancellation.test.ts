@@ -437,7 +437,7 @@ test('pending verification customer cancellation closes ALL unconfirmed PAYMENT 
   )
 })
 
-test('ADMIN unpaid cancellation requires reason, records sanitized Audit, and rejects PENDING_VERIFICATION', async () => {
+test('ADMIN unpaid cancellation requires reason and records sanitized Audit', async () => {
   const order = await fixture(),
     result = await request('admin', order.id)
   assert.equal(result.status, 200, JSON.stringify(result.body))
@@ -461,12 +461,147 @@ test('ADMIN unpaid cancellation requires reason, records sanitized Audit, and re
       'PRIVATE_LABEL',
     ])
       assert(!text.includes(value))
-  const pending = await fixture({ paymentStatus: 'PENDING_VERIFICATION' })
-  await rejected(
-    () => request('admin', pending.id),
-    409,
-    'ORDER_NOT_CANCELLABLE',
+})
+
+test('ADMIN pending-verification cancellation requires reason, retains every attempt and atomically persists one history/response', async () => {
+  const order = await fixture({ paymentStatus: 'PENDING_VERIFICATION' })
+  const attempts = await Promise.all([payment(order.id), payment(order.id)])
+  const failed = await payment(order.id, { status: 'FAILED' })
+  const refund = await payment(order.id, { kind: 'REFUND' })
+  for (const data of [{ expectedVersion: 1 }, body('   ')])
+    await rejected(() => request('admin', order.id, data), 400, 'INVALID_INPUT')
+  const before = await snapshot(),
+    key = randomUUID()
+  const first = await request(
+    'admin',
+    order.id,
+    body('  Admin cancellation  '),
+    key,
   )
+  assert.equal(first.status, 200, JSON.stringify(first.body))
+  assert.equal(first.body.order.paymentStatus, 'UNPAID')
+  assert.equal(first.body.order.fulfillmentStatus, 'CANCELLED')
+  assert.equal(first.body.order.version, 2)
+  assert.equal(first.body.order.cancellationReason, 'Admin cancellation')
+  const saved = await db.order.findUniqueOrThrow({ where: { id: order.id } })
+  for (const field of Object.keys(order) as (keyof typeof order)[])
+    if (
+      ![
+        'version',
+        'updatedAt',
+        'cancelledAt',
+        'cancellationReason',
+        'paymentStatus',
+        'fulfillmentStatus',
+      ].includes(field)
+    )
+      assert.deepEqual(saved[field], order[field], field)
+  assert(saved.cancelledAt)
+  for (const original of attempts) {
+    const updated = await db.paymentTransaction.findUniqueOrThrow({
+      where: { id: original.id },
+    })
+    assert.deepEqual(updated, {
+      ...original,
+      status: 'FAILED',
+      note: 'ORDER_CANCELLED',
+      updatedAt: updated.updatedAt,
+    })
+  }
+  for (const original of [failed, refund])
+    assert.deepEqual(
+      await db.paymentTransaction.findUniqueOrThrow({
+        where: { id: original.id },
+      }),
+      original,
+    )
+  const revision = await db.orderRevision.findFirstOrThrow({
+    where: { orderId: order.id, version: 2 },
+  })
+  assert.deepEqual(revision.snapshotJson, buildOrderSnapshot(saved))
+  assert.equal(revision.actorType, 'ADMIN')
+  assert.equal(revision.actorUserId, admin.id)
+  assert.equal(revision.reason, 'Admin cancellation')
+  assert.deepEqual(
+    (
+      await db.orderRevision.findFirstOrThrow({
+        where: { orderId: order.id, version: 1 },
+      })
+    ).snapshotJson,
+    buildOrderSnapshot(order),
+  )
+  const event = await db.orderEvent.findFirstOrThrow({
+    where: { orderId: order.id },
+  })
+  assert.equal(event.actorType, 'ADMIN')
+  assert.equal(event.actorAdminId, admin.id)
+  assert.equal(event.actorUserId, null)
+  assert.equal(event.note, 'Admin cancellation')
+  const audit = await db.adminAuditLog.findFirstOrThrow({
+    where: { entityId: order.id },
+  })
+  assert.equal(audit.actorAdminId, admin.id)
+  assert.equal(audit.action, 'ORDER_CANCELLED')
+  assert.equal(audit.reason, 'Admin cancellation')
+  const after = await snapshot()
+  for (const table of [
+    'OrderRevision',
+    'OrderEvent',
+    'AdminAuditLog',
+    'IdempotencyRecord',
+  ])
+    assert.equal(after[table].length, before[table].length + 1)
+  for (const table of Object.keys(before))
+    if (
+      ![
+        'Order',
+        'PaymentTransaction',
+        'OrderRevision',
+        'OrderEvent',
+        'AdminAuditLog',
+        'IdempotencyRecord',
+      ].includes(table)
+    )
+      assert.deepEqual(after[table], before[table])
+  assert.equal(after.Order.length, before.Order.length)
+  assert.equal(
+    after.PaymentTransaction.length,
+    before.PaymentTransaction.length,
+  )
+  assert.deepEqual(
+    (await request('admin', order.id, body('Admin cancellation'), key)).body,
+    first.body,
+  )
+  assert(isDeepStrictEqual(await snapshot(), after))
+})
+
+test('pending-verification summary cannot bypass confirmed transaction or order payment facts for either manual role', async () => {
+  for (const variant of [
+    'paidAt',
+    'paymentConfirmedAt',
+    'confirmed-status',
+    'confirmed-time',
+  ]) {
+    const now = new Date(),
+      order = await fixture({
+        paymentStatus: 'PENDING_VERIFICATION',
+        ...(variant === 'paidAt' ? { paidAt: now } : {}),
+        ...(variant === 'paymentConfirmedAt'
+          ? { paymentConfirmedAt: now }
+          : {}),
+      })
+    if (variant.startsWith('confirmed-'))
+      await payment(order.id, {
+        status: variant === 'confirmed-status' ? 'CONFIRMED' : 'PENDING',
+        confirmedAt: variant === 'confirmed-time' ? now : null,
+      })
+    for (const role of ['admin', 'customer'] as const)
+      await rejected(
+        () => request(role, order.id),
+        409,
+        'ORDER_NOT_CANCELLABLE',
+      )
+  }
 })
 
 test('ADMIN paid cancellation yields REFUND_PENDING and preserves full confirmed receipt and payment times', async () => {
@@ -766,7 +901,9 @@ test('faults at every manual transaction stage roll back Order, attempts, Revisi
       ...(role === 'admin' ? ['AdminAuditLog'] : []),
       'IdempotencyRecord',
     ]) {
-      const order = await fixture(),
+      const order = await fixture(
+          role === 'admin' ? { paymentStatus: 'PENDING_VERIFICATION' } : {},
+        ),
         key = randomUUID()
       await payment(order.id)
       sql(

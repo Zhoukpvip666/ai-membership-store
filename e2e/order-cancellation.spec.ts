@@ -7,6 +7,7 @@ import {
   newToken,
   tokenHash,
 } from '../backend/src/modules/auth/security.ts'
+import { buildOrderSnapshot } from '../backend/src/modules/orders/revisions.ts'
 
 // Real browser cookie/CSRF/Vite proxy against disposable MySQL. No order UI.
 const env = integrationEnvironment(),
@@ -157,3 +158,163 @@ for (const role of ['ADMIN', 'CUSTOMER'] as const) {
     )
   })
 }
+
+test('ADMIN browser cancels pending-verification with a mandatory reason and retains failed payment attempts', async ({
+  page,
+  context,
+}) => {
+  const admin = await db.user.findFirstOrThrow({ where: { role: 'ADMIN' } })
+  const customer = await db.user.create({
+    data: { loginEmail: randomUUID() + '@example.com' },
+  })
+  const product = await db.product.create({
+    data: {
+      slug: randomUUID(),
+      name: 'Pending cancellation fixture',
+      type: 'ONE_TIME',
+      priceFen: 1000,
+      termLabel: 'Once',
+    },
+  })
+  const order = await db.order.create({
+    data: {
+      orderNo: 'PENDING-' + randomUUID().replaceAll('-', ''),
+      userId: customer.id,
+      productId: product.id,
+      kind: 'ONE_TIME',
+      source: 'ADMIN',
+      createdByAdminId: admin.id,
+      productNameSnapshot: product.name,
+      productTypeSnapshot: 'ONE_TIME',
+      priceSnapshotFen: 1000,
+      termSnapshot: 'Once',
+      formSchemaSnapshot: { version: 1, fields: [] },
+      formData: {},
+      amountFen: 1000,
+      contactEmailSnapshot: customer.loginEmail,
+      paymentStatus: 'PENDING_VERIFICATION',
+      fulfillmentStatus: 'NOT_STARTED',
+    },
+  })
+  const v1 = await db.orderRevision.create({
+    data: {
+      orderId: order.id,
+      version: 1,
+      snapshotSchemaVersion: 1,
+      snapshotJson: buildOrderSnapshot(order),
+      actorType: 'ADMIN',
+      actorUserId: admin.id,
+    },
+  })
+  const attempts = await Promise.all(
+    Array.from({ length: 2 }, () =>
+      db.paymentTransaction.create({
+        data: {
+          orderId: order.id,
+          kind: 'PAYMENT',
+          channel: 'CASH',
+          amountFen: 1000,
+          status: 'PENDING',
+          occurredAt: new Date(),
+          createdByAdminId: admin.id,
+          externalReference: randomUUID(),
+        },
+      }),
+    ),
+  )
+  const token = newToken()
+  await db.session.create({
+    data: {
+      userId: admin.id,
+      tokenHash: tokenHash(token),
+      expiresAt: new Date(Date.now() + 3600000),
+    },
+  })
+  await context.addCookies([
+    {
+      name: COOKIE_NAME,
+      value: token,
+      url: env.APP_BASE_URL,
+      httpOnly: true,
+      sameSite: 'Strict',
+    },
+  ])
+  await page.goto('/')
+  const send = (body: unknown, key = randomUUID()) =>
+    page.evaluate(
+      async ({ id, body, key }) => {
+        const response = await fetch('/api/v1/admin/orders/' + id + '/cancel', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-requested-with': 'MembershipStore',
+            'Idempotency-Key': key,
+          },
+          body: JSON.stringify(body),
+        })
+        return { status: response.status, body: await response.json() }
+      },
+      { id: order.id, body, key },
+    )
+  for (const reason of [undefined, '   '])
+    expect((await send({ expectedVersion: 1, reason })).status).toBe(400)
+  expect(await db.order.findUniqueOrThrow({ where: { id: order.id } })).toEqual(
+    order,
+  )
+  for (const original of attempts)
+    expect(
+      await db.paymentTransaction.findUniqueOrThrow({
+        where: { id: original.id },
+      }),
+    ).toEqual(original)
+  const key = randomUUID(),
+    first = await send(
+      { expectedVersion: 1, reason: '  Admin checked cancellation  ' },
+      key,
+    )
+  expect(first.status).toBe(200)
+  expect(first.body.order).toMatchObject({
+    version: 2,
+    paymentStatus: 'UNPAID',
+    fulfillmentStatus: 'CANCELLED',
+    cancellationReason: 'Admin checked cancellation',
+    paidAt: null,
+    paymentConfirmedAt: null,
+  })
+  for (const original of attempts) {
+    const saved = await db.paymentTransaction.findUniqueOrThrow({
+      where: { id: original.id },
+    })
+    expect(saved).toEqual({
+      ...original,
+      status: 'FAILED',
+      note: 'ORDER_CANCELLED',
+      updatedAt: saved.updatedAt,
+    })
+  }
+  expect(
+    await send(
+      { expectedVersion: 1, reason: 'Admin checked cancellation' },
+      key,
+    ),
+  ).toEqual(first)
+  expect(
+    await db.orderRevision.findUniqueOrThrow({ where: { id: v1.id } }),
+  ).toEqual(v1)
+  expect(await db.orderRevision.count({ where: { orderId: order.id } })).toBe(2)
+  expect(await db.orderEvent.count({ where: { orderId: order.id } })).toBe(1)
+  expect(await db.adminAuditLog.count({ where: { entityId: order.id } })).toBe(
+    1,
+  )
+  expect(
+    await db.paymentTransaction.count({ where: { orderId: order.id } }),
+  ).toBe(2)
+  expect(
+    await db.paymentTransaction.count({
+      where: { orderId: order.id, kind: 'REFUND' },
+    }),
+  ).toBe(0)
+  expect(
+    await db.subscription.count({ where: { sourceOrderId: order.id } }),
+  ).toBe(0)
+})

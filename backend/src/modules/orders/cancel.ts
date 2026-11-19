@@ -53,8 +53,7 @@ export async function cancelLockedOrder(
     order.fulfillmentStatus === 'NOT_STARTED' &&
     noPaidFacts &&
     (order.paymentStatus === 'UNPAID' ||
-      (actor.type !== 'ADMIN' &&
-        order.paymentStatus === 'PENDING_VERIFICATION'))
+      order.paymentStatus === 'PENDING_VERIFICATION')
   const zero =
     actor.type === 'ADMIN' &&
     order.paymentStatus === 'NOT_REQUIRED' &&
