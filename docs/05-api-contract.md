@@ -6,7 +6,9 @@ Base path: /api/v1. All payloads are JSON. Timestamps are UTC ISO-8601. Money is
 
 ## Implemented surface
 
-`GET /api/v1/health` and its `/health` alias retain their database-readiness behavior. Each request probes MySQL through Prisma. Successful connectivity returns HTTP 200 with `{"status":"ok","database":"ready"}`. Connection/query failure returns HTTP 503 with `{"status":"degraded","database":"unavailable"}`; driver errors and credentials are never returned. This does not verify migration currency: use the local `db:status` command. Authentication and the section 3 customer/invitation APIs below are implemented in Task 1.2.2. Product/settings and Phase 2 subscription APIs are implemented below; offline order/payment/dashboard/customer-history APIs remain unimplemented and return 404. All /admin routes, including unimplemented paths, first require a valid ADMIN session.
+**Current order-read override:** [Order API stage 1](16-order-read-api.md) implements only GET `/admin/orders`, `/admin/orders/:id`, `/customer/orders`, `/customer/orders/:id`. Both roles exclude hidden rows in list/detail; CUSTOMER ownership comes only from Session. Explicit snapshot DTOs exclude internal notes, authentication data and audits. This supersedes the earlier reserved `/me/orders` paths below. No order write/payment/fulfillment/renewal endpoint is implemented.
+
+`GET /api/v1/health` and its `/health` alias retain their database-readiness behavior. Each request probes MySQL through Prisma. Successful connectivity returns HTTP 200 with `{"status":"ok","database":"ready"}`. Connection/query failure returns HTTP 503 with `{"status":"degraded","database":"unavailable"}`; driver errors and credentials are never returned. This does not verify migration currency: use the local `db:status` command. Authentication, customer/invitation, product/settings, Phase 2 subscription and the four order GETs above are implemented. Order writes, payment, dashboard and customer subscription APIs remain unimplemented and return404. All /admin routes, including unimplemented paths, first require a valid ADMIN session.
 
 ## Model review follow-up (no new endpoints)
 
@@ -76,7 +78,7 @@ Creating a user and creating a subscription are independent. A pending customer 
 - Revoke: JSON `{}`; HTTP 204. Already used/revoked invitations return 409. The UI retains no recoverable URL after closing the detail.
 - Customer creation/edit/disable/restore, invitation issue/revoke and administrator login/logout append sanitized audit records transactionally. Audit snapshots omit names/emails, raw tokens and password/token hashes; edit logs name changed fields only.
 
-Customer order/subscription read APIs remain section 7 future work; customer UI shows an explicit placeholder rather than another account's Mock history. Administrator products and subscriptions are implemented in sections 4 and 6; order CRUD remains unimplemented.
+Customer order reads are implemented at `/customer/orders` as documented above; customer subscription reads remain future work. Customer UI remains a placeholder with no frontend integration in this stage. Administrator products/subscriptions and order GETs are implemented; order writes remain unimplemented.
 
 ## 4. Admin products and settings
 
@@ -104,11 +106,13 @@ Settings PATCH is nonempty and accepts only storeName (1–80), ownerEmail (norm
 
 ## 5. Admin offline orders and payment transactions
 
+Only the two GET routes below are implemented in this stage. All mutation/payment/fulfillment routes and rules in this section remain future contracts.
+
 | Method | Path | Purpose |
 |---|---|---|
-| GET | /admin/orders | Search/filter by customer, order number, payment status, fulfillment status, date |
+| GET | /admin/orders | Implemented: ordinary order search, pagination, kind/payment/fulfillment filters and creation-time sorting |
 | POST | /admin/orders | Create ADMIN ordinary order (INITIAL/ONE_TIME; not implemented) |
-| GET | /admin/orders/:id | Order snapshot, transactions, events, linked subscription |
+| GET | /admin/orders/:id | Implemented: safe frozen order DTO; transaction/event/linked-subscription expansion deferred |
 | POST | /admin/orders/:id/payment-transactions | Record offline payment transaction as pending verification |
 | POST | /admin/payment-transactions/:id/confirm | Confirm payment after checking the actual external account |
 | POST | /admin/orders/:id/refunds | Record a pending full-refund action after private agreement |
@@ -153,8 +157,8 @@ The customer login/me projection includes username but never adminLabel; adminis
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | /me/orders | Current customer's own orders |
-| GET | /me/orders/:orderNo | Own order detail and safe timeline |
+| GET | /customer/orders | Implemented: current customer's own visible ordinary orders |
+| GET | /customer/orders/:id | Implemented: own ordinary order snapshot; no internal timeline |
 | GET | /me/subscriptions | Current customer's own subscriptions |
 | GET | /me/subscriptions/:id | Own subscription detail and renewal history |
 
