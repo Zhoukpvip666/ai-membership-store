@@ -3,7 +3,13 @@ import { once } from 'node:events'
 import { createServer } from 'node:net'
 import { createRequire } from 'node:module'
 import { randomBytes } from 'node:crypto'
-import { mkdtempSync, writeFileSync, unlinkSync, rmdirSync } from 'node:fs'
+import {
+  mkdtempSync,
+  writeFileSync,
+  unlinkSync,
+  rmdirSync,
+  readdirSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,10 +29,13 @@ const requestedFreshInstall = process.argv.includes('--fresh')
 const modelsOnly = process.argv.includes('--models-only')
 const ordersOnly = process.argv.includes('--orders-only')
 const productsOnly = process.argv.includes('--products-only')
+const revisionsOnly = process.argv.includes('--revisions-only')
+const revisionUpgradeSnapshot = join(directory, 'revision-upgrade.json')
 // Protected history cannot be deleted to prepare empty-database API/seed tests.
 // Full regression first verifies history in a separate disposable project, then
 // runs its existing empty-database suites against this independently fresh one.
 const freshInstall =
+  revisionsOnly ||
   productsOnly ||
   ordersOnly ||
   requestedFreshInstall ||
@@ -94,6 +103,7 @@ try {
     !modelsOnly &&
     !ordersOnly &&
     !productsOnly &&
+    !revisionsOnly &&
     !requestedFreshInstall
   )
     console.info(
@@ -110,6 +120,7 @@ try {
     !modelsOnly &&
     !ordersOnly &&
     !productsOnly &&
+    !revisionsOnly &&
     !requestedFreshInstall
   )
     console.info(
@@ -371,6 +382,45 @@ try {
       env,
     )
   }
+  if (revisionsOnly && !requestedFreshInstall && !browserMode) {
+    // Exercise committed history in a disposable database, never rewrite SQL.
+    for (const migration of readdirSync(join(cwd, 'prisma/migrations'))
+      .filter(
+        (name) =>
+          /^2026/.test(name) &&
+          name !== '20261119000000_order_revision_foundation',
+      )
+      .sort()) {
+      run(
+        process.execPath,
+        [
+          'scripts/prisma.ts',
+          'db',
+          'execute',
+          '--file',
+          `prisma/migrations/${migration}/migration.sql`,
+        ],
+        migrationEnv,
+      )
+      run(
+        process.execPath,
+        ['scripts/prisma.ts', 'migrate', 'resolve', '--applied', migration],
+        migrationEnv,
+      )
+    }
+    run(process.execPath, ['test/integration/product-fixture.ts'], env)
+    console.info(
+      run(
+        process.execPath,
+        [
+          'test/integration/revision-upgrade.ts',
+          'before',
+          revisionUpgradeSnapshot,
+        ],
+        env,
+      ),
+    )
+  }
   run(
     process.execPath,
     ['scripts/prisma.ts', 'migrate', 'deploy'],
@@ -414,11 +464,33 @@ try {
   console.info(
     'Versioned migrations applied; repeated deploy has no pending migrations; database matches Prisma schema.',
   )
-  if (productsOnly) {
+  if (revisionsOnly && !requestedFreshInstall && !browserMode) {
+    console.info(
+      run(
+        process.execPath,
+        [
+          'test/integration/revision-upgrade.ts',
+          'after',
+          revisionUpgradeSnapshot,
+        ],
+        env,
+      ),
+    )
+    unlinkSync(revisionUpgradeSnapshot)
+  }
+  if (
+    productsOnly ||
+    (revisionsOnly && (requestedFreshInstall || browserMode))
+  ) {
     // Fresh runner-owned database, fictional login/settings fixtures; never Seed.
     run(process.execPath, ['test/integration/product-fixture.ts'], env)
   }
-  if (productsOnly && !browserMode) {
+  if (revisionsOnly && !browserMode) {
+    for (const suite of ['order-revisions.test.ts', 'subscriptions.test.ts'])
+      console.info(
+        run(process.execPath, ['--test', 'test/integration/' + suite], env),
+      )
+  } else if (productsOnly && !browserMode) {
     console.info(
       run(
         process.execPath,
@@ -447,8 +519,8 @@ try {
       try {
         const versions = await db.$queryRawUnsafe('SELECT COUNT(*) AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL');
         const tables = await db.$queryRawUnsafe('SELECT COUNT(*) AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()');
-        assert.equal(Number(versions[0].n), 10);
-        assert.equal(Number(tables[0].n), 13);
+        assert.equal(Number(versions[0].n), 11);
+        assert.equal(Number(tables[0].n), 14);
         if (await db.user.count() === 0) {
           await db.user.create({ data: { loginEmail: 'model-fixture@example.com', role: 'ADMIN', status: 'DISABLED' } });
           await db.appSettings.create({ data: { id: 1, storeName: 'Isolated model fixture', ownerEmail: 'model-fixture@example.com' } });
@@ -478,7 +550,7 @@ try {
     run(process.execPath, ['scripts/prisma.ts', 'db', 'seed'], env)
     runModelTests(env)
   } else if (browserMode) {
-    if (!productsOnly)
+    if (!productsOnly && !revisionsOnly)
       run(process.execPath, ['scripts/prisma.ts', 'db', 'seed'], env)
     const reservation = createServer()
     reservation.listen(0, '127.0.0.1')
@@ -534,7 +606,10 @@ try {
           ...process.argv
             .slice(2)
             .filter(
-              (argument) => !['--e2e', '--products-only'].includes(argument),
+              (argument) =>
+                !['--e2e', '--products-only', '--revisions-only'].includes(
+                  argument,
+                ),
             ),
         ],
         { ...env, TEST_API_ORIGIN: apiOrigin },
@@ -644,6 +719,11 @@ try {
     unlinkSync(sourceUpgradeSnapshot)
   } catch {
     /* No source fixture remains after a successful upgrade. */
+  }
+  try {
+    unlinkSync(revisionUpgradeSnapshot)
+  } catch {
+    /* Optional upgrade artifact. */
   }
   rmdirSync(directory)
 }

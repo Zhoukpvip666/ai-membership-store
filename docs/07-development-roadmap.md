@@ -1,11 +1,20 @@
 # Development Roadmap
 
+## Order revision / generic idempotency foundation
+
+**Status: Implemented for review; development database is not migrated.** [Schema, immutable history and test guide](18-order-revision-foundation.md).
+
+- Eleventh incremental migration: Order.version, strict V1 append-only OrderRevision, in-place actorUserId idempotency rename. Ten historical migration files unchanged.
+- Existing order GET DTOs add version and server-derived deadline/countdown; ADMIN additionally receives internalNote, CUSTOMER excludes it.
+- New isolated historical/fresh tests and existing subscription idempotency/read API regressions; no order write API or frontend change.
+- Stop at the independent PR for review; next order creation stage requires separate authorization.
+
 ## Order API stage 1 — lists and details
 
 **Status: Implemented for owner acceptance after merged model PR #6.** [Contract and isolated verification](16-order-read-api.md).
 
 - ADMIN and Session-authenticated CUSTOMER order list/detail GETs only; hidden=false in every database predicate, CUSTOMER ownership derived only from Session.
-- Strict pagination/search/kind/payment/fulfillment/sort filters; explicit per-role snapshot DTOs without internal notes/authentication/audit data or current-Product substitutions.
+- Strict pagination/search/kind/payment/fulfillment/sort filters; explicit per-role snapshot DTOs without authentication/audit data (subsequent foundation adds ADMIN-only internalNote) or current-Product substitutions.
 - Random isolated MySQL8.4 HTTP tests, including all-table preservation after reads; orders-only runner executes no Seed and never uses development configuration.
 - No order creation/edit/cancellation/payment/fulfillment/renewal, frontend page, database migration or development data change. Stop for acceptance; no automatic next stage.
 

@@ -152,7 +152,7 @@ test('real MySQL/API restarts retain products, settings, subscriptions, idempote
     const tables = await db.$queryRaw<
       { count: bigint }[]
     >`SELECT COUNT(*) AS count FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME <> '_prisma_migrations'`
-    assert.equal(Number(tables[0]!.count), 12)
+    assert.equal(Number(tables[0]!.count), 13)
     await verifyApiRestart()
   } finally {
     await db.$disconnect()

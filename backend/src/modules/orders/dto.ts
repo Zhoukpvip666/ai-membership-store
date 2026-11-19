@@ -2,6 +2,7 @@ import type { Prisma } from '../../generated/prisma/client.ts'
 
 // Explicit projections: never join today's Product or fetch internal order data.
 export const customerOrderSelect = {
+  version: true,
   id: true,
   orderNo: true,
   productId: true,
@@ -30,6 +31,7 @@ export const customerOrderSelect = {
 
 export const adminOrderSelect = {
   ...customerOrderSelect,
+  internalNote: true,
   source: true,
   createdByAdminId: true,
   createdByUserId: true,
@@ -49,8 +51,41 @@ type CustomerOrder = Prisma.OrderGetPayload<{
 }>
 type AdminOrder = Prisma.OrderGetPayload<{ select: typeof adminOrderSelect }>
 
-export function customerOrderDto(order: CustomerOrder) {
+// A deadline is always derived from original creation, never from updatedAt.
+// Only ordinary unpaid/unstarted orders have a payable countdown.
+export function orderDeadline(
+  order: Pick<
+    CustomerOrder,
+    | 'createdAt'
+    | 'paymentStatus'
+    | 'fulfillmentStatus'
+    | 'cancelledAt'
+    | 'paidAt'
+    | 'paymentConfirmedAt'
+    | 'fulfilledAt'
+  >,
+  now = new Date(),
+) {
+  const expiresAt = new Date(order.createdAt.getTime() + 24 * 60 * 60 * 1000)
+  const payable =
+    order.paymentStatus === 'UNPAID' &&
+    order.fulfillmentStatus === 'NOT_STARTED' &&
+    !order.cancelledAt &&
+    !order.paidAt &&
+    !order.paymentConfirmedAt &&
+    !order.fulfilledAt
   return {
+    expiresAt,
+    remainingSeconds: payable
+      ? Math.max(0, Math.floor((expiresAt.getTime() - now.getTime()) / 1000))
+      : 0,
+  }
+}
+
+export function customerOrderDto(order: CustomerOrder, now = new Date()) {
+  return {
+    ...orderDeadline(order, now),
+    version: order.version,
     id: order.id,
     orderNo: order.orderNo,
     productId: order.productId,
@@ -78,9 +113,10 @@ export function customerOrderDto(order: CustomerOrder) {
   }
 }
 
-export function adminOrderDto(order: AdminOrder) {
+export function adminOrderDto(order: AdminOrder, now = new Date()) {
   return {
-    ...customerOrderDto(order),
+    ...customerOrderDto(order, now),
+    internalNote: order.internalNote,
     customer: {
       id: order.user.id,
       username: order.user.username,

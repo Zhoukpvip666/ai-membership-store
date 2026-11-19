@@ -153,7 +153,10 @@ test('review constraints and immutable renewal purchase evidence', async (t) => 
           )
       }
       await rejected(
-        db.order.update({ where: { id: initial.id }, data: { hidden: true } }),
+        db.order.update({
+          where: { id: initial.id },
+          data: { hidden: true, version: { increment: 1 } },
+        }),
         /Order_creator_check/,
       )
       for (const extra of [

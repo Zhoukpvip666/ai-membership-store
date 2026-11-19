@@ -177,8 +177,8 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 本文件的业务决策不表示 API 已存在。当前尚待实现的主要内容：
 
 1. 订单创建 API。
-2. 通用 actorUserId 幂等模型及增量迁移。
-3. OrderRevision 完整版本快照表及增量迁移。
+2. 通用 actorUserId 幂等模型已由订单版本基础设施实现；订单创建接入尚未实现。
+3. OrderRevision 完整版本快照表及增量迁移已实现；订单写入事务接入尚未实现。
 4. 待付款订单编辑 API 和 version 并发控制。
 4. 订单 24 小时自动取消任务。
 5. 用户/管理员取消 API。
@@ -194,21 +194,21 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 
 | 编号 | 待确认事项 | 说明 |
 | --- | --- | --- |
-| T1 | OrderRevision 技术结构 | 按 D40、D43、D44 实现独立 OrderRevision 表并增加 Order.version；进一步确定快照 JSON 的字段白名单/版本化格式、索引、actor 关联与数据库级不可变保护，并验证订单创建时 V1、编辑/状态递增、事务回滚和内部审计读取；当前不开发历史版本浏览/比较/恢复界面或 API（D41） |
+| T1 | OrderRevision 技术结构（基础设施已实现） | 按 D40、D43、D44 实现独立 OrderRevision 表并增加 Order.version；进一步确定快照 JSON 的字段白名单/版本化格式、索引、actor 关联与数据库级不可变保护，并验证订单创建时 V1、编辑/状态递增、事务回滚和内部审计读取；当前不开发历史版本浏览/比较/恢复界面或 API（D41） |
 | T2 | 已付款订单取消状态 | 对照现有枚举，设计“取消/待退款”表达；不能伪造已退款状态 |
 | T3 | 商品表单变更兼容 | 订单创建后使用冻结 Schema；管理员修改 formData 时仍按该订单冻结 Schema 校验 |
 | T4 | 超时取消调度 | 定时任务、并发条件更新、补偿和停机恢复策略 |
-| T5 | 幂等响应存储 | 复用/迁移 IdempotencyRecord 时，明确 responseJson、事务、唯一键冲突和永久保留 |
+| T5 | 幂等响应存储（通用主体迁移已实现） | 复用/迁移 IdempotencyRecord 时，明确 responseJson、事务、唯一键冲突和永久保留 |
 | T6 | 订单创建/编辑 DTO 与路由 | 明确字段白名单、权限、状态码、错误码和响应结构；客户详情按 D46、管理员详情按 D47 提供展示数据；明确剩余有效时间计算契约和管理员额外字段白名单 |
 | T7 | 0 元订单技术实现 | 按 D37、D51、D52 实现 USER 商品原价为 0 与 ADMIN 调整 amountFen 为 0 两种路径；新增明确的 NOT_REQUIRED 付款状态，禁止生成 PaymentTransaction，paidAt/paymentConfirmedAt 保持 NULL，创建事务直接进入 NOT_REQUIRED + PROCESSING；明确 CHECK/事件记录和增量迁移，不得伪装为已付款 |
 | T8 | 订单超时自动取消实现 | 实现 createdAt + 24 hours 到期自动取消；以条件更新/事务防止超时取消与付款确认竞态；取消后禁止恢复或迟延确认；迟到付款争议走订单系统外的线下人工处理；不实现用户上传付款凭证 |
 | T9 | 取消原因与事件类型 | 对照已有 OrderEvent 枚举，确认 USER/ADMIN/SYSTEM 的事件记录和原因要求 |
 | T10 | 自然周期算法 | 月末、闰年、时区/DST、原始锚点和人工调整后账期修订的精确算法 |
 | T11 | 商品/价格快照重算 | 明确 ADMIN 修改 amountFen 的上下限、原因字段与审计 DTO |
-| T12 | 订单创建请求幂等身份 | 明确 actorUserId、角色、操作名称、keyHash、requestHash 的规范化和并发回放响应 |
+| T12 | 订单创建请求幂等身份（共享存储已实现，创建 API 未接入） | 明确 actorUserId、角色、操作名称、keyHash、requestHash 的规范化和并发回放响应 |
 | T13 | 商品结构化周期管理 | 补齐 Product 管理 API、DTO 和前端对 servicePeriodUnit/servicePeriodCount 的读写；新建订阅商品要求完整周期，ONE_TIME 为 NULL；历史 NULL 不推断，需管理员显式补录后才能创建订阅订单 |
-| T14 | Order.version 数据库字段 | 当前 Order Schema 尚无 version 字段；按 D43 增加非空整数 version，历史行默认 1，新订单从 1 开始。所有成功的 Order 行修改（含状态转换和内部备注）原子递增 version，并与 OrderRevision 同事务；新增 Migration，不改写已应用 Migration |
-| T15 | 订单读取 DTO 后续补强 | 当前已合并的 PR #7 管理员 DTO 尚未返回 D47 要求的 internalNote 和 version；客户 DTO 继续严格排除内部备注。后续在订单写 API 阶段同步更新管理员详情白名单，并按 D46 提供 expiresAt/remainingSeconds（由 createdAt + 24h 计算，不信任客户端时钟） |
+| T14 | Order.version 数据库字段（已实现） | 第十一条迁移已增加非空整数 version，历史行默认 1，新订单从 1 开始；数据库强制每次更新恰好 +1。所有成功的 Order 行修改（含状态转换和内部备注）原子递增 version，并与 OrderRevision 同事务；新增 Migration，不改写已应用 Migration |
+| T15 | 订单读取 DTO 补强（已实现） | 既有四个 GET 接口已提供 version、expiresAt、remainingSeconds；管理员额外返回 internalNote，客户严格排除。服务端从原始 createdAt +24h 计算截止时间，非可付款状态返回 0；精确字段白名单和 HTTP 测试已同步更新。 |
 
 ## 5.1 技术实现默认方案（依据 D50，由助手负责常规设计）
 
@@ -364,3 +364,11 @@ npm run build
 | 2026-11-19 | T13 商品结构化服务周期管理经复审后合并 PR #8（`c426ae0`）；订单创建 API 尚未开始。 |
 
 后续每次业务决定都必须分配新的 D 编号，并按第 1.3 节维护冲突、替代和撤销关系。
+
+## 8. 订单版本与幂等基础设施（2026-11-19）
+
+本次独立完成 T1/T5/T12/T14 的存储与保护基础，以及 T15 的既有读取 DTO 补强，详见 [18-order-revision-foundation.md](18-order-revision-foundation.md)。第十一条增量 Migration 增加 Order.version 和 OrderRevision，并原地重命名 IdempotencyRecord.actorAdminId 为 actorUserId，前十条 Migration 不变。历史订单仅初始化 version=1，不补造历史操作或 V1 快照。新业务必须在未来创建事务中写 V1；所有成功修改（包括备注和状态）必须 version+1，与 Revision/Event/适用的 AdminAuditLog/幂等响应一起提交。
+
+版本历史使用 V1 明确白名单 JSON 和数据库不可变 Trigger；不开放浏览、比较、恢复 API 或界面。当前数据库要求订单每次更新恰好递增一版，revision 对应父订单当前版本；跨表“每次写入必须有完整历史”的原子性仍须由未来事务服务实现，不能把这些存储约束宣称为完整订单写业务。
+
+四个订单 GET 接口新增 version、expiresAt、remainingSeconds；管理员额外返回 internalNote，客户永不返回。截止时间从原 createdAt +24h 推导，服务端计算秒数；已付款、取消、完成等非可付款状态返回 0。没有实现订单创建/编辑/取消/付款/履约/续费 API，没有新增前端页面。开发数据库保持未访问、未迁移状态，待单独审查授权。

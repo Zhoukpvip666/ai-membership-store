@@ -6,7 +6,7 @@ Base path: /api/v1. All payloads are JSON. Timestamps are UTC ISO-8601. Money is
 
 ## Implemented surface
 
-**Current order-read override:** [Order API stage 1](16-order-read-api.md) implements only GET `/admin/orders`, `/admin/orders/:id`, `/customer/orders`, `/customer/orders/:id`. Both roles exclude hidden rows in list/detail; CUSTOMER ownership comes only from Session. Explicit snapshot DTOs exclude internal notes, authentication data and audits. This supersedes the earlier reserved `/me/orders` paths below. No order write/payment/fulfillment/renewal endpoint is implemented.
+**Current order-read override:** [Order API stage 1](16-order-read-api.md) implements only GET `/admin/orders`, `/admin/orders/:id`, `/customer/orders`, `/customer/orders/:id`. Both roles exclude hidden rows in list/detail; CUSTOMER ownership comes only from Session. Explicit snapshot DTOs exclude authentication data and audits. ADMIN additionally receives internalNote; CUSTOMER never does. Both receive version, derived expiresAt and server-calculated remainingSeconds; see [revision foundation](18-order-revision-foundation.md). This supersedes the earlier reserved `/me/orders` paths below. No order write/payment/fulfillment/renewal endpoint is implemented.
 
 `GET /api/v1/health` and its `/health` alias retain their database-readiness behavior. Each request probes MySQL through Prisma. Successful connectivity returns HTTP 200 with `{"status":"ok","database":"ready"}`. Connection/query failure returns HTTP 503 with `{"status":"degraded","database":"unavailable"}`; driver errors and credentials are never returned. This does not verify migration currency: use the local `db:status` command. Authentication, customer/invitation, product/settings, Phase 2 subscription and the four order GETs above are implemented. Order writes, payment, dashboard and customer subscription APIs remain unimplemented and return404. All /admin routes, including unimplemented paths, first require a valid ADMIN session.
 
@@ -188,3 +188,7 @@ Dashboard totals must be computed from confirmed PaymentTransaction records and 
 ## 10. Explicitly absent endpoints
 
 Do not implement public checkout, online payment intent, payment webhook, automatic refund API, supplier email, supplier API, supplier transfer, SMTP, email outbox, settlement, split payment, merchant wallet, or withdrawal routes.
+
+## Order revision infrastructure (2026-11-19)
+
+Migration eleven adds Order.version, permanent append-only OrderRevision and actorUserId-scoped idempotency (D34–D36). There are no new HTTP routes. Existing four order GET endpoints return the additional role-specific fields documented in [order read API](16-order-read-api.md); no history, order creation/edit, payment, cancellation or fulfillment endpoint is added. Full snapshot history is internal and never reused as a customer DTO.

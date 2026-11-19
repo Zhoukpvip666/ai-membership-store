@@ -23,7 +23,7 @@ const isPrismaError = (code: string) => (error: unknown) =>
     error.code === code,
   )
 
-test('migration creates twelve domain tables and ten migration records', async () => {
+test('migration creates thirteen domain tables and eleven migration records', async () => {
   const tables = await db.$queryRaw<{ name: string }[]>`
     SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()`
   assert.deepEqual(
@@ -35,6 +35,7 @@ test('migration creates twelve domain tables and ten migration records', async (
       'IdempotencyRecord',
       'Order',
       'OrderEvent',
+      'OrderRevision',
       'PaymentTransaction',
       'Product',
       'Session',
@@ -54,7 +55,7 @@ test('migration creates twelve domain tables and ten migration records', async (
   assert.equal(zones[0]!.zone, '+00:00')
   const migrations = await db.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*) AS count FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`
-  assert.equal(Number(migrations[0]!.count), 10)
+  assert.equal(Number(migrations[0]!.count), 11)
   assert.equal(await db.user.count(), 0)
 })
 

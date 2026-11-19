@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { isDeepStrictEqual } from 'node:util'
 import { randomUUID } from 'node:crypto'
+import { Prisma } from '../../src/generated/prisma/client.ts'
 import { createDatabase } from '../../src/db/client.ts'
 import { integrationEnvironment } from './support.ts'
 import {
@@ -137,48 +138,64 @@ try {
     const paidAt = new Date('2030-01-01T00:00:00Z')
     for (const source of ['USER', 'ADMIN', 'SYSTEM_RENEWAL'] as const) {
       const system = source === 'SYSTEM_RENEWAL'
-      const row = await db.order.create({
-        data: {
-          orderNo: 'VALID-NINTH-' + source,
-          userId: customer.id,
-          productId: product.id,
-          kind: system ? 'RENEWAL' : 'INITIAL',
-          source,
-          hidden: system,
-          subscriptionId: system ? subscription.id : null,
-          createdByUserId: source === 'USER' ? customer.id : null,
-          createdByAdminId: source === 'ADMIN' ? admin.id : null,
-          productNameSnapshot: 'Explicit new-flow fixture',
-          productTypeSnapshot: 'SUBSCRIPTION',
-          termSnapshot: 'Explicit test month',
-          amountFen: 1234,
-          contactEmailSnapshot: customer.loginEmail,
-          servicePeriodUnitSnapshot: 'MONTH',
-          servicePeriodCountSnapshot: 1,
-          // Explicit fictional new-order data, never inferred from legacy termLabel.
-          formSchemaSnapshot: { version: 1, fields: [] },
-          formData: {},
-          ...(system
-            ? {
-                paymentStatus: 'PAID',
-                fulfillmentStatus: 'COMPLETED',
-                paidAt,
-                paymentConfirmedAt: paidAt,
-                fulfilledAt: paidAt,
-                renewalForPeriodStartAt: new Date('2029-12-01T00:00:00Z'),
-                renewalPeriodStartAt: paidAt,
-                renewalPeriodEndAt: new Date('2030-02-01T00:00:00Z'),
-                billingAnchorSnapshotAt: paidAt,
-                billingTimezoneSnapshot: 'UTC',
-                billingRevisionSnapshot: 1,
-                renewalRequestKeyHash: randomUUID()
-                  .replaceAll('-', '')
-                  .repeat(2),
-                renewalRequestHash: randomUUID().replaceAll('-', '').repeat(2),
-              }
-            : {}),
-        },
+      const data: Prisma.OrderUncheckedCreateInput = {
+        orderNo: 'VALID-NINTH-' + source,
+        userId: customer.id,
+        productId: product.id,
+        kind: system ? 'RENEWAL' : 'INITIAL',
+        source,
+        hidden: system,
+        subscriptionId: system ? subscription.id : null,
+        createdByUserId: source === 'USER' ? customer.id : null,
+        createdByAdminId: source === 'ADMIN' ? admin.id : null,
+        productNameSnapshot: 'Explicit new-flow fixture',
+        productTypeSnapshot: 'SUBSCRIPTION',
+        termSnapshot: 'Explicit test month',
+        amountFen: 1234,
+        contactEmailSnapshot: customer.loginEmail,
+        servicePeriodUnitSnapshot: 'MONTH',
+        servicePeriodCountSnapshot: 1,
+        // Explicit fictional new-order data, never inferred from legacy termLabel.
+        formSchemaSnapshot: { version: 1, fields: [] },
+        formData: {},
+        ...(system
+          ? {
+              paymentStatus: 'PAID',
+              fulfillmentStatus: 'COMPLETED',
+              paidAt,
+              paymentConfirmedAt: paidAt,
+              fulfilledAt: paidAt,
+              renewalForPeriodStartAt: new Date('2029-12-01T00:00:00Z'),
+              renewalPeriodStartAt: paidAt,
+              renewalPeriodEndAt: new Date('2030-02-01T00:00:00Z'),
+              billingAnchorSnapshotAt: paidAt,
+              billingTimezoneSnapshot: 'UTC',
+              billingRevisionSnapshot: 1,
+              renewalRequestKeyHash: randomUUID().replaceAll('-', '').repeat(2),
+              renewalRequestHash: randomUUID().replaceAll('-', '').repeat(2),
+            }
+          : {}),
+      }
+      // Migration-nine fixture cannot use a Client that now inserts version.
+      const row = { id: randomUUID() }
+      const entries = Object.entries({
+        ...data,
+        id: row.id,
+        updatedAt: new Date(),
       })
+      const columns = Prisma.join(
+        entries.map(([key]) => Prisma.raw('`' + key + '`')),
+      )
+      const values = Prisma.join(
+        entries.map(([key, value]) =>
+          ['formSchemaSnapshot', 'formData'].includes(key)
+            ? JSON.stringify(value)
+            : value,
+        ),
+      )
+      await db.$executeRaw(
+        Prisma.sql`INSERT INTO \`Order\` (${columns}) VALUES (${values})`,
+      )
       await db.orderEvent.create({
         data: {
           orderId: row.id,
@@ -210,6 +227,13 @@ try {
     )
   } else if (process.argv[2] === 'after') {
     const expected = JSON.parse(readFileSync(snapshotFile, 'utf8'))
+    // Full deploy now includes migration eleven: only its additive version and
+    // in-place actor column rename may differ from the migration-nine fixture.
+    for (const row of expected.Order) row.version = 1
+    for (const row of expected.IdempotencyRecord) {
+      row.actorUserId = row.actorAdminId
+      delete row.actorAdminId
+    }
     assert(
       isDeepStrictEqual(jsonRows(await businessSnapshot(db)), expected),
       'Final-source migration changed fixture data after explicit cleanup',
