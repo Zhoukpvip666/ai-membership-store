@@ -54,7 +54,7 @@
 - [x] Run backend/frontend unit tests, real isolated MySQL HTTP tests and full desktop/mobile E2E. Keep builds outside any active preview run.
 - [x] Run Prisma validate/generate, format:check, typecheck, lint and both builds. Record actual totals and any corrected failures without weakening assertions.
 - [x] Compare all twelve migrations/Schema/dependencies/frontend source and original layout hashes; review tracked and untracked changes.
-- [ ] Explicitly stage task files, commit, push and create one PR targeting main; verify file count/CI/clean feature worktree. Do not merge or start the next stage.
+- [x] Explicitly stage task files, commit, push and create one PR targeting main; verify file count/CI/clean feature worktree. Do not merge or start the next stage.
 
 ## Execution evidence
 
@@ -65,3 +65,4 @@
 - Checkout CRLF caused format warnings. Normalized only this new worktree's text line endings; verified/staged only byte-identical existing Git objects to refresh stat entries. No unrelated content changed, and original checkout hashes/PIDs remain unchanged.
 - Final validation passed: backend units 37/37, frontend units 9/9, isolated database regression 90/90, Edge desktop/mobile E2E 46/46, Prisma validate/generate, format, typecheck, lint and both builds. Exact command outcomes are in docs/21. Delivery evidence follows publication.
 - Task 3 ruling: cancellation fixtures must not precede the old write suites in their shared database. Those suites compare every row after rejection; accumulated immutable cancellation history caused the existing edit subprocess to hit its unchanged 180-second guard. Nest the existing --edit-only no-Seed mode first, then run cancellation in another random database. Preserve all test assertions, process timeouts and protected history.
+- Delivery complete: implementation commit `21a8b6188d79ab6dd3c0b83b8cac09841f4aaca2` pushed on `codex/order-cancellation-timeout`; [PR #17](https://github.com/lear111/ai-membership-store/pull/17) targets main, 16 files, OPEN/unmerged, merge state CLEAN and no CI checks reported at publication. Feature worktree was clean and matched remote; this final documentation-only update records that delivery. No next stage started.

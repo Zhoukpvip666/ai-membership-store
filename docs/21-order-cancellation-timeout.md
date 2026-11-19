@@ -213,3 +213,7 @@ The first run exposed two fixture issues (compound MySQL CLI delimiter and an ad
 The independent whole-branch review found no blockers. Both suggested tests (concurrent different cancellation reasons sharing a key, and paid cancellation final-stage rollback) were added and passed. A follow-up verified the no-Seed nested runner and the test-only payment writer's separate post-lock database-time query. No known production-code failure remains in this scope; the future payment service must still supply its own implementation and validation.
 
 Original-worktree checks confirmed the same three unstaged layout files and identical SHA-256 values. Existing API/frontend PIDs 1936/1720 were preserved. Development .env was neither read nor modified; no development database/volume operation or service restart was performed. There is no development deployment or manual database setup in this PR. Future payment confirmation must implement the tested lock/deadline protocol in its own production transaction; refund confirmation, fulfillment and subscription entitlement remain out of scope.
+
+### Review delivery
+
+[PR #17](https://github.com/lear111/ai-membership-store/pull/17), branch `codex/order-cancellation-timeout`, targets `main`. Implementation commit: `21a8b6188d79ab6dd3c0b83b8cac09841f4aaca2`; 16 changed files. GitHub reported OPEN/unmerged, clean merge state and no status checks at publication. Local verification above is independent of GitHub CI. This delivery record is a documentation-only follow-up; do not merge or start the next stage automatically.
