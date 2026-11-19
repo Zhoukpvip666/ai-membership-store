@@ -103,6 +103,7 @@
 | D53 | 零元订单取消 | 对于 `NOT_REQUIRED + PROCESSING` 且尚未完成履约的零元订单，ADMIN 可以取消；必须填写取消原因，并记录管理员身份、取消时间和事件/审计。该取消不创建退款记录、不创建订阅，订单取消后不可恢复。已完成履约的零元订单不能取消 | ACTIVE |
 | D54 | 用户操作的审计归属 | 所有订单编辑都写入 OrderRevision 和 OrderEvent；只有 ADMIN 操作写入 AdminAuditLog。CUSTOMER 操作由 OrderRevision.actorUserId/actorType 和 OrderEvent.actorUserId/actorType 追溯，不向仅用于管理员操作的 AdminAuditLog 填入客户身份或伪造管理员主体 | ACTIVE |
 | D55 | 客户账户激活与自主下单资格 | 管理员预先添加的客户初始为 PENDING_ACTIVATION，不得自主下单；客户通过有效邀请链接完成注册/激活后变为 ACTIVE；客户通过公开自助注册成功后直接成为 ACTIVE，无需管理员另行邀请或手动激活。CUSTOMER 创建订单时必须由服务端校验当前账户状态为 ACTIVE；PENDING_ACTIVATION 和 DISABLED 均拒绝。管理员代客创建订单仍按 D1 处理：可选择已存在的 ACTIVE 或 PENDING_ACTIVATION 客户，不得选择 DISABLED 客户。邮箱验证等注册安全细节由后续认证设计明确，不改变上述账户状态和下单资格规则 | ACTIVE |
+| D56 | 管理员代客创建订单的表单完整性与后续客户编辑 | ADMIN 创建订单时必须提交满足该商品冻结表单 Schema 全部必填规则的完整有效 formData；缺少必填项或字段校验失败时拒绝创建，不创建草稿/待补充订单，也不引入不完整订单状态。创建成功时保存完整 formSchemaSnapshot 与 formData。订单创建后，在 D13 允许的待付款、未取消且未超时窗口内，客户仍可自行编辑/修正该订单 formData；每次修改必须按冻结的 formSchemaSnapshot 重新校验并遵守 D15/D40/D43/D54 的版本、历史、事件及审计规则。客户后续编辑是对已创建订单的修改，不是补齐创建时缺失的必填字段；ADMIN 代客创建与 USER 自主创建遵守相同的必填校验规则（澄清 D8），不新增草稿状态或付款前补填豁免 | ACTIVE |
 ## 2. 关键概念与字段语义
 
 ### 2.1 订单、付款、履约、订阅是不同维度
@@ -364,6 +365,7 @@ npm run build
 | 2026-11-18 | 技术设计补充：明确 Product 到 Order 的完整快照字段及不复制的目录元数据；发现并登记 Product 周期管理 API/UI 缺口（T13），以及尚缺的 Order.version 和管理员订单读取 DTO 补强（T14/T15）。 |
 | 2026-11-19 | T13 商品结构化服务周期管理经复审后合并 PR #8（`c426ae0`）；订单创建 API 尚未开始。 |
 | 2026-11-19 | 新增 D55：明确管理员预建客户保持待激活；邀请激活或公开自助注册成功后成为 ACTIVE；只有 ACTIVE 客户可自主下单，管理员代客创建继续遵循 D1。 |
+| 2026-11-19 | 新增 D56：明确管理员代客创建订单时必须提交完整有效的必填表单数据，不创建草稿/不完整订单；订单创建后客户仍可在 D13 允许的待付款窗口内按冻结 Schema 编辑 formData，澄清 D8，不改变既有订单状态机。 |
 
 后续每次业务决定都必须分配新的 D 编号，并按第 1.3 节维护冲突、替代和撤销关系。
 
