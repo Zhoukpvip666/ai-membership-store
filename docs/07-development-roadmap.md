@@ -22,7 +22,8 @@
 - PATCH `/admin/orders/:id`: formData complete replacement and optional amountFen change in one atomic edit.
 - Both require expectedVersion + Idempotency-Key; stale concurrent edits return 409.
 - Use frozen formSchemaSnapshot, append exactly one OrderRevision per successful edit, one OrderEvent and ADMIN-only audit.
-- internalNote remains separate under D48. Cancellation, timeout, payment/refund and fulfillment are not included.
+- internalNote remains a separate D48 endpoint; it still increments Order.version and appends Revision/Event/AdminAuditLog atomically, but is outside T15.
+- If ADMIN changes an eligible UNPAID order amountFen to 0, the same transaction changes it to NOT_REQUIRED + PROCESSING (D64); paid orders cannot be converted this way.
 - Stop at PR review; no development database deployment.
 
 ## Order revision / generic idempotency foundation
