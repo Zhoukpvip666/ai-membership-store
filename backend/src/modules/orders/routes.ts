@@ -2,6 +2,13 @@ import { Router } from 'express'
 import type { PrismaClient } from '../../generated/prisma/client.ts'
 import { id } from '../users/schemas.ts'
 import { orderReadService } from './service.ts'
+import { orderCreationService } from './create.ts'
+import {
+  createAdminOrder,
+  createCustomerOrder,
+  creationKey,
+} from './create-schemas.ts'
+import { ApiError } from '../../http/errors.ts'
 import {
   listAdminOrders,
   listCustomerOrders,
@@ -12,6 +19,19 @@ import {
 export function adminOrderRoutes(database: PrismaClient) {
   const router = Router(),
     service = orderReadService(database)
+  const create = orderCreationService(database)
+  router.post('/orders', async (request, response) => {
+    response
+      .status(201)
+      .json(
+        await create(
+          { role: 'ADMIN', input: createAdminOrder.parse(request.body) },
+          response.locals.principal.user.id,
+          creationKey(request.get('Idempotency-Key')),
+          response.locals.requestId,
+        ),
+      )
+  })
   router.get('/orders', async (request, response) => {
     response.json(await service.listAdmin(listAdminOrders.parse(request.query)))
   })
@@ -27,6 +47,22 @@ export function adminOrderRoutes(database: PrismaClient) {
 export function customerOrderRoutes(database: PrismaClient) {
   const router = Router(),
     service = orderReadService(database)
+  const create = orderCreationService(database)
+  router.post('/orders', async (request, response) => {
+    const user = response.locals.principal.user
+    if (user.status !== 'ACTIVE')
+      throw new ApiError(403, 'ACCOUNT_NOT_ELIGIBLE', '账户尚不可下单')
+    response
+      .status(201)
+      .json(
+        await create(
+          { role: 'CUSTOMER', input: createCustomerOrder.parse(request.body) },
+          user.id,
+          creationKey(request.get('Idempotency-Key')),
+          response.locals.requestId,
+        ),
+      )
+  })
   router.get('/orders', async (request, response) => {
     response.json(
       await service.listCustomer(

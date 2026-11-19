@@ -57,6 +57,7 @@ enum PaymentStatus {
   PAID
   REFUND_PENDING
   REFUNDED
+  NOT_REQUIRED
 }
 
 enum FulfillmentStatus {

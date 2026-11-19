@@ -18,6 +18,7 @@ const filters = {
       'PAID',
       'REFUND_PENDING',
       'REFUNDED',
+      'NOT_REQUIRED',
     ])
     .optional(),
   fulfillmentStatus: z

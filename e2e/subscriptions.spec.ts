@@ -10,6 +10,21 @@ const headers = {
 const days = (n: number) => new Date(Date.now() + n * 86400000).toISOString()
 test.use({ actionTimeout: 15000 })
 async function choose(page: Page, locator: Locator, label: string) {
+  // Search through the real remote selector instead of scrolling a growing
+  // cross-suite catalog inside a small mobile dialog. Keep exact option matching.
+  const search = label.split(' · ')[0]!
+  if ((await locator.isEditable()) && (await locator.inputValue()) !== search) {
+    const loaded = page.waitForResponse((response) => {
+      const url = new URL(response.url())
+      return (
+        response.request().method() === 'GET' &&
+        /^\/api\/v1\/admin\/(users|products)$/.test(url.pathname) &&
+        url.searchParams.get('search') === search
+      )
+    })
+    await locator.fill(search)
+    expect((await loaded).status()).toBe(200)
+  }
   await locator.press('ArrowDown')
   await page.getByRole('option', { name: label, exact: true }).click()
 }

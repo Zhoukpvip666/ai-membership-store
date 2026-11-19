@@ -115,7 +115,7 @@ Do not add supplierCost. Product API never hard-deletes any product. Product has
 | renewalPriceSnapshotFen | Int?, nullable | Renewal price snapshot where applicable |
 | contactEmailSnapshot | VarChar(254) | Contact email at order creation |
 | targetIdentifier | VarChar(254), nullable | Service target identifier; never a password/token |
-| paymentStatus | UNPAID / PENDING_VERIFICATION / PAID / REFUND_PENDING / REFUNDED | Summary derived from transaction records and updated transactionally |
+| paymentStatus | UNPAID / PENDING_VERIFICATION / PAID / REFUND_PENDING / REFUNDED / NOT_REQUIRED | Transaction-derived payment facts; NOT_REQUIRED is the explicit zero-price exception |
 | fulfillmentStatus | NOT_STARTED / PROCESSING / COMPLETED / FAILED / CANCELLED | Service progress |
 | paidAt | Nullable UTC DateTime(3) | Actual full-payment occurrence; frozen copy of the corresponding confirmed PAYMENT transaction's occurredAt. Unknown history stays NULL. |
 | paymentConfirmedAt / fulfilledAt / cancelledAt | Nullable UTC DateTime(3) | Administrator receipt confirmation / actual fulfillment completion / cancellation time |
@@ -260,13 +260,14 @@ No SMTP or payment credentials belong in AppSettings.
 ## 4. State and transaction invariants
 
 - Order.paymentStatus is a summary of PaymentTransaction records, not a free-form editable field:
-  - no recorded payment: UNPAID;
+  - zero-price order requiring no payment: NOT_REQUIRED, amountFen=0, no paidAt/paymentConfirmedAt or PaymentTransaction;
+  - no recorded payment on a positive-price order: UNPAID;
   - payment awaiting admin verification: PENDING_VERIFICATION;
   - confirmed payment: PAID;
   - refund awaiting external completion: REFUND_PENDING;
   - confirmed full refund: REFUNDED;
   - failed refund returns the summary to PAID if the original payment remains confirmed.
-- Order.fulfillmentStatus is independent. Only PAID orders can become COMPLETED. A confirmed full refund before completion sets fulfillment to CANCELLED; a refund after completion does not erase the historical completion.
+- Order.fulfillmentStatus is independent. Future fulfillment permits PAID/PROCESSING or zero-price NOT_REQUIRED/PROCESSING; creation does not fulfill either. A confirmed full refund before completion sets fulfillment to CANCELLED; a refund after completion does not erase the historical completion.
 - Confirming payment, confirming refund, completing an order, and applying a renewal date update must use database transactions and append the corresponding OrderEvent/SubscriptionEvent/AdminAuditLog atomically.
 - Existing Phase 2 direct renewal still accepts a manually confirmed expiry. Future structured-period arithmetic must use frozen unit/count/anchor/timezone, with explicitly reviewed calendar-boundary rules. Unknown legacy periods must not participate in automatic calculations.
 - Phase 2 compatibility APIs still create/renew directly without order/payment rows. Future new business must use ORDER subscriptions after full payment and fulfillment; service integration, ownership, ordinary-order snapshot immutability, concurrency and atomic renewal markers are deferred to the next stage. Database-clock expiry/version behavior is unchanged.
@@ -280,3 +281,9 @@ No SMTP or payment credentials belong in AppSettings.
 - Index: Order(userId, createdAt), Order(paymentStatus, createdAt), Order(fulfillmentStatus, createdAt), Order(subscriptionId, createdAt), PaymentTransaction(orderId, kind, status), Subscription(userId, status), Subscription(expiresAt, status), SubscriptionEvent(subscriptionId, createdAt), OrderEvent(orderId, createdAt), AdminAuditLog(actorAdminId, createdAt).
 - Use restrictive foreign keys for orders, payments, subscriptions, and events. Disable users and archive products; do not cascade-delete business history.
 - Prisma migrations are the only schema-change mechanism. Never use destructive schema push against the local data volume.
+
+## Order creation zero-price migration
+
+Twelfth incremental migration `20261119010000_order_creation` appends NOT_REQUIRED to Order.paymentStatus and extends the strict OrderRevision V1 payment enum CHECK. The same-row zero-price CHECK requires amountFen=0, NULL paidAt/paymentConfirmedAt and PROCESSING/COMPLETED/CANCELLED fulfillment for NOT_REQUIRED. Existing status values/ordinals, rows, revisions, triggers and historical zero-price UNPAID records are preserved exactly; no retrospective payment facts or state conversions. Cross-table absence of payment/subscription creation is enforced by the creation transaction and tested. Source/version/renewal/history protections remain in effect.
+
+DDL is not an all-or-nothing migration: Order ALTER may commit before the OrderRevision ALTER. Stop on failure and inspect migration history/column enum/CHECK definitions before DBA-approved recovery. No automatic reset/resolve. Migration permissions include ALTER and the MySQL ALTER-required CREATE/INSERT privileges; no new TRIGGER or foreign DEFINER is introduced by migration twelve, while fresh installations still require all prior trigger prerequisites. No development deployment is performed by this task.

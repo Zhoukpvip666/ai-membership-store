@@ -91,6 +91,7 @@ export const orderSnapshotV1 = z.strictObject({
       'PAID',
       'REFUND_PENDING',
       'REFUNDED',
+      'NOT_REQUIRED',
     ]),
     fulfillmentStatus: z.enum([
       'NOT_STARTED',

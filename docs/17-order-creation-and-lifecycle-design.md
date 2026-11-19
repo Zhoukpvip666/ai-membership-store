@@ -180,7 +180,7 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 
 本文件的业务决策不表示 API 已存在。当前尚待实现的主要内容：
 
-1. 订单创建 API。
+1. 订单创建 API 已在独立功能分支实现，待 PR 审查；契约、边界和实际测试见 [19-order-creation-api.md](19-order-creation-api.md)。
 2. 通用 actorUserId 幂等模型已由订单版本基础设施实现；订单创建接入尚未实现。
 3. OrderRevision 完整版本快照表及增量迁移已实现；订单写入事务接入尚未实现。
 4. 待付款订单编辑 API 和 version 并发控制。
@@ -328,7 +328,7 @@ npm run build
 ## 6. 开发顺序与验收门槛
 
 1. [x] T13 商品结构化周期管理：已合并 PR #8（`c426ae0`）；历史 NULL 周期商品仍须由管理员显式补录后才能创建新的订阅订单。
-2. 订单创建 API：ADMIN 和 USER 两种来源、客户/商品资格、价格、表单快照、必填 Idempotency-Key。
+2. [x] 订单创建 API（待独立 PR 审查）：ADMIN 和 USER 两种来源、客户/商品资格、价格、表单快照、必填 Idempotency-Key；第十二条增量迁移补充 NOT_REQUIRED 零元语义。
 3. 订单编辑 API：待付款期间 formData 和管理员 amountFen 编辑、version 冲突、历史审计。
 4. 取消与超时：用户/管理员取消、系统 24 小时超时取消。
 5. 付款确认：人工全额核对、渠道、流水号、paidAt、paymentConfirmedAt、PaymentTransaction。
@@ -380,3 +380,7 @@ npm run build
 版本历史使用 V1 明确白名单 JSON 和数据库不可变 Trigger；不开放浏览、比较、恢复 API 或界面。当前数据库要求订单每次更新恰好递增一版，revision 对应父订单当前版本；跨表“每次写入必须有完整历史”的原子性仍须由未来事务服务实现，不能把这些存储约束宣称为完整订单写业务。
 
 四个订单 GET 接口新增 version、expiresAt、remainingSeconds；管理员额外返回 internalNote，客户永不返回。截止时间从原 createdAt +24h 推导，服务端计算秒数；已付款、取消、完成等非可付款状态返回 0。没有实现订单创建/编辑/取消/付款/履约/续费 API，没有新增前端页面。开发数据库保持未访问、未迁移状态，待单独审查授权。
+
+## 9. 订单创建实现状态（2026-11-19）
+
+本次仅实现 docs/19 的两个创建 POST；一次事务完成订单 V1、完整版本快照、事件、仅管理员操作的审计及原始响应幂等记录。普通订单 UNPAID/NOT_STARTED，零元订单 NOT_REQUIRED/PROCESSING；不创建付款或订阅。新增第十二条增量 Migration，不改前十一条历史 SQL，不迁移开发数据库。OrderEvent 沿用互斥主体列：ADMIN 使用 actorAdminId，USER 使用 actorUserId；Revision/IdempotencyRecord 使用通用 actorUserId。后续编辑、取消、超时、付款、履约、续费和前端接入仍待单独授权。实际隔离测试及已知边界见 docs/19 的实现报告。

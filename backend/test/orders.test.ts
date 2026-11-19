@@ -92,6 +92,7 @@ test('order deadlines use original creation plus exactly 24h and server time, fl
     'PENDING_VERIFICATION',
     'REFUND_PENDING',
     'REFUNDED',
+    'NOT_REQUIRED',
   ] as const)
     assert.deepEqual(orderDeadline({ ...order, paymentStatus }, createdAt), {
       expiresAt,
