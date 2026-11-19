@@ -256,7 +256,7 @@ All commands run in the independent `shopping-order-creation-api` worktree again
 | `npm run db:generate`; `npm run db:validate` | Passed on the final Schema |
 | `npm run format:check`; `npm run typecheck`; `npm run lint` | Passed; rerun after the subscription browser helper change |
 | `npm test` | Backend30/30; frontend9/9 |
-| `npm run test:db -w backend -- --creation-only` historical path | Migration12 upgrade, exact thirteen-table/revision retention, repeated deploy/status/schema diff passed. The initial HTTP portion exposed the actor-FK/pending-path errors described below; this complete historical-mode command was not rerun |
+| `npm run test:db -w backend -- --creation-only` historical path | Complete follow-up run passed with exit code 0: Migration 12 upgrade, exact thirteen-table/revision retention, repeated deploy/status/schema diff; creation 15/15, revisions 9/9, existing subscription HTTP/idempotency 10/10. See the dated follow-up below |
 | `npm run test:db -w backend -- --creation-only --fresh` final HTTP/database regression | Creation15/15; revisions9/9; existing subscription HTTP/idempotency10/10; all twelve migrations installed from empty, repeat deploy/status/schema diff passed |
 | `npm run test:db -w backend -- --orders-only` | Existing read HTTP/MySQL14/14: ownership, hidden orders, exact DTOs, search/LIKE, countdown, read-only preservation |
 | `npm run test:db -w backend -- --models-only --fresh` | Existing source/renewal/immutability suites10+11+20 =41/41; twelve migrations, thirteen business tables plus migration table |
@@ -265,7 +265,16 @@ All commands run in the independent `shopping-order-creation-api` worktree again
 | `npm run build` | Frontend and backend passed; only existing dependency Zod PURE-annotation warnings |
 | Original-worktree preservation | All tracked/nonignored file hashes, HEAD and three layout changes unchanged; `.env` metadata unchanged and contents never read; existing ports3000/5173 still owned by PIDs1936/1720 |
 
-Initial creation tests uncovered a mismatch with the existing exclusive OrderEvent actor FK CHECK, plus Express mount-path handling of the pending-account403 branch. The fix uses the established ADMIN/USER actor columns and narrowly identifies the customer creation route; final fresh HTTP tests passed15/15. No database constraint, timeout, retry standard or authorization assertion was weakened. Historical migration verification passed before those service-only fixes and migration SQL has not changed since. Existing default Seed-dependent database suites were deliberately not invoked; the no-Seed modes above are the actual executed database checks. All runner-owned test resources are removed by their runner.
+Initial creation tests uncovered a mismatch with the existing exclusive OrderEvent actor FK CHECK, plus Express mount-path handling of the pending-account403 branch. The fix uses the established ADMIN/USER actor columns and narrowly identifies the customer creation route; both the fresh and the complete historical follow-up HTTP tests passed15/15. No database constraint, timeout, retry standard or authorization assertion was weakened. Historical migration verification initially passed before those service-only fixes; the follow-up now confirms the entire historical path with the corrected service. Migration SQL has not changed since. Existing default Seed-dependent database suites were deliberately not invoked; the no-Seed modes above are the actual executed database checks. All runner-owned test resources are removed by their runner.
+
+### Historical upgrade follow-up (2026-11-19)
+
+- Command: `npm run test:db -w backend -- --creation-only`, executed against PR #11 code commit `e4a4c07090d0cc678da41481a3009873ad192963` in the independent worktree. The complete command exited with code 0; no code, migration or test changes were needed.
+- Random isolated MySQL 8.4 project: `membership-foundation-0db488057b5c`, with its own loopback port, temporary credentials and disposable volume. Development `.env` was not read, the development database was not connected, and no Seed entrypoint was invoked.
+- Installed migrations 1–11, prepared synthetic historical rows, and captured all thirteen business tables including historical zero-price UNPAID, PAID and REFUNDED orders, immutable OrderRevision snapshots and IdempotencyRecord responses. Migration 12 preserved every captured business value and revision exactly, without reclassifying zero-price orders or fabricating payment facts.
+- Repeated Prisma deploy had no pending migrations; migrate status and database-to-Prisma Schema diff passed.
+- Real HTTP/MySQL creation suite 15/15, Revision database suite 9/9 and existing subscription HTTP/idempotency suite 10/10 all passed: 34 tests, zero failures, zero skipped/cancelled tests.
+- The runner removed only this isolated project's container/volume and temporary configuration/snapshot files. Other test/build/E2E results in the table remain the earlier execution records; they were not rerun for this documentation-only follow-up.
 
 ### Remaining scope and manual setup
 
