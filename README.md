@@ -92,6 +92,7 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 17. docs/17-order-creation-and-lifecycle-design.md — approved order lifecycle decisions and implementation boundaries.
 18. docs/18-order-revision-foundation.md — immutable order revisions, generic idempotency, version/deadline DTOs and isolated tests.
 19. docs/19-order-creation-api.md — approved USER/ADMIN order creation endpoints, validation, transaction, idempotency and acceptance contract.
+20. docs/20-order-edit-api.md — approved USER/ADMIN order edit endpoints, complete form replacement, price edits, zero-price transition, optimistic concurrency and transaction contract.
 
 ## Important launch gates
 
