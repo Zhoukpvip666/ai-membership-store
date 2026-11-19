@@ -1,5 +1,18 @@
 # Development Roadmap
 
+## Order creation API — approved design, implementation not started
+
+**Status: Design baseline documented; awaiting one implementation PR.** [Implementation contract](19-order-creation-api.md).
+
+- Add POST `/customer/orders` and POST `/admin/orders` only; retain existing GET routes.
+- USER self-order requires ACTIVE account and listed/unarchived Product. ADMIN may target ACTIVE/PENDING_ACTIVATION CUSTOMER and listed/unlisted unarchived Product; DISABLED/archived are rejected.
+- Both routes validate complete required formData against the Product schema inside the transaction and freeze Product/form snapshots.
+- ADMIN must submit final amountFen; UI pre-fills current Product.priceFen. Any deviation requires a reason. USER amount is server-derived.
+- Create Order V1, OrderRevision V1, OrderEvent, ADMIN-only audit and generic actorUserId idempotency response atomically.
+- Return complete role-safe order resource DTO with HTTP 201. Exact idempotent replay retains the original response; clients may GET detail for a fresh countdown.
+- No order edit/cancel/expiry worker/payment/refund/fulfillment/renewal/frontend integration or development DB migration.
+- Stop at PR for review; run isolated real-HTTP/MySQL tests, concurrency/replay/rollback, exact DTO allowlists, and relevant regression suites.
+
 ## Order revision / generic idempotency foundation
 
 **Status: Implemented for review; development database is not migrated.** [Schema, immutable history and test guide](18-order-revision-foundation.md).

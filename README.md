@@ -91,6 +91,7 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 16. docs/16-order-read-api.md — administrator/customer order list/detail, safe DTOs, hidden-order/ownership rules and isolated no-Seed API tests.
 17. docs/17-order-creation-and-lifecycle-design.md — approved order lifecycle decisions and implementation boundaries.
 18. docs/18-order-revision-foundation.md — immutable order revisions, generic idempotency, version/deadline DTOs and isolated tests.
+19. docs/19-order-creation-api.md — approved USER/ADMIN order creation endpoints, validation, transaction, idempotency and acceptance contract.
 
 ## Important launch gates
 
@@ -164,6 +165,6 @@ Database/E2E tests use random isolated MySQL 8.4 projects/volumes and temporary 
 
 Build artifacts are frontend/dist and backend/dist. Preview can use `npm run preview -w frontend` with the port matching APP_BASE_URL and `npm start -w backend`; these are local previews, not production deployment configuration.
 
-The read API adds no frontend history integration. Order creation/payment/fulfillment/renewal, customer subscription reads, notifications and API keys remain unimplemented. Use `npm run test:db -w backend -- --orders-only` for focused order HTTP tests without Seed or development configuration. Stop for acceptance before another stage.
+The order read API adds no frontend history integration. Order creation is the next approved implementation stage, specified in [docs/19-order-creation-api.md](docs/19-order-creation-api.md), but is not yet implemented. Payment/fulfillment/renewal, customer subscription reads, notifications and API keys remain unimplemented. Use task-specific no-Seed isolated database modes; never target development configuration during implementation tests. Stop at each PR for review.
 
 **Order revision foundation:** [Order versions, append-only history and generic idempotency](docs/18-order-revision-foundation.md). Migration eleven and existing order DTO extensions only; order write APIs remain unimplemented.
