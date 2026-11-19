@@ -14,6 +14,17 @@
 - Twelfth incremental migration adds NOT_REQUIRED and compatible zero-price/revision CHECKs; no historical rewrite or development deployment.
 - Implementation merged; actual isolated HTTP/MySQL, concurrency/replay/rollback, DTO, browser and regression results are recorded in the implementation report.
 
+## Order edit API — approved design, implementation not started
+
+**Status: Design baseline documented; awaiting one implementation PR.** [Implementation contract](20-order-edit-api.md).
+
+- PATCH `/customer/orders/:id`: owner-only formData complete replacement.
+- PATCH `/admin/orders/:id`: formData complete replacement and optional amountFen change in one atomic edit.
+- Both require expectedVersion + Idempotency-Key; stale concurrent edits return 409.
+- Use frozen formSchemaSnapshot, append exactly one OrderRevision per successful edit, one OrderEvent and ADMIN-only audit.
+- internalNote remains separate under D48. Cancellation, timeout, payment/refund and fulfillment are not included.
+- Stop at PR review; no development database deployment.
+
 ## Order revision / generic idempotency foundation
 
 **Status: Merged in PR #9; development database migration remains a separately authorized operation.** [Schema, immutable history and test guide](18-order-revision-foundation.md).
