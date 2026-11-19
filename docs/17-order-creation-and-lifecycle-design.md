@@ -102,6 +102,7 @@
 | D52 | 零元订单履约资格（澄清 D24） | D24 的普通履约前置条件适用于实际付款订单；零元订单按 D37/D51 进入无需付款 + PROCESSING 后，也具备管理员手动确认履约的资格。履约服务必须分别验证 PAID + PROCESSING 或 NOT_REQUIRED + PROCESSING，且订单未取消、未完成；两条路径均执行 D25 的同一原子履约事务 | ACTIVE |
 | D53 | 零元订单取消 | 对于 `NOT_REQUIRED + PROCESSING` 且尚未完成履约的零元订单，ADMIN 可以取消；必须填写取消原因，并记录管理员身份、取消时间和事件/审计。该取消不创建退款记录、不创建订阅，订单取消后不可恢复。已完成履约的零元订单不能取消 | ACTIVE |
 | D54 | 用户操作的审计归属 | 所有订单编辑都写入 OrderRevision 和 OrderEvent；只有 ADMIN 操作写入 AdminAuditLog。CUSTOMER 操作由 OrderRevision.actorUserId/actorType 和 OrderEvent.actorUserId/actorType 追溯，不向仅用于管理员操作的 AdminAuditLog 填入客户身份或伪造管理员主体 | ACTIVE |
+| D55 | 客户账户激活与自主下单资格 | 管理员预先添加的客户初始为 PENDING_ACTIVATION，不得自主下单；客户通过有效邀请链接完成注册/激活后变为 ACTIVE；客户通过公开自助注册成功后直接成为 ACTIVE，无需管理员另行邀请或手动激活。CUSTOMER 创建订单时必须由服务端校验当前账户状态为 ACTIVE；PENDING_ACTIVATION 和 DISABLED 均拒绝。管理员代客创建订单仍按 D1 处理：可选择已存在的 ACTIVE 或 PENDING_ACTIVATION 客户，不得选择 DISABLED 客户。邮箱验证等注册安全细节由后续认证设计明确，不改变上述账户状态和下单资格规则 | ACTIVE |
 ## 2. 关键概念与字段语义
 
 ### 2.1 订单、付款、履约、订阅是不同维度
@@ -362,6 +363,7 @@ npm run build
 | 2026-11-18 | 新增 D54：明确客户操作通过 OrderRevision/OrderEvent 追溯，AdminAuditLog 仅记录管理员操作，避免伪造管理员主体。 |
 | 2026-11-18 | 技术设计补充：明确 Product 到 Order 的完整快照字段及不复制的目录元数据；发现并登记 Product 周期管理 API/UI 缺口（T13），以及尚缺的 Order.version 和管理员订单读取 DTO 补强（T14/T15）。 |
 | 2026-11-19 | T13 商品结构化服务周期管理经复审后合并 PR #8（`c426ae0`）；订单创建 API 尚未开始。 |
+| 2026-11-19 | 新增 D55：明确管理员预建客户保持待激活；邀请激活或公开自助注册成功后成为 ACTIVE；只有 ACTIVE 客户可自主下单，管理员代客创建继续遵循 D1。 |
 
 后续每次业务决定都必须分配新的 D 编号，并按第 1.3 节维护冲突、替代和撤销关系。
 
