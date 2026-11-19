@@ -93,6 +93,8 @@ test('real subscription creation, frozen eight-field data, editing, renewal, arc
       priceFen: 1234,
       renewalPriceFen: 999,
       termLabel: '人工确认周期',
+      servicePeriodUnit: 'MONTH',
+      servicePeriodCount: 1,
       listed: false,
       formSchema: schema,
     },

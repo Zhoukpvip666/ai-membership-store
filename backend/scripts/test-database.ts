@@ -22,11 +22,15 @@ const browserMode = process.argv.includes('--e2e')
 const requestedFreshInstall = process.argv.includes('--fresh')
 const modelsOnly = process.argv.includes('--models-only')
 const ordersOnly = process.argv.includes('--orders-only')
+const productsOnly = process.argv.includes('--products-only')
 // Protected history cannot be deleted to prepare empty-database API/seed tests.
 // Full regression first verifies history in a separate disposable project, then
 // runs its existing empty-database suites against this independently fresh one.
 const freshInstall =
-  ordersOnly || requestedFreshInstall || (!modelsOnly && !browserMode)
+  productsOnly ||
+  ordersOnly ||
+  requestedFreshInstall ||
+  (!modelsOnly && !browserMode)
 let apiProcess: ChildProcess | undefined
 writeFileSync(
   envFile,
@@ -85,7 +89,13 @@ function runModelTests(env: NodeJS.ProcessEnv) {
 }
 
 try {
-  if (!browserMode && !modelsOnly && !ordersOnly && !requestedFreshInstall)
+  if (
+    !browserMode &&
+    !modelsOnly &&
+    !ordersOnly &&
+    !productsOnly &&
+    !requestedFreshInstall
+  )
     console.info(
       run(
         process.execPath,
@@ -95,7 +105,13 @@ try {
         600000,
       ),
     )
-  if (!browserMode && !modelsOnly && !ordersOnly && !requestedFreshInstall)
+  if (
+    !browserMode &&
+    !modelsOnly &&
+    !ordersOnly &&
+    !productsOnly &&
+    !requestedFreshInstall
+  )
     console.info(
       run(
         process.execPath,
@@ -398,7 +414,19 @@ try {
   console.info(
     'Versioned migrations applied; repeated deploy has no pending migrations; database matches Prisma schema.',
   )
-  if (ordersOnly) {
+  if (productsOnly) {
+    // Fresh runner-owned database, fictional login/settings fixtures; never Seed.
+    run(process.execPath, ['test/integration/product-fixture.ts'], env)
+  }
+  if (productsOnly && !browserMode) {
+    console.info(
+      run(
+        process.execPath,
+        ['--test', 'test/integration/products.test.ts'],
+        env,
+      ),
+    )
+  } else if (ordersOnly) {
     // Fresh, runner-owned MySQL only. No Seed CLI, seedAdministrator, worker or browser.
     console.info(
       run(process.execPath, ['--test', 'test/integration/orders.test.ts'], env),
@@ -450,7 +478,8 @@ try {
     run(process.execPath, ['scripts/prisma.ts', 'db', 'seed'], env)
     runModelTests(env)
   } else if (browserMode) {
-    run(process.execPath, ['scripts/prisma.ts', 'db', 'seed'], env)
+    if (!productsOnly)
+      run(process.execPath, ['scripts/prisma.ts', 'db', 'seed'], env)
     const reservation = createServer()
     reservation.listen(0, '127.0.0.1')
     await once(reservation, 'listening')
@@ -502,7 +531,11 @@ try {
           'test',
           '--config',
           join(cwd, '..', 'playwright.config.ts'),
-          ...process.argv.slice(2).filter((argument) => argument !== '--e2e'),
+          ...process.argv
+            .slice(2)
+            .filter(
+              (argument) => !['--e2e', '--products-only'].includes(argument),
+            ),
         ],
         { ...env, TEST_API_ORIGIN: apiOrigin },
         join(cwd, '..'),

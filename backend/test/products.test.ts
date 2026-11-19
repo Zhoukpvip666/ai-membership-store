@@ -139,6 +139,8 @@ test('product requests validate integer fen, type constraints, unknown propertie
     priceFen: 100,
     renewalPriceFen: 50,
     termLabel: '按供应商确认',
+    servicePeriodUnit: 'MONTH',
+    servicePeriodCount: 1,
   }
   const parsed = createProduct.parse(valid)
   assert.equal(parsed.listed, false)
@@ -169,6 +171,8 @@ test('product requests validate integer fen, type constraints, unknown propertie
       ...valid,
       type: 'ONE_TIME',
       renewalPriceFen: null,
+      servicePeriodUnit: null,
+      servicePeriodCount: null,
     }).success,
     true,
   )
@@ -196,6 +200,82 @@ test('product requests validate integer fen, type constraints, unknown propertie
     false,
   )
 })
+test('structured subscription periods require an explicit unit and positive integer count', () => {
+  const base = {
+    name: 'Period fixture',
+    type: 'SUBSCRIPTION',
+    priceFen: 100,
+    renewalPriceFen: 99,
+    termLabel: '展示说明不是实际周期',
+  }
+  for (const [servicePeriodUnit, servicePeriodCount] of [
+    ['DAY', 7],
+    ['MONTH', 1],
+    ['MONTH', 12],
+    ['YEAR', 1],
+  ]) {
+    const parsed = createProduct.parse({
+      ...base,
+      servicePeriodUnit,
+      servicePeriodCount,
+    })
+    assert.equal(parsed.servicePeriodUnit, servicePeriodUnit)
+    assert.equal(parsed.servicePeriodCount, servicePeriodCount)
+    assert.equal(parsed.termLabel, base.termLabel)
+  }
+  for (const fields of [
+    {},
+    { servicePeriodUnit: 'DAY' },
+    { servicePeriodCount: 7 },
+    { servicePeriodUnit: null, servicePeriodCount: null },
+    ...[0, -1, 0.5, 2147483648, '1', true, null].map((servicePeriodCount) => ({
+      servicePeriodUnit: 'MONTH',
+      servicePeriodCount,
+    })),
+    { servicePeriodUnit: 'WEEK', servicePeriodCount: 1 },
+  ])
+    assert.equal(createProduct.safeParse({ ...base, ...fields }).success, false)
+})
+
+test('one-time periods are null and edits must supply a complete period pair', () => {
+  const base = {
+    name: 'Once',
+    type: 'ONE_TIME',
+    priceFen: 100,
+    renewalPriceFen: null,
+    termLabel: '一次',
+  }
+  const parsed = createProduct.parse(base)
+  assert.equal(parsed.servicePeriodUnit, null)
+  assert.equal(parsed.servicePeriodCount, null)
+  assert.equal(
+    createProduct.safeParse({
+      ...base,
+      servicePeriodUnit: null,
+      servicePeriodCount: null,
+    }).success,
+    true,
+  )
+  for (const fields of [
+    { servicePeriodUnit: 'DAY', servicePeriodCount: 1 },
+    { servicePeriodUnit: 'DAY' },
+    { servicePeriodCount: 1 },
+  ])
+    assert.equal(createProduct.safeParse({ ...base, ...fields }).success, false)
+  for (const fields of [
+    { servicePeriodUnit: 'DAY' },
+    { servicePeriodCount: 1 },
+    { servicePeriodUnit: null },
+    { servicePeriodCount: null },
+  ])
+    assert.equal(editProduct.safeParse(fields).success, false)
+  assert.equal(
+    editProduct.safeParse({ servicePeriodUnit: 'YEAR', servicePeriodCount: 1 })
+      .success,
+    true,
+  )
+})
+
 test('settings accept only non-secret singleton fields and valid IANA timezone', () => {
   assert.deepEqual(
     editSettings.parse({

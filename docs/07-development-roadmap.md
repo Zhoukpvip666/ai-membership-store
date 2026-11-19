@@ -9,6 +9,15 @@
 - Random isolated MySQL8.4 HTTP tests, including all-table preservation after reads; orders-only runner executes no Seed and never uses development configuration.
 - No order creation/edit/cancellation/payment/fulfillment/renewal, frontend page, database migration or development data change. Stop for acceptance; no automatic next stage.
 
+## T13 — Product structured service periods
+
+**Status: Implemented for PR review; order creation APIs have not started.** See [T13 contract and isolated verification](17-order-creation-and-lifecycle-design.md#g-商品周期能力缺口创建订单前置任务).
+
+- Product ADMIN API/DTO/editor expose DAY/MONTH/YEAR and positive integer count; termLabel remains descriptive.
+- New subscriptions require complete periods. ONE_TIME stores NULL periods and renewal price. Type changes validate the merged record.
+- Legacy NULL/NULL subscriptions can save unrelated edits without inference. Explicit period edits require both valid fields; future order creation must reject unknown periods.
+- No Schema/Migration/dependency changes. Unit, real HTTP isolated MySQL and desktop/mobile browser regression use the no-Seed `--products-only` runner.
+
 ## Order/subscription refactoring — Stage 1 database foundation
 
 **Scope: schema/migration/compatibility/tests only; review before further development.** See [stage guide](15-order-subscription-foundation.md).
