@@ -2,7 +2,7 @@
 
 A private, independently operated storefront and order-management system for AI membership services and other digital services.
 
-**Project status:** Tasks 1.2.1–1.2.3 and Phase 2 user-model refactoring/administrator subscription management are merged. See [Phase 2 implementation and operation guide](docs/14-user-subscription-core.md). Products/customers/settings/subscriptions use the local API; overview/orders remain Mock. Order/subscription model stage 1 below is pending review; no order/payment/notification/verification-code/API-key API development is included.
+**Project status:** Tasks 1.2.1–1.2.3, Phase 2 and order/subscription model PR #6 are merged. Products/customers/settings/subscriptions use the local API; overview/order UI remains Mock. [Order read API stage 1](docs/16-order-read-api.md) adds ADMIN and own-CUSTOMER list/detail endpoints for acceptance only. No order write/payment/notification/verification-code/API-key API is included.
 
 **Order/subscription model stage 1:** [Database foundation and compatibility guide](docs/15-order-subscription-foundation.md). Adds structured periods, order snapshots/actors, billing anchors and renewal markers with six additive migrations (fifth through tenth). The review follow-up adds strict source/kind/completeness checks, immutable renewal-cycle snapshots, a separate billing revision and durable per-cycle unique claims. SYSTEM_RENEWAL must be inserted in final PAID/COMPLETED state with paidAt <= paymentConfirmedAt <= fulfilledAt (all non-NULL); updates/deletes remain forbidden. paidAt is actual payment occurrence; PaymentTransaction.createdAt is entry time, and deprecated paymentRecordedAt is retained only for history. The future order → full manual payment confirmation → fulfillment → subscription workflow supersedes direct subscriptions for new business once its services are implemented. This stage adds no order/payment APIs or pages and does not migrate the development database. Existing Phase 2 APIs remain in compatibility mode; the new business workflow is not operational yet.
 
@@ -88,6 +88,7 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 13. docs/13-products-settings-forms.md — Task 1.2.3 product/settings persistence, dynamic form contract, migration and isolated verification.
 14. docs/14-user-subscription-core.md — Phase 2 user names, frozen subscription forms, direct renewal, concurrency, migration and operation guide.
 15. docs/15-order-subscription-foundation.md — order-first model foundation, additive migration, legacy compatibility and deferred service constraints.
+16. docs/16-order-read-api.md — administrator/customer order list/detail, safe DTOs, hidden-order/ownership rules and isolated no-Seed API tests.
 
 ## Important launch gates
 
@@ -161,4 +162,4 @@ Database/E2E tests use random isolated MySQL 8.4 projects/volumes and temporary 
 
 Build artifacts are frontend/dist and backend/dist. Preview can use `npm run preview -w frontend` with the port matching APP_BASE_URL and `npm start -w backend`; these are local previews, not production deployment configuration.
 
-Phase 2 stops at its PR for human review. Offline orders/payments, customer history, notifications and API keys remain unimplemented.
+The read API adds no frontend history integration. Order creation/payment/fulfillment/renewal, customer subscription reads, notifications and API keys remain unimplemented. Use `npm run test:db -w backend -- --orders-only` for focused order HTTP tests without Seed or development configuration. Stop for acceptance before another stage.

@@ -21,10 +21,12 @@ const adminPassword = randomBytes(24).toString('hex')
 const browserMode = process.argv.includes('--e2e')
 const requestedFreshInstall = process.argv.includes('--fresh')
 const modelsOnly = process.argv.includes('--models-only')
+const ordersOnly = process.argv.includes('--orders-only')
 // Protected history cannot be deleted to prepare empty-database API/seed tests.
 // Full regression first verifies history in a separate disposable project, then
 // runs its existing empty-database suites against this independently fresh one.
-const freshInstall = requestedFreshInstall || (!modelsOnly && !browserMode)
+const freshInstall =
+  ordersOnly || requestedFreshInstall || (!modelsOnly && !browserMode)
 let apiProcess: ChildProcess | undefined
 writeFileSync(
   envFile,
@@ -83,11 +85,21 @@ function runModelTests(env: NodeJS.ProcessEnv) {
 }
 
 try {
-  if (!browserMode && !modelsOnly && !requestedFreshInstall)
+  if (!browserMode && !modelsOnly && !ordersOnly && !requestedFreshInstall)
     console.info(
       run(
         process.execPath,
         ['scripts/test-database.ts', '--models-only'],
+        process.env,
+        cwd,
+        600000,
+      ),
+    )
+  if (!browserMode && !modelsOnly && !ordersOnly && !requestedFreshInstall)
+    console.info(
+      run(
+        process.execPath,
+        ['scripts/test-database.ts', '--orders-only'],
         process.env,
         cwd,
         600000,
@@ -386,7 +398,12 @@ try {
   console.info(
     'Versioned migrations applied; repeated deploy has no pending migrations; database matches Prisma schema.',
   )
-  if (modelsOnly) {
+  if (ordersOnly) {
+    // Fresh, runner-owned MySQL only. No Seed CLI, seedAdministrator, worker or browser.
+    console.info(
+      run(process.execPath, ['--test', 'test/integration/orders.test.ts'], env),
+    )
+  } else if (modelsOnly) {
     // No Seed CLI or seedAdministrator calls. Only fictional, non-login fixture
     // identity/settings in the guarded disposable database support FK tests.
     run(

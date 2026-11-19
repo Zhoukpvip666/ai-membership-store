@@ -13,6 +13,10 @@ import { ApiError } from './errors.ts'
 import { csrf, rateLimit } from './security.ts'
 import { productSettingsRoutes } from '../modules/products/routes.ts'
 import { subscriptionRoutes } from '../modules/subscriptions/routes.ts'
+import {
+  adminOrderRoutes,
+  customerOrderRoutes,
+} from '../modules/orders/routes.ts'
 
 export function applicationRoutes(database: PrismaClient, env: Environment) {
   const router = Router()
@@ -60,6 +64,16 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
     await auth.activate(input.token, input.password)
     response.status(200).json({ status: 'activated' })
   })
+  router.use(
+    '/customer',
+    authenticate,
+    (_request, response, next) => {
+      if (response.locals.principal.user.role !== 'CUSTOMER')
+        throw new ApiError(403, 'FORBIDDEN', '仅客户可以访问此接口')
+      next()
+    },
+    customerOrderRoutes(database),
+  )
   // This guard covers implemented and future admin routes, including unknown paths.
   router.use(
     '/admin',
@@ -77,6 +91,7 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
   const adminMutations = rateLimit(120)
   router.use('/admin', productSettingsRoutes(database))
   router.use('/admin', subscriptionRoutes(database))
+  router.use('/admin', adminOrderRoutes(database))
   router.get('/admin/users', async (request, response) => {
     response.json(
       await customers.list(schemas.listCustomers.parse(request.query)),

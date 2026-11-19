@@ -1,5 +1,14 @@
 # Development Roadmap
 
+## Order API stage 1 — lists and details
+
+**Status: Implemented for owner acceptance after merged model PR #6.** [Contract and isolated verification](16-order-read-api.md).
+
+- ADMIN and Session-authenticated CUSTOMER order list/detail GETs only; hidden=false in every database predicate, CUSTOMER ownership derived only from Session.
+- Strict pagination/search/kind/payment/fulfillment/sort filters; explicit per-role snapshot DTOs without internal notes/authentication/audit data or current-Product substitutions.
+- Random isolated MySQL8.4 HTTP tests, including all-table preservation after reads; orders-only runner executes no Seed and never uses development configuration.
+- No order creation/edit/cancellation/payment/fulfillment/renewal, frontend page, database migration or development data change. Stop for acceptance; no automatic next stage.
+
 ## Order/subscription refactoring — Stage 1 database foundation
 
 **Scope: schema/migration/compatibility/tests only; review before further development.** See [stage guide](15-order-subscription-foundation.md).
