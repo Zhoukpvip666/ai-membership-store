@@ -101,6 +101,7 @@
 | D51 | 用户自主创建零元订单 | CUSTOMER 可以自主创建售价本身为 0 的已上架、未归档商品订单；ADMIN 也可按 D5 将订单最终应付金额调整为 0。两种零元订单均无需实际付款、不创建 PaymentTransaction、paidAt/paymentConfirmedAt 保持 NULL，创建事务中直接进入无需付款/PROCESSING 待履约状态；仍须由 ADMIN 手动确认履约 | ACTIVE |
 | D52 | 零元订单履约资格（澄清 D24） | D24 的普通履约前置条件适用于实际付款订单；零元订单按 D37/D51 进入无需付款 + PROCESSING 后，也具备管理员手动确认履约的资格。履约服务必须分别验证 PAID + PROCESSING 或 NOT_REQUIRED + PROCESSING，且订单未取消、未完成；两条路径均执行 D25 的同一原子履约事务 | ACTIVE |
 | D53 | 零元订单取消 | 对于 `NOT_REQUIRED + PROCESSING` 且尚未完成履约的零元订单，ADMIN 可以取消；必须填写取消原因，并记录管理员身份、取消时间和事件/审计。该取消不创建退款记录、不创建订阅，订单取消后不可恢复。已完成履约的零元订单不能取消 | ACTIVE |
+| D54 | 用户操作的审计归属 | 所有订单编辑都写入 OrderRevision 和 OrderEvent；只有 ADMIN 操作写入 AdminAuditLog。CUSTOMER 操作由 OrderRevision.actorUserId/actorType 和 OrderEvent.actorUserId/actorType 追溯，不向仅用于管理员操作的 AdminAuditLog 填入客户身份或伪造管理员主体 | ACTIVE |
 ## 2. 关键概念与字段语义
 
 ### 2.1 订单、付款、履约、订阅是不同维度
@@ -206,6 +207,49 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 | T11 | 商品/价格快照重算 | 明确 ADMIN 修改 amountFen 的上下限、原因字段与审计 DTO |
 | T12 | 订单创建请求幂等身份 | 明确 actorUserId、角色、操作名称、keyHash、requestHash 的规范化和并发回放响应 |
 
+## 5.1 技术实现默认方案（依据 D50，由助手负责常规设计）
+
+以下是供后续 Codex 实现的技术基线；它们不改变已确认的业务规则。若实现时发现与现有 Schema、MySQL 约束或 ACTIVE 决策冲突，必须先更新本文，不得自行绕过。
+
+### A. IdempotencyRecord
+
+1. 将现有 `actorAdminId` / `actorAdmin` 改为通用 `actorUserId` / `actorUser`，外键指向 `User.id`，唯一键为 `(actorUserId, keyHash)`。新增增量 Migration，保留现有管理员记录的 actor ID、keyHash、requestHash、operation、responseJson、createdAt；不改写已应用 Migration。
+2. `keyHash` 使用 SHA-256 对“规范化 operation + 原始 Idempotency-Key”计算，原始 Key 不落库。这样同一用户在不同订单创建操作之间不会因重复使用原始 Key 发生意外冲突，同时数据库唯一范围仍符合 D34。
+3. `requestHash` 使用 SHA-256 对经过 Zod 校验和默认值规范化后的业务请求 JSON 计算；对象键递归排序，数组顺序保留。包含会影响订单创建意图的字段（例如 customer/product/formData/管理员 amountFen/内部备注），不包含 requestId、网络地址、客户端时间等传输元数据，也不包含从 Product 读取的实时价格或 Schema。这样商品在首次请求后发生变化时，同一请求重试仍能命中原幂等记录。
+4. 幂等检查必须在读取当前商品并重新计算价格/快照之前进行：若已有相同 actor + operation-scoped key，先比较 requestHash；相同则按 responseJson 中的 orderId 读取并返回原订单当前详情，不再次验证当前商品状态或重新创建；不同则返回 409。
+5. 首次请求在一个 Prisma 事务中完成订单、OrderRevision V1、ORDER_CREATED OrderEvent、（仅 ADMIN 操作时）AdminAuditLog 和 IdempotencyRecord 写入。responseJson 只保存稳定资源标识及响应版本信息（至少 orderId），不保存原始 Key。
+6. 并发重复请求由数据库唯一键裁决：竞争失败的一方回滚整个事务；事务外捕获唯一键冲突后重新读取幂等记录并比较 requestHash。相同请求返回原订单，不同请求返回 409。不能仅靠进程内 Map/锁。
+7. Key 建议由客户端使用密码学随机 UUID 生成；服务端限制长度/字符集并只保存哈希。幂等记录永久保留，不做定期清理。
+
+### B. OrderRevision 与 Order.version
+
+1. `Order.version` 是单调递增的业务记录版本；初始为 1。每次成功的订单行修改（包括 D48 允许的内部备注修改）均在同一事务中 version + 1，并创建同版本号的 OrderRevision。付款/履约等状态转换若会更新 Order 行，也必须递增 version 并创建相应版本快照，除非后续明确将“业务编辑版本”和“状态版本”拆分为不同字段。
+2. `OrderRevision` 建议字段：`id`、`orderId`、`version`、`snapshotSchemaVersion`、`snapshotJson`、`actorUserId`、`actorType`、`reason`、`createdAt`；唯一键 `(orderId, version))，索引 `(orderId, createdAt)`，外键均使用 RESTRICT。
+3. `snapshotJson` 使用显式字段白名单和固定 envelope，例如 `{snapshotSchemaVersion: 1, order: {...}}`。包含可还原订单业务状态所需的订单字段、商品/价格/周期/表单快照、付款/履约/取消状态及时间、内部备注、创建者/来源、createdAt/updatedAt/version；排除 Session、Token、密码哈希、请求头、连接信息及无关审计数据。
+4. 创建订单时写入 V1；编辑时先读取/构造变更前后快照，使用 `WHERE id = ? AND version = expectedVersion AND editable-state-predicate` 条件更新并 version + 1，成功后写入新 OrderRevision 和 OrderEvent。任何写入失败整个事务回滚。若条件更新影响行数为 0，返回 409，且不产生 revision/event/audit。
+5. OrderRevision 只追加，不允许 UPDATE/DELETE；通过数据库触发器或等价的数据库级权限/约束保护，并用真实 MySQL 测试验证直接 SQL、REPLACE、UPSERT 等写路径不能修改或删除历史版本。
+6. D48 的内部备注允许付款后修改。该修改仍递增 version 并产生完整 OrderRevision 与 AdminAuditLog，但不改变付款/履约事实，也不解除其他核心字段的付款后冻结。
+7. 客户操作写 OrderRevision + OrderEvent；管理员操作写 OrderRevision + OrderEvent + AdminAuditLog（D54）。系统任务写 OrderRevision + OrderEvent，actorType=SYSTEM，不伪造用户或管理员。
+
+### C. 订单截止时间
+
+- 截止时间以服务端 UTC 时间计算：`expiresAt = createdAt + 24 hours`。当前技术基线倾向于从 createdAt 推导，不重复存储 expiresAt；API 返回 ISO 时间和服务端计算的 remainingSeconds，前端倒计时只用于展示，服务端每次操作都重新校验截止时间。
+- 超时任务采用可重复执行的批处理：仅条件更新仍为 UNPAID + NOT_STARTED、未取消且已到期的订单；同一事务写 CANCELLED 状态、OrderEvent 和 OrderRevision。多实例并发运行时由条件更新/行锁确保每笔订单只取消一次。
+- 付款确认和超时取消竞争时，以数据库事务中先成功提交的合法状态转换为准；订单一旦 CANCELLED，付款确认必须失败。截止后不得通过补录 paidAt 绕过 D39。
+
+### D. 零元订单状态
+
+- 使用独立付款状态 `NOT_REQUIRED`，不要将零元订单伪装为 `PAID`。
+- 创建事务校验 `amountFen = 0` 时不创建 PaymentTransaction，paidAt/paymentConfirmedAt 保持 NULL，直接设为 NOT_REQUIRED + PROCESSING。
+- `amountFen > 0` 的订单必须走 UNPAID + NOT_STARTED，付款确认后才进入 PAID + PROCESSING。
+- 用数据库 CHECK 约束状态、金额、付款时间和交易记录可验证的同一行条件；跨表“不得存在 PAYMENT 交易”等条件由事务服务保证并测试。
+
+### E. 内部备注
+
+- `internalNote` 只出现在管理员 DTO，客户 DTO 和客户查询投影中不得包含。
+- 创建时可选填写；之后管理员可在付款前后修改。
+- 备注更新使用 version 乐观锁，递增 version，追加 OrderRevision、OrderEvent 和 AdminAuditLog；不改变订单商品、价格、客户归属、付款和履约状态。
+
 ## 6. 开发顺序与验收门槛
 
 1. 订单创建 API：ADMIN 和 USER 两种来源、客户/商品资格、价格、表单快照、必填 Idempotency-Key。
@@ -243,5 +287,6 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 | 2026-11-18 | 新增 D51：确认 CUSTOMER 可以自主创建售价为 0 的已上架商品订单；与管理员赠送订单一样无需付款交易，直接进入待履约，仍由管理员确认履约。 |
 | 2026-11-18 | 新增 D52：澄清 D24 的履约资格；除 PAID + PROCESSING 外，零元订单 NOT_REQUIRED + PROCESSING 也允许管理员确认履约，均受同一原子事务保护。 |
 | 2026-11-18 | 新增 D53：确认管理员可取消尚未完成履约的零元订单；必须记录原因和审计，不产生退款或订阅，取消后不可恢复。 |
+| 2026-11-18 | 新增 D54：明确客户操作通过 OrderRevision/OrderEvent 追溯，AdminAuditLog 仅记录管理员操作，避免伪造管理员主体。 |
 
 后续每次业务决定都必须分配新的 D 编号，并按第 1.3 节维护冲突、替代和撤销关系。
