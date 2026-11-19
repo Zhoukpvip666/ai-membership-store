@@ -77,7 +77,7 @@ export function authService(database: PrismaClient) {
       })
       return { token, user: account }
     },
-    async resolve(token: string | undefined) {
+    async resolve(token: string | undefined, allowPending = false) {
       if (!token || !tokenPattern.test(token)) return null
       const session = await database.session.findUnique({
         where: { tokenHash: tokenHash(token) },
@@ -87,7 +87,8 @@ export function authService(database: PrismaClient) {
         !session ||
         session.revokedAt ||
         session.expiresAt <= new Date() ||
-        session.user.status !== 'ACTIVE'
+        (session.user.status !== 'ACTIVE' &&
+          !(allowPending && session.user.status === 'PENDING_ACTIVATION'))
       )
         return null
       return { sessionId: session.id, user: session.user }

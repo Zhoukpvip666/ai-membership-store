@@ -30,7 +30,14 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
   }
   router.use(csrf(env.APP_BASE_URL))
   const authenticate: RequestHandler = async (request, response, next) => {
-    const principal = await auth.resolve(sessionCookie(request.headers.cookie))
+    const principal = await auth.resolve(
+      sessionCookie(request.headers.cookie),
+      // A valid pending customer's creation request gets the documented 403.
+      // Every other route retains its existing ACTIVE-only authentication behavior.
+      request.method === 'POST' &&
+        request.baseUrl === '/api/v1/customer' &&
+        /^\/orders\/?$/.test(request.path),
+    )
     if (!principal) throw new ApiError(401, 'UNAUTHENTICATED', '请先登录')
     response.locals.principal = principal
     next()

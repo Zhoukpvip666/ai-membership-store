@@ -1,17 +1,18 @@
 # Development Roadmap
 
-## Order creation API — approved design, implementation not started
+## Order creation API — implemented for review
 
-**Status: Design baseline documented; awaiting one implementation PR.** [Implementation contract](19-order-creation-api.md).
+**Status: Implemented and isolated verification passed; stop at PR review.** [Implementation contract](19-order-creation-api.md).
 
-- Add POST `/customer/orders` and POST `/admin/orders` only; retain existing GET routes.
+- Implement POST `/customer/orders` and POST `/admin/orders` only; retain existing GET routes.
 - USER self-order requires ACTIVE account and listed/unarchived Product. ADMIN may target ACTIVE/PENDING_ACTIVATION CUSTOMER and listed/unlisted unarchived Product; DISABLED/archived are rejected.
 - Both routes validate complete required formData against the Product schema inside the transaction and freeze Product/form snapshots.
-- ADMIN must submit final amountFen; UI pre-fills current Product.priceFen. Any deviation requires a reason. USER amount is server-derived.
+- ADMIN must submit final amountFen; the future integrated UI must pre-fill current Product.priceFen. Any deviation requires a reason. USER amount is server-derived.
 - Create Order V1, OrderRevision V1, OrderEvent, ADMIN-only audit and generic actorUserId idempotency response atomically.
 - Return complete role-safe order resource DTO with HTTP 201. Exact idempotent replay retains the original response; clients may GET detail for a fresh countdown.
 - No order edit/cancel/expiry worker/payment/refund/fulfillment/renewal/frontend integration or development DB migration.
-- Stop at PR for review; run isolated real-HTTP/MySQL tests, concurrency/replay/rollback, exact DTO allowlists, and relevant regression suites.
+- Twelfth incremental migration adds NOT_REQUIRED and compatible zero-price/revision CHECKs; no historical rewrite or development deployment.
+- Stop at PR review; actual isolated HTTP/MySQL, concurrency/replay/rollback, DTO, browser and regression results are recorded in the implementation report.
 
 ## Order revision / generic idempotency foundation
 
@@ -33,7 +34,7 @@
 
 ## T13 — Product structured service periods
 
-**Status: Merged in PR #8 (`c426ae0`); order creation APIs have not started.** See [T13 contract and isolated verification](17-order-creation-and-lifecycle-design.md#g-商品周期能力缺口创建订单前置任务).
+**Status: Product periods merged in PR #8 (`c426ae0`); order creation is implemented for independent review as described above.** See [T13 contract and isolated verification](17-order-creation-and-lifecycle-design.md#g-商品周期能力缺口创建订单前置任务).
 
 - Product ADMIN API/DTO/editor expose DAY/MONTH/YEAR and positive integer count; termLabel remains descriptive.
 - New subscriptions require complete periods. ONE_TIME stores NULL periods and renewal price. Type changes validate the merged record.

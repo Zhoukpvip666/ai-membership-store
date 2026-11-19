@@ -2,7 +2,7 @@
 
 - Document: ORDER-CREATE-API
 - Version: 1.0
-- Status: Approved design baseline; implementation not started
+- Status: Implemented for PR review; development database not migrated
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order read API](16-order-read-api.md), [Order revision foundation](18-order-revision-foundation.md)
 
@@ -140,7 +140,7 @@ Use the shared actor-scoped idempotency contract from D33-D36 and PR #9.
 4. For a first request, lock/recheck the User row (for USER and target customer), and lock/read the Product row. Verify status/eligibility, derive price and snapshots, validate the frozen form schema and data.
 5. Create Order with version 1 and the complete frozen snapshots.
 6. Build strict OrderRevision V1 from the persisted Order using the PR #9 whitelist; actorType USER or ADMIN and actorUserId is the real acting user. Do not invent SYSTEM actor for a human request.
-7. Create ORDER_CREATED OrderEvent with actorUserId/actorType and no forged AdminAuditLog actor. For ADMIN only, create the corresponding sanitized AdminAuditLog in the same transaction. For USER, D54 requires OrderRevision + OrderEvent; do not write a customer into AdminAuditLog.
+7. Create ORDER_CREATED OrderEvent with the existing exclusive actor columns: USER uses actorUserId, ADMIN uses actorAdminId, with actorType and the other actor FK NULL. OrderRevision and IdempotencyRecord use generic actorUserId for both roles. Never forge an AdminAuditLog actor. For ADMIN only, create the corresponding sanitized AdminAuditLog in the same transaction. For USER, D54 requires OrderRevision + OrderEvent; do not write a customer into AdminAuditLog.
 8. Build the role-specific full order resource DTO from the persisted order and store the original successful response in IdempotencyRecord.responseJson in the same transaction.
 9. Commit only after all writes succeed. Any failure rolls back Order, Revision, Event, applicable Audit and IdempotencyRecord.
 
@@ -222,3 +222,92 @@ Definition of done:
 - Response DTOs exactly match the documented role allowlists.
 - No out-of-scope write/payment/fulfillment/notification behavior is introduced.
 - No development .env/database/volume or unrelated worktree changes.
+
+## 12. Implementation report (2026-11-19)
+
+### Implementation choices
+
+- Two POST routes only. Separate strict request contracts in `create-schemas.ts`; one `orderCreationService` in `create.ts`. No frontend page or existing shop layout change.
+- Idempotency-Key reuses the established ASCII syntax (1–128 letters/digits or `_.:-`); the existing shared mutation helper hashes raw keys and canonical route-specific intent. Stored responses remain permanent and actor-scoped. Neither live catalog terms nor network metadata enter requestHash.
+- The existing serializable transaction helper handles recognized transient MySQL conflicts with at most three retries. After idempotency lookup, both paths lock target User then Product with parameterized `SELECT ... FOR UPDATE`, reread/validate them and commit all side effects together. A unique actor/key collision rolls back the losing transaction before persisted replay.
+- Complete product validation rejects historical unknown subscription periods without interpreting termLabel. Form values use the existing eight-type strict validator without coercion or filling missing required values. Stored formSchemaSnapshot is the exact catalog schema, while formData is its validated result. No catalog metadata is copied as purchase terms.
+- Explicit credential-field names/labels/hints and recognizable credential payload patterns are refused before persistence. This guard is intentionally not a general secret classifier: ordinary free-text account identifiers cannot prove arbitrary text is non-secret. Catalog authors/operators must still follow the approved non-sensitive form policy; authentication secrets are never an authorized input capability.
+- Order number is `O` plus a random UUID without separators. Order source, creator, version, hidden flag, amount rules, initial states and timestamps are trusted server values. Contact email prefers notificationEmail, otherwise loginEmail; legacy targetIdentifier staysNULL.
+- V1 history uses the existing complete business whitelist. Revision.reason retains an explicit price-adjustment reason; sanitized events/audits retain state/price facts and that reason, excluding form contents and internalNote. The existing OrderEvent exclusive actor FKs are preserved (ADMIN -> actorAdminId; USER -> actorUserId). Revision/idempotency actors are generic actorUserId. Customer actions never write AdminAuditLog.
+- Both create responses reuse the GET DTO functions. CUSTOMER excludes private notes, creator/customer expansion, cancellation reason and audits. ADMIN receives only its established additional fields. Exact replay includes the original countdown; a subsequent GET refreshes it.
+
+### Migration and deployment boundary
+
+Migration twelve is `20261119010000_order_creation`; all eleven committed migration files remain byte-for-byte unchanged. It appends NOT_REQUIRED to the payment ENUM, adds a same-row zero-payment CHECK, and extends the existing strict revision snapshot payment enum without changing its fields/version. It does not rewrite records, invent payments/revisions or reclassify historical zero-price UNPAID rows. Existing source/version/renewal/delete/revision guards remain intact. No new trigger or definer is introduced.
+
+The two ALTER statements are separate MySQL DDL commits. Stop on failure; inspect migration state, payment ENUM and both CHECK definitions before any approved recovery. Migration twelve needs the existing ALTER prerequisites, but no new TRIGGER privilege. A fresh installation still requires the prior migrations' DBA/trigger prerequisites. Do not apply this development branch to an existing development/production database without separately authorized backup/preflight/maintenance. This implementation applies migrations only to random isolated test databases.
+
+### Isolated test mechanism
+
+`--creation-only` extends the existing MySQL8.4 runner with a random Compose project, loopback port, temporary credentials and its own disposable volume. It never loads development `.env` or invokes Seed. Its historical path applies exactly the eleven committed migrations, captures all thirteen business tables (including old zero/paid/refunded orders, revisions and idempotency responses), deploys migration twelve and compares every saved value. `--fresh` installs all twelve from empty. Both verify repeated deploy/status/schema diff. The final creation mode runs creation HTTP tests, revision database tests and subscription HTTP regression. Focused read/model modes provide independent regression; browser mode runs all existing desktop/mobile tests plus the new browser cookie/CSRF/proxy creation/replay scenarios. Cleanup targets only the runner's own random project.
+
+### Verification results
+
+All commands run in the independent `shopping-order-creation-api` worktree against temporary isolated configuration. No development database migration/Seed/reset was executed.
+
+| Command / coverage | Actual result |
+| --- | --- |
+| `npm ci` | Passed with locked dependencies, Prisma7.10.1 Client generated, no dependency changes |
+| `npm run db:generate`; `npm run db:validate` | Passed on the final Schema |
+| `npm run format:check`; `npm run typecheck`; `npm run lint` | Passed; rerun after the subscription browser helper change |
+| `npm test` | Backend30/30; frontend9/9 |
+| `npm run test:db -w backend -- --creation-only` historical path | Complete follow-up run passed with exit code 0: Migration 12 upgrade, exact thirteen-table/revision retention, repeated deploy/status/schema diff; creation 15/15, revisions 9/9, existing subscription HTTP/idempotency 10/10. See the dated follow-up below |
+| `npm run test:db -w backend -- --creation-only --fresh` final HTTP/database regression | Creation15/15; revisions9/9; existing subscription HTTP/idempotency10/10; all twelve migrations installed from empty, repeat deploy/status/schema diff passed |
+| `npm run test:db -w backend -- --orders-only` | Existing read HTTP/MySQL14/14: ownership, hidden orders, exact DTOs, search/LIKE, countdown, read-only preservation |
+| `npm run test:db -w backend -- --models-only --fresh` | Existing source/renewal/immutability suites10+11+20 =41/41; twelve migrations, thirteen business tables plus migration table |
+| `npm run test:e2e -w backend -- --creation-only` final complete run | Passed38/38 across desktop/mobile Edge, including all four new creation/replay cases (7.5 minutes) |
+| Focused product/subscription regression reruns | Each1/1 passed without changing assertions/timeouts; the corrected helper also passed the focused desktop subscription case before the final38/38 run |
+| `npm run build` | Frontend and backend passed; only existing dependency Zod PURE-annotation warnings |
+| Original-worktree preservation | All tracked/nonignored file hashes, HEAD and three layout changes unchanged; `.env` metadata unchanged and contents never read; existing ports3000/5173 still owned by PIDs1936/1720 |
+
+Initial creation tests uncovered a mismatch with the existing exclusive OrderEvent actor FK CHECK, plus Express mount-path handling of the pending-account403 branch. The fix uses the established ADMIN/USER actor columns and narrowly identifies the customer creation route; both the fresh and the complete historical follow-up HTTP tests passed15/15. No database constraint, timeout, retry standard or authorization assertion was weakened. Historical migration verification initially passed before those service-only fixes; the follow-up now confirms the entire historical path with the corrected service. Migration SQL has not changed since. Existing default Seed-dependent database suites were deliberately not invoked; the no-Seed modes above are the actual executed database checks. All runner-owned test resources are removed by their runner.
+
+### Historical upgrade follow-up (2026-11-19)
+
+- Command: `npm run test:db -w backend -- --creation-only`, executed against PR #11 code commit `e4a4c07090d0cc678da41481a3009873ad192963` in the independent worktree. The complete command exited with code 0; no code, migration or test changes were needed.
+- Random isolated MySQL 8.4 project: `membership-foundation-0db488057b5c`, with its own loopback port, temporary credentials and disposable volume. Development `.env` was not read, the development database was not connected, and no Seed entrypoint was invoked.
+- Installed migrations 1–11, prepared synthetic historical rows, and captured all thirteen business tables including historical zero-price UNPAID, PAID and REFUNDED orders, immutable OrderRevision snapshots and IdempotencyRecord responses. Migration 12 preserved every captured business value and revision exactly, without reclassifying zero-price orders or fabricating payment facts.
+- Repeated Prisma deploy had no pending migrations; migrate status and database-to-Prisma Schema diff passed.
+- Real HTTP/MySQL creation suite 15/15, Revision database suite 9/9 and existing subscription HTTP/idempotency suite 10/10 all passed: 34 tests, zero failures, zero skipped/cancelled tests.
+- The runner removed only this isolated project's container/volume and temporary configuration/snapshot files. Other test/build/E2E results in the table remain the earlier execution records; they were not rerun for this documentation-only follow-up.
+
+### Remaining scope and manual setup
+
+No order editing/cancellation/expiry task/payment confirmation/refund/fulfillment/entitlement/renewal/email/notification/provider API or order frontend integration is added. The future admin creation UI must explicitly submit amountFen, initially prefilled from the selected product; this API task does not add that UI. The original shopping checkout, three layout edits, configuration and running services are preserved. No development database, root `.env` content, original data volume, grants or global MySQL configuration is accessed/changed. Stop at the independent PR and await review; do not automatically begin the next lifecycle stage.
+
+### Changed files
+
+- `README.md`
+- `backend/prisma/migrations/20261119010000_order_creation/migration.sql`
+- `backend/prisma/schema.prisma`
+- `backend/scripts/test-database.ts`
+- `backend/src/http/routes.ts`
+- `backend/src/modules/auth/service.ts`
+- `backend/src/modules/orders/create-form.ts`
+- `backend/src/modules/orders/create-schemas.ts`
+- `backend/src/modules/orders/create.ts`
+- `backend/src/modules/orders/revisions.ts`
+- `backend/src/modules/orders/routes.ts`
+- `backend/src/modules/orders/schemas.ts`
+- `backend/test/integration/creation-upgrade.ts`
+- `backend/test/integration/database.test.ts`
+- `backend/test/integration/order-creation.test.ts`
+- `backend/test/integration/orders.test.ts`
+- `backend/test/order-creation.test.ts`
+- `backend/test/orders.test.ts`
+- `docs/04-data-model.md`
+- `docs/05-api-contract.md`
+- `docs/07-development-roadmap.md`
+- `docs/17-order-creation-and-lifecycle-design.md`
+- `docs/19-order-creation-api.md`
+- `e2e/order-creation.spec.ts`
+- `e2e/subscriptions.spec.ts`
+
+The existing subscription browser selector now searches editable remote controls before choosing an exact option, preventing large cross-suite catalogs from requiring popup scrolling inside a mobile dialog. Read-only ordinary selects still use their existing keyboard/open and exact-option flow. All business assertions, timeouts and retries remain unchanged; no force click or fixed wait is introduced.
+
+Browser observations: an earlier concurrent build temporarily replaced the preview dist/index.html and one navigation received404; its request preceded the rewritten index by1.6s, and the exact failed test passed alone. A later full run observed pointer interception when selecting from a long existing mobile subscription dropdown; the exact subscription test also passed alone. The first search-helper revision incorrectly tried to fill a read-only form select; an explicit editable-control check corrects that test error. The lifecycle regression now uses the selector's actual search API where available before exact selection, retaining every business assertion and original timeouts. This is test isolation/stability work, not a claimed fix for the pre-existing long-dropdown mobile pointer behavior; manual UI review of that separate case remains outside this API task. No production UI/CSS was modified.
