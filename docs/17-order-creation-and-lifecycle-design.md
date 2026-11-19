@@ -282,7 +282,7 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 
 ### G. 商品周期能力缺口（创建订单前置任务）
 
-T13 已实现，等待本次 PR 人工验收。数据库已有 `servicePeriodUnit` 和 `servicePeriodCount`；商品管理 API、DTO 和前端现在读写这两个字段，不新增 Migration。订单创建 API 尚未开始。
+T13 已通过复审并合并 PR #8（`c426ae0`）。数据库已有 `servicePeriodUnit` 和 `servicePeriodCount`；商品管理 API、DTO 和前端现在读写这两个字段，不新增 Migration。订单创建 API 尚未开始。
 
 1. 新建 SUBSCRIPTION 商品时，必须提供 DAY/MONTH/YEAR 和正整数数量。
 2. ONE_TIME 商品的结构化服务周期为 NULL。
@@ -323,7 +323,7 @@ npm run build
 
 ## 6. 开发顺序与验收门槛
 
-1. 商品结构化周期管理前置任务：补齐 Product API/DTO/前端对 servicePeriodUnit/servicePeriodCount 的支持，并显式补录需要继续销售的历史订阅商品。
+1. [x] T13 商品结构化周期管理：已合并 PR #8（`c426ae0`）；历史 NULL 周期商品仍须由管理员显式补录后才能创建新的订阅订单。
 2. 订单创建 API：ADMIN 和 USER 两种来源、客户/商品资格、价格、表单快照、必填 Idempotency-Key。
 3. 订单编辑 API：待付款期间 formData 和管理员 amountFen 编辑、version 冲突、历史审计。
 4. 取消与超时：用户/管理员取消、系统 24 小时超时取消。
@@ -361,5 +361,6 @@ npm run build
 | 2026-11-18 | 新增 D53：确认管理员可取消尚未完成履约的零元订单；必须记录原因和审计，不产生退款或订阅，取消后不可恢复。 |
 | 2026-11-18 | 新增 D54：明确客户操作通过 OrderRevision/OrderEvent 追溯，AdminAuditLog 仅记录管理员操作，避免伪造管理员主体。 |
 | 2026-11-18 | 技术设计补充：明确 Product 到 Order 的完整快照字段及不复制的目录元数据；发现并登记 Product 周期管理 API/UI 缺口（T13），以及尚缺的 Order.version 和管理员订单读取 DTO 补强（T14/T15）。 |
+| 2026-11-19 | T13 商品结构化服务周期管理经复审后合并 PR #8（`c426ae0`）；订单创建 API 尚未开始。 |
 
 后续每次业务决定都必须分配新的 D 编号，并按第 1.3 节维护冲突、替代和撤销关系。
