@@ -110,7 +110,8 @@
 | D60 | 订单动态表单编辑采用完整替换 | CUSTOMER/ADMIN 编辑订单 formData 时必须提交完整 formData 对象；服务端按订单冻结的 formSchemaSnapshot 对整个对象执行严格校验，成功后整体替换原 formData，不采用字段级 PATCH 合并。缺失必填字段、未知字段或任何字段校验失败均拒绝整个请求，原订单及其版本历史保持不变。沿用 D8/D13/D14/D56，不允许编辑造成不完整订单 | ACTIVE |
 | D61 | 管理员订单编辑调价原因（澄清既有规则） | ADMIN 通过订单编辑 API 修改 amountFen 时，只有新金额与当前订单 amountFen 实际不同时才必须提交非空 priceAdjustmentReason；金额未变化时原因可省略。金额必须是非负整数分；商品原价 priceSnapshotFen 不变。该规则沿用 D5/D42/D57，不新增调价权限，也不改变 CUSTOMER 不可改价的规则 | ACTIVE |
 | D62 | 管理员一次请求修改多个订单字段 | ADMIN 可以在同一次订单编辑请求中同时提交 formData 与 amountFen；两者作为一次原子业务编辑，成功后 Order.version 只递增一次，只创建一条对应 OrderRevision 和一条 OrderEvent，并在同一事务中写入适用的 AdminAuditLog 与幂等响应。CUSTOMER 仍只能提交 formData。任何一个字段验证失败则整个请求回滚 | ACTIVE |
-| D63 | 订单核心编辑 API 与内部备注隔离 | 核心订单编辑使用 PATCH `/api/v1/customer/orders/:id` 和 PATCH `/api/v1/admin/orders/:id`。CUSTOMER 只能修改本人订单 formData；ADMIN 可修改订单 formData 和 amountFen。两个接口都必须提交 expectedVersion，并遵守 D13-D15/D40/D42/D43/D54/D60-D62。internalNote 不属于核心订单编辑 payload，继续按 D48 独立修改和审计，不影响订单 version 或 OrderRevision；不得因本次核心编辑而开放内部备注修改 | ACTIVE |
+| D63 | 订单核心编辑 API 与内部备注隔离 | 核心订单编辑使用 PATCH `/api/v1/customer/orders/:id` 和 PATCH `/api/v1/admin/orders/:id`。CUSTOMER 只能修改本人订单 formData；ADMIN 可修改订单 formData 和 amountFen。两个接口都必须提交 expectedVersion，并遵守 D13-D15/D40/D42/D43/D54/D60-D62。internalNote 不属于核心订单编辑 payload，继续按 D48 使用独立 ADMIN 接口修改；备注修改同样必须使用 expectedVersion、递增 Order.version、追加完整 OrderRevision 和 OrderEvent，并在同一事务写入 AdminAuditLog 与幂等响应。独立接口不代表绕过订单版本历史或并发控制；该备注接口不属于本次 T15 实现范围 | ACTIVE |
+| D64 | 管理员编辑将未付款订单金额调整为零 | 对符合 D13/D14 编辑条件的 UNPAID + NOT_STARTED 普通订单，ADMIN 将 amountFen 从正数调整为 0 时，必须按 D37/D51 的无需付款语义在同一编辑事务中将 paymentStatus 转为 NOT_REQUIRED、fulfillmentStatus 转为 PROCESSING，并保持 paidAt/paymentConfirmedAt 为 NULL、不创建 PaymentTransaction；该请求仍只递增一次 version，并生成一条完整 OrderRevision、一条 OrderEvent、AdminAuditLog 和幂等响应。零元状态提交后订单进入待人工履约队列，不再允许通过核心编辑 API 修改；取消遵循 D53。若原订单已经存在任何付款事实/PaymentTransaction，则不得通过金额编辑转换为零元状态，必须走已付款取消与线下退款流程（D17/D18/D59） | ACTIVE |
 ## 2. 关键概念与字段语义
 
 ### 2.1 订单、付款、履约、订阅是不同维度
@@ -374,6 +375,7 @@ npm run build
 | 2026-11-19 | 新增 D58：订单创建成功返回完整角色安全 DTO，HTTP 201；幂等重放返回首次原始响应，需要实时倒计时则重新 GET 详情。 |
 | 2026-11-19 | 新增 D59：明确第一阶段线下人工收款、人工全额退款；无法履约由管理员取消，已付款订单进入 REFUND_PENDING，只有线下退款实际完成后才登记退款交易并转为 REFUNDED；零元订单沿用 D53。 |
 | 2026-11-19 | 新增 D60-D63：订单表单编辑采用完整替换；调价原因仅在金额实际变化时必填（澄清 D5/D42/D57）；管理员可在一个原子请求中同时改表单和价格且只递增一个版本；核心编辑接口与内部备注独立接口隔离，内部备注遵循 D48。 |
+| 2026-11-19 | 新增 D64：管理员将符合编辑条件的未付款订单调价为 0 时，同一事务转为 NOT_REQUIRED + PROCESSING；已有付款事实不得转零元，须走取消退款流程。 |
 
 后续每次业务决定都必须分配新的 D 编号，并按第 1.3 节维护冲突、替代和撤销关系。
 
