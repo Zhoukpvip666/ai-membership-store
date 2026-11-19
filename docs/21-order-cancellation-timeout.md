@@ -22,10 +22,10 @@ The automatic SYSTEM worker is internal only; do not expose a SYSTEM cancellatio
 ## 2. Manual cancellation eligibility
 
 ### CUSTOMER
-- May cancel only their own visible ordinary USER/ADMIN order that is not paid, not in fulfillment and not already cancelled.
+- May cancel their own visible ordinary USER/ADMIN order in `UNPAID + NOT_STARTED` or `PENDING_VERIFICATION + NOT_STARTED`, provided no confirmed PAYMENT exists and it is not already cancelled or fulfilled. This follows D16: a pending verification record is not confirmed payment.
 - Query by both order ID and Session userId; missing and foreign IDs return the same safe 404.
 - Customer reason is optional, trimmed, maximum 500 characters. Empty/whitespace is normalized to NULL.
-- Customer cannot cancel `PAID`, `PENDING_VERIFICATION` after a payment transaction is recorded, `NOT_REQUIRED`, `REFUND_PENDING`, `REFUNDED`, `PROCESSING`, completed, hidden or SYSTEM_RENEWAL orders.
+- Customer cannot cancel `PAID`, `NOT_REQUIRED`, `REFUND_PENDING`, `REFUNDED`, `PROCESSING`, completed, hidden or SYSTEM_RENEWAL orders. A pending unconfirmed PAYMENT attempt is retained and marked FAILED in the cancellation transaction; the order summary returns to UNPAID. Any claim that money was actually transferred is handled outside the order system under D39.
 
 ### ADMIN
 - Must provide a nonblank reason, trimmed and maximum 500 characters.
@@ -40,7 +40,7 @@ All eligibility is rechecked after locking the Order row inside the transaction.
 
 | Starting state | Actor/action | Result | Payment transaction behavior |
 |---|---|---|---|
-| UNPAID + NOT_STARTED | CUSTOMER cancel | fulfillmentStatus=CANCELLED; paymentStatus remains UNPAID | No confirmed payment exists; no pending payment verification may remain confirmable |
+| UNPAID + NOT_STARTED or PENDING_VERIFICATION + NOT_STARTED | CUSTOMER cancel | fulfillmentStatus=CANCELLED; paymentStatus=UNPAID | Any pending unconfirmed PAYMENT attempt is marked FAILED and retained; no refund |
 | UNPAID + NOT_STARTED | ADMIN cancel | fulfillmentStatus=CANCELLED; paymentStatus remains UNPAID | Any pending unconfirmed PAYMENT attempt is marked FAILED and retained; no refund |
 | PAID + PROCESSING | ADMIN cancel | fulfillmentStatus=CANCELLED; paymentStatus=REFUND_PENDING | Preserve confirmed PAYMENT; do not create/confirm refund |
 | NOT_REQUIRED + PROCESSING | ADMIN cancel | fulfillmentStatus=CANCELLED; paymentStatus remains NOT_REQUIRED | No payment/refund transaction |
