@@ -5,6 +5,7 @@ import { transaction } from '../../db/transaction.ts'
 import { ApiError } from '../../http/errors.ts'
 import {
   completeProduct,
+  legacyProduct,
   type createProduct,
   type editProduct,
   type listProducts,
@@ -19,6 +20,8 @@ const select = {
   priceFen: true,
   renewalPriceFen: true,
   termLabel: true,
+  servicePeriodUnit: true,
+  servicePeriodCount: true,
   targetField: true,
   listed: true,
   sortOrder: true,
@@ -34,12 +37,16 @@ const snapshot = (product: {
   renewalPriceFen: number | null
   listed: boolean
   sortOrder: number
+  servicePeriodUnit: string | null
+  servicePeriodCount: number | null
 }) => ({
   type: product.type,
   priceFen: product.priceFen,
   renewalPriceFen: product.renewalPriceFen,
   listed: product.listed,
   sortOrder: product.sortOrder,
+  servicePeriodUnit: product.servicePeriodUnit,
+  servicePeriodCount: product.servicePeriodCount,
 })
 function audit(
   tx: Prisma.TransactionClient,
@@ -127,17 +134,38 @@ export function productService(database: PrismaClient) {
         if (!current) throw missing()
         if (current.archivedAt)
           throw new ApiError(409, 'PRODUCT_ARCHIVED', '归档商品不能编辑')
+        const preserveUnknownPeriod =
+          current.type === 'SUBSCRIPTION' &&
+          current.servicePeriodUnit === null &&
+          current.servicePeriodCount === null &&
+          (input.type === undefined || input.type === 'SUBSCRIPTION') &&
+          !Object.hasOwn(input, 'servicePeriodUnit') &&
+          !Object.hasOwn(input, 'servicePeriodCount')
+        const validator = preserveUnknownPeriod
+          ? legacyProduct
+          : completeProduct
         // Validate the complete merged record, not just individual PATCH fields.
-        const data = completeProduct.parse({
+        const data = validator.parse({
           name: current.name,
           description: current.description,
           type: current.type,
           priceFen: current.priceFen,
           renewalPriceFen: current.renewalPriceFen,
           termLabel: current.termLabel,
+          servicePeriodUnit: current.servicePeriodUnit,
+          servicePeriodCount: current.servicePeriodCount,
           listed: current.listed,
           sortOrder: current.sortOrder,
           formSchema: current.formSchema,
+          // Type conversion clears obsolete subscription values, unless the
+          // caller explicitly supplies conflicting values (rejected below).
+          ...(input.type === 'ONE_TIME' && current.type !== 'ONE_TIME'
+            ? {
+                renewalPriceFen: null,
+                servicePeriodUnit: null,
+                servicePeriodCount: null,
+              }
+            : {}),
           ...input,
         })
         const product = await tx.product.update({ where: { id }, data, select })

@@ -14,6 +14,8 @@ export interface Product {
   priceFen: number
   renewalPriceFen: number | null
   termLabel: string
+  servicePeriodUnit: 'DAY' | 'MONTH' | 'YEAR' | null
+  servicePeriodCount: number | null
   targetField: 'EMAIL' | 'TEXT' | 'NONE'
   listed: boolean
   sortOrder: number

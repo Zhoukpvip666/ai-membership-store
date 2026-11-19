@@ -25,6 +25,8 @@ const loading = ref(false),
   visible = ref(false)
 const editing = ref<string>(),
   detail = ref<Product>()
+const editingUnknownPeriod = ref(false)
+const periodLabels = { DAY: '固定天数', MONTH: '自然月', YEAR: '自然年' }
 const form = reactive({
   name: '',
   description: '',
@@ -32,6 +34,8 @@ const form = reactive({
   price: '',
   renewal: '',
   termLabel: '1 个月',
+  servicePeriodUnit: null as Product['servicePeriodUnit'],
+  servicePeriodCount: undefined as number | undefined,
   sortOrder: 0,
   listed: false,
   formSchema: { version: 1, fields: [] } as ProductFormSchema,
@@ -69,6 +73,11 @@ async function open(product?: Product) {
           .product
       : undefined
     editing.value = current?.id
+    editingUnknownPeriod.value = Boolean(
+      current?.type === 'SUBSCRIPTION' &&
+      current.servicePeriodUnit === null &&
+      current.servicePeriodCount === null,
+    )
     Object.assign(
       form,
       current
@@ -81,6 +90,7 @@ async function open(product?: Product) {
                 ? ''
                 : String(current.renewalPriceFen / 100),
             formSchema: structuredClone(current.formSchema),
+            servicePeriodCount: current.servicePeriodCount ?? undefined,
           }
         : {
             name: '',
@@ -89,6 +99,8 @@ async function open(product?: Product) {
             price: '',
             renewal: '',
             termLabel: '1 个月',
+            servicePeriodUnit: null,
+            servicePeriodCount: undefined,
             sortOrder: 0,
             listed: false,
             formSchema: { version: 1, fields: [] },
@@ -110,6 +122,20 @@ async function showDetail(product: Product) {
     ElMessage.error((e as Error).message)
   }
 }
+function periodText(product: Product) {
+  if (product.type === 'ONE_TIME') return '不适用（一次性商品）'
+  return product.servicePeriodUnit !== null &&
+    product.servicePeriodCount !== null
+    ? `${product.servicePeriodCount} ${product.servicePeriodUnit}（${periodLabels[product.servicePeriodUnit]}）`
+    : '尚未配置结构化周期'
+}
+function changeType() {
+  if (form.type === 'ONE_TIME') {
+    form.servicePeriodUnit = null
+    form.servicePeriodCount = undefined
+    form.renewal = ''
+  }
+}
 async function save() {
   if (busy.value) return
   busy.value = true
@@ -117,6 +143,21 @@ async function save() {
     const schema = productFormSchema.safeParse(form.formSchema)
     if (!schema.success)
       throw new Error('请修正动态表单配置：' + schema.error.issues[0]?.message)
+    const preserveUnknownPeriod =
+      editingUnknownPeriod.value &&
+      form.type === 'SUBSCRIPTION' &&
+      form.servicePeriodUnit === null &&
+      form.servicePeriodCount === undefined
+    if (
+      form.type === 'SUBSCRIPTION' &&
+      !preserveUnknownPeriod &&
+      (form.servicePeriodUnit === null ||
+        form.servicePeriodCount === undefined ||
+        !Number.isInteger(form.servicePeriodCount) ||
+        form.servicePeriodCount < 1 ||
+        form.servicePeriodCount > 2147483647)
+    )
+      throw new Error('请选择服务周期单位并填写正整数周期数量')
     const data = {
       name: form.name,
       description: form.description || null,
@@ -125,6 +166,16 @@ async function save() {
       renewalPriceFen:
         form.type === 'SUBSCRIPTION' ? parsePrice(form.renewal) : null,
       termLabel: form.termLabel,
+      // Omit the unknown legacy pair when editing unrelated fields; explicit
+      // period changes always send both values. Never derive them from termLabel.
+      ...(preserveUnknownPeriod
+        ? {}
+        : {
+            servicePeriodUnit:
+              form.type === 'SUBSCRIPTION' ? form.servicePeriodUnit : null,
+            servicePeriodCount:
+              form.type === 'SUBSCRIPTION' ? form.servicePeriodCount : null,
+          }),
       sortOrder: form.sortOrder,
       listed: form.listed,
       formSchema: schema.data,
@@ -252,6 +303,7 @@ onMounted(load)
                     >已归档</span
                   ></small
                 >
+                <small>结构化周期：{{ periodText(p) }}</small>
               </td>
               <td>
                 <span
@@ -336,7 +388,10 @@ onMounted(load)
         /></ElFormItem>
         <div class="form-grid">
           <ElFormItem label="商品类型"
-            ><ElSelect v-model="form.type" aria-label="商品类型"
+            ><ElSelect
+              v-model="form.type"
+              aria-label="商品类型"
+              @change="changeType"
               ><ElOption label="订阅服务" value="SUBSCRIPTION" /><ElOption
                 label="一次性服务"
                 value="ONE_TIME" /></ElSelect></ElFormItem
@@ -351,12 +406,42 @@ onMounted(load)
               v-model="form.renewal"
               inputmode="decimal"
               aria-label="续费价格（元）" /></ElFormItem
-          ><ElFormItem label="服务周期"
+          ><ElFormItem label="服务周期说明"
             ><ElInput
               v-model="form.termLabel"
               aria-label="服务周期"
-              maxlength="40" /></ElFormItem
-          ><ElFormItem label="排序"
+              maxlength="40"
+          /></ElFormItem>
+          <template v-if="form.type === 'SUBSCRIPTION'">
+            <ElFormItem label="服务周期单位">
+              <ElSelect
+                v-model="form.servicePeriodUnit"
+                aria-label="服务周期单位"
+                placeholder="请选择周期单位"
+                clearable
+                @clear="form.servicePeriodUnit = null"
+              >
+                <ElOption
+                  v-for="(label, unit) in periodLabels"
+                  :key="unit"
+                  :label="label + '（' + unit + '）'"
+                  :value="unit"
+                />
+              </ElSelect>
+            </ElFormItem>
+            <ElFormItem label="服务周期数量">
+              <ElInputNumber
+                v-model="form.servicePeriodCount"
+                aria-label="服务周期数量"
+                :min="1"
+                :max="2147483647"
+                :step="1"
+                :precision="0"
+                step-strictly
+              />
+            </ElFormItem>
+          </template>
+          <ElFormItem label="排序"
             ><ElInputNumber
               v-model="form.sortOrder"
               :min="0"
@@ -365,8 +450,16 @@ onMounted(load)
               aria-label="商品排序"
           /></ElFormItem>
         </div>
+        <p
+          v-if="form.type === 'SUBSCRIPTION' && editingUnknownPeriod"
+          class="inline-note"
+          role="status"
+        >
+          尚未配置结构化周期。可以先修改其他信息；补录前不能用于创建新的订阅订单。
+        </p>
         <p class="muted">
-          价格以整数人民币分保存。服务周期仅作说明，不推算到期日期。
+          价格以整数人民币分保存。服务周期说明仅供展示；结构化周期独立配置，不从说明推断。
+          DAY 表示固定天数，MONTH / YEAR 表示自然周期。
         </p>
         <div class="toggle-row">
           <div>
@@ -412,8 +505,12 @@ onMounted(load)
             </dd>
           </div>
           <div>
-            <dt>服务周期</dt>
+            <dt>服务周期说明</dt>
             <dd>{{ detail.termLabel }}</dd>
+          </div>
+          <div>
+            <dt>结构化服务周期</dt>
+            <dd>{{ periodText(detail) }}</dd>
           </div>
           <div>
             <dt>排序</dt>

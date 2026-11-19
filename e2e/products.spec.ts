@@ -1,8 +1,20 @@
-import { expect, test, type Page, type Locator } from '@playwright/test'
+import {
+  expect,
+  test,
+  type Page,
+  type Locator,
+  type BrowserContext,
+} from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import { integrationEnvironment } from '../backend/test/integration/support.ts'
+import { createDatabase } from '../backend/src/db/client.ts'
 const env = integrationEnvironment()
-test.beforeEach(async ({ page }) => {
+const db = createDatabase(env.DATABASE_URL)
+let adminCookies: Awaited<ReturnType<BrowserContext['cookies']>>
+test.afterAll(async () => {
+  await db.$disconnect()
+})
+function guardRequests(page: Page) {
   page.on('pageerror', (error) => {
     throw error
   })
@@ -18,15 +30,35 @@ test.beforeEach(async ({ page }) => {
     )
       throw new Error('Out-of-scope API request.')
   })
-  await page.goto('/admin/login')
-  await page
-    .getByRole('textbox', { name: '登录邮箱', exact: true })
-    .fill(env.ADMIN_EMAIL)
-  await page.getByLabel('密码', { exact: true }).fill(env.ADMIN_PASSWORD)
-  await page.getByRole('button', { name: '登录', exact: true }).click()
+}
+
+// Authenticate through the real UI once per worker. Each test still gets an
+// independent browser context; no auth bypass or production rate-limit changes.
+test.beforeAll(async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: env.APP_BASE_URL })
+  try {
+    const page = await context.newPage()
+    guardRequests(page)
+    await page.goto('/admin/login')
+    await page
+      .getByRole('textbox', { name: '登录邮箱', exact: true })
+      .fill(env.ADMIN_EMAIL)
+    await page.getByLabel('密码', { exact: true }).fill(env.ADMIN_PASSWORD)
+    await page.getByRole('button', { name: '登录', exact: true }).click()
+    await expect(page).toHaveURL('/admin/users')
+    adminCookies = await context.cookies()
+  } finally {
+    await context.close()
+  }
+})
+
+test.beforeEach(async ({ page, context }) => {
+  guardRequests(page)
+  await context.addCookies(adminCookies)
+  await page.goto('/admin/users')
   await expect(page).toHaveURL('/admin/users')
 })
-async function create(page: Page, name: string) {
+async function create(page: Page, name: string, configurePeriod = true) {
   await page.goto('/admin/products')
   await page.getByRole('button', { name: '添加商品', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '添加商品', exact: true })
@@ -39,6 +71,16 @@ async function create(page: Page, name: string) {
   await dialog
     .getByRole('textbox', { name: '续费价格（元）', exact: true })
     .fill('9.99')
+  if (configurePeriod) {
+    await choose(
+      page,
+      dialog.getByRole('combobox', { name: '服务周期单位', exact: true }),
+      '自然月（MONTH）',
+    )
+    await dialog
+      .getByRole('spinbutton', { name: '服务周期数量', exact: true })
+      .fill('1')
+  }
   return dialog
 }
 async function save(page: Page, dialog: Locator) {
@@ -49,13 +91,221 @@ async function save(page: Page, dialog: Locator) {
       ) && ['POST', 'PATCH'].includes(r.request().method()),
   )
   await dialog.getByRole('button', { name: '保存商品', exact: true }).click()
-  expect((await response).ok()).toBe(true)
+  const result = await response
+  expect(result.ok()).toBe(true)
   await expect(dialog).not.toBeVisible()
+  return result
 }
 async function choose(page: Page, locator: Locator, label: string) {
   await locator.press('ArrowDown')
   await page.getByRole('option', { name: label, exact: true }).click()
 }
+test('new subscriptions require an explicit structured period and retain it after refresh', async ({
+  page,
+}) => {
+  test.setTimeout(90000)
+  for (const [unit, label, count] of [
+    ['DAY', '固定天数（DAY）', 7],
+    ['MONTH', '自然月（MONTH）', 12],
+    ['YEAR', '自然年（YEAR）', 1],
+  ] as const) {
+    const name = 'Explicit-period-' + randomUUID()
+    const dialog = await create(page, name, false)
+    const unitInput = dialog.getByRole('combobox', {
+      name: '服务周期单位',
+      exact: true,
+    })
+    const countInput = dialog.getByRole('spinbutton', {
+      name: '服务周期数量',
+      exact: true,
+    })
+    await expect(unitInput).toHaveValue('')
+    await expect(countInput).toHaveValue('')
+    await dialog.getByRole('button', { name: '保存商品', exact: true }).click()
+    await expect(
+      page
+        .getByRole('alert')
+        .filter({ hasText: '请选择服务周期单位并填写正整数周期数量' }),
+    ).toBeVisible()
+    await expect(dialog).toBeVisible()
+    await choose(page, unitInput, label)
+    await countInput.fill(String(count))
+    const response = await save(page, dialog)
+    expect(response.request().postDataJSON()).toMatchObject({
+      servicePeriodUnit: unit,
+      servicePeriodCount: count,
+    })
+    const product = (await response.json()).product
+    await page.reload()
+    await page
+      .getByRole('textbox', { name: '搜索商品', exact: true })
+      .fill(name)
+    await page.getByRole('button', { name: '查询', exact: true }).click()
+    const row = page.locator('tbody tr').filter({ hasText: name })
+    await expect(row).toContainText(`${count} ${unit}`)
+    await row.getByRole('button', { name: '详情', exact: true }).click()
+    await expect(
+      page.getByRole('dialog', { name: '商品详情', exact: true }),
+    ).toContainText(`${count} ${unit}`)
+    const stored = await db.product.findUniqueOrThrow({
+      where: { id: product.id },
+    })
+    expect([stored.servicePeriodUnit, stored.servicePeriodCount]).toEqual([
+      unit,
+      count,
+    ])
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true)
+  }
+})
+
+test('legacy null periods remain editable without inference and can be explicitly completed', async ({
+  page,
+}) => {
+  const product = await db.product.create({
+    data: {
+      slug: 'legacy-period-' + randomUUID(),
+      name: 'Legacy-period-' + randomUUID(),
+      type: 'SUBSCRIPTION',
+      priceFen: 1234,
+      renewalPriceFen: 999,
+      termLabel: '30 天（仅展示）',
+    },
+  })
+  await page.goto('/admin/products')
+  await page
+    .getByRole('textbox', { name: '搜索商品', exact: true })
+    .fill(product.name)
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  const row = page.locator('tbody tr').filter({ hasText: product.name })
+  await expect(row).toContainText('尚未配置结构化周期')
+  await row.getByRole('button', { name: '编辑', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '编辑商品', exact: true })
+  await expect(dialog.getByRole('status')).toContainText('尚未配置结构化周期')
+  await expect(
+    dialog.getByRole('combobox', { name: '服务周期单位', exact: true }),
+  ).toHaveValue('')
+  await expect(
+    dialog.getByRole('spinbutton', { name: '服务周期数量', exact: true }),
+  ).toHaveValue('')
+  await dialog
+    .getByRole('textbox', { name: '商品说明', exact: true })
+    .fill('只修改说明')
+  const unrelated = await save(page, dialog)
+  expect(unrelated.request().postDataJSON()).not.toHaveProperty(
+    'servicePeriodUnit',
+  )
+  expect(unrelated.request().postDataJSON()).not.toHaveProperty(
+    'servicePeriodCount',
+  )
+  expect((await unrelated.json()).product).toMatchObject({
+    servicePeriodUnit: null,
+    servicePeriodCount: null,
+  })
+  await page.reload()
+  await page
+    .getByRole('textbox', { name: '搜索商品', exact: true })
+    .fill(product.name)
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  await row.getByRole('button', { name: '编辑', exact: true }).click()
+  await choose(
+    page,
+    dialog.getByRole('combobox', { name: '服务周期单位', exact: true }),
+    '自然月（MONTH）',
+  )
+  await dialog.getByRole('button', { name: '保存商品', exact: true }).click()
+  await expect(
+    page
+      .getByRole('alert')
+      .filter({ hasText: '请选择服务周期单位并填写正整数周期数量' }),
+  ).toBeVisible()
+  await expect(dialog).toBeVisible()
+  await dialog
+    .getByRole('spinbutton', { name: '服务周期数量', exact: true })
+    .fill('1')
+  const completed = await save(page, dialog)
+  expect((await completed.json()).product).toMatchObject({
+    servicePeriodUnit: 'MONTH',
+    servicePeriodCount: 1,
+    termLabel: product.termLabel,
+  })
+  const stored = await db.product.findUniqueOrThrow({
+    where: { id: product.id },
+  })
+  expect([
+    stored.servicePeriodUnit,
+    stored.servicePeriodCount,
+    stored.description,
+  ]).toEqual(['MONTH', 1, '只修改说明'])
+})
+
+test('changing product types clears one-time periods and requires new subscription configuration', async ({
+  page,
+}) => {
+  const name = 'Type-period-' + randomUUID()
+  let dialog = await create(page, name)
+  await save(page, dialog)
+  await page.getByRole('textbox', { name: '搜索商品', exact: true }).fill(name)
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  const row = page.locator('tbody tr').filter({ hasText: name })
+  await row.getByRole('button', { name: '编辑', exact: true }).click()
+  dialog = page.getByRole('dialog', { name: '编辑商品', exact: true })
+  await choose(
+    page,
+    dialog.getByRole('combobox', { name: '商品类型', exact: true }),
+    '一次性服务',
+  )
+  await expect(
+    dialog.getByRole('combobox', { name: '服务周期单位', exact: true }),
+  ).toHaveCount(0)
+  await expect(
+    dialog.getByRole('spinbutton', { name: '服务周期数量', exact: true }),
+  ).toHaveCount(0)
+  const once = await save(page, dialog)
+  expect(once.request().postDataJSON()).toMatchObject({
+    type: 'ONE_TIME',
+    servicePeriodUnit: null,
+    servicePeriodCount: null,
+    renewalPriceFen: null,
+  })
+  await row.getByRole('button', { name: '编辑', exact: true }).click()
+  await choose(
+    page,
+    dialog.getByRole('combobox', { name: '商品类型', exact: true }),
+    '订阅服务',
+  )
+  await expect(
+    dialog.getByRole('combobox', { name: '服务周期单位', exact: true }),
+  ).toHaveValue('')
+  await dialog.getByRole('button', { name: '保存商品', exact: true }).click()
+  await expect(
+    page
+      .getByRole('alert')
+      .filter({ hasText: '请选择服务周期单位并填写正整数周期数量' }),
+  ).toBeVisible()
+  await choose(
+    page,
+    dialog.getByRole('combobox', { name: '服务周期单位', exact: true }),
+    '自然年（YEAR）',
+  )
+  await dialog
+    .getByRole('spinbutton', { name: '服务周期数量', exact: true })
+    .fill('1')
+  await dialog
+    .getByRole('textbox', { name: '续费价格（元）', exact: true })
+    .fill('9.99')
+  const renewed = await save(page, dialog)
+  expect((await renewed.json()).product).toMatchObject({
+    type: 'SUBSCRIPTION',
+    servicePeriodUnit: 'YEAR',
+    servicePeriodCount: 1,
+    renewalPriceFen: 999,
+  })
+})
+
 test('real product editor saves all eight field types, stable IDs, defaults, reorder and inert preview', async ({
   page,
 }, info) => {

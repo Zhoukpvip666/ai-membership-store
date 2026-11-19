@@ -27,6 +27,8 @@ const original = {
   priceFen: 1234,
   renewalPriceFen: 999,
   termLabel: '供应商确认周期',
+  servicePeriodUnit: 'MONTH',
+  servicePeriodCount: 1,
 }
 const formSchema = {
   version: 1,
@@ -343,6 +345,8 @@ test('server rejects invalid prices, types, fields, options, defaults, IDs and q
     (
       await request('/admin/products/' + productId, 'PATCH', {
         type: 'ONE_TIME',
+        servicePeriodUnit: 'MONTH',
+        servicePeriodCount: 1,
       })
     ).status,
     400,
@@ -351,6 +355,8 @@ test('server rejects invalid prices, types, fields, options, defaults, IDs and q
     ...original,
     type: 'ONE_TIME',
     renewalPriceFen: null,
+    servicePeriodUnit: null,
+    servicePeriodCount: null,
   })
   assert.equal(one.status, 201)
   assert.equal(
@@ -450,6 +456,8 @@ test('editing configuration and archiving preserve accounts, invitations, sessio
   const result = await request('/admin/products/' + productId, 'PATCH', {
     name: 'Changed current name',
     priceFen: 5678,
+    servicePeriodUnit: 'YEAR',
+    servicePeriodCount: 2,
     listed: true,
     formSchema: { version: 1, fields: [...formSchema.fields].reverse() },
   })
@@ -631,7 +639,209 @@ test('settings persist only allowed fields, leave admin identity unchanged and a
   })
   assert(!JSON.stringify(audit.afterJson).includes(input.ownerEmail))
 })
+test('HTTP product creation validates all period units, complete pairs and integer counts', async () => {
+  for (const [servicePeriodUnit, servicePeriodCount] of [
+    ['DAY', 7],
+    ['MONTH', 1],
+    ['MONTH', 12],
+    ['YEAR', 1],
+  ]) {
+    const result = await request('/admin/products', 'POST', {
+      ...original,
+      name: 'Period-' + randomUUID(),
+      servicePeriodUnit,
+      servicePeriodCount,
+    })
+    assert.equal(result.status, 201)
+    const id = result.body.product.id
+    for (const p of [
+      result.body.product,
+      (await request('/admin/products/' + id)).body.product,
+      (await request('/admin/products?search=' + result.body.product.name)).body
+        .items[0],
+      await db.product.findUniqueOrThrow({ where: { id } }),
+    ]) {
+      assert.equal(p.servicePeriodUnit, servicePeriodUnit)
+      assert.equal(p.servicePeriodCount, servicePeriodCount)
+      assert.equal(p.termLabel, original.termLabel)
+    }
+  }
+  const withoutPeriod = {
+    name: original.name,
+    type: original.type,
+    priceFen: original.priceFen,
+    renewalPriceFen: original.renewalPriceFen,
+    termLabel: original.termLabel,
+  }
+  const before = [await db.product.count(), await db.adminAuditLog.count()]
+  for (const fields of [
+    {},
+    { servicePeriodUnit: 'DAY' },
+    { servicePeriodCount: 1 },
+    { servicePeriodUnit: null, servicePeriodCount: null },
+    ...[0, -1, 1.5, 2147483648, '1', true].map((servicePeriodCount) => ({
+      servicePeriodUnit: 'DAY',
+      servicePeriodCount,
+    })),
+    { servicePeriodUnit: 'WEEK', servicePeriodCount: 1 },
+  ])
+    assert.equal(
+      (
+        await request('/admin/products', 'POST', {
+          ...withoutPeriod,
+          ...fields,
+        })
+      ).status,
+      400,
+    )
+  assert.deepEqual(
+    [await db.product.count(), await db.adminAuditLog.count()],
+    before,
+  )
+})
+
+test('legacy unknown periods allow unrelated edits, never infer termLabel and require an explicit complete pair', async () => {
+  const legacy = await db.product.create({
+    data: {
+      slug: 'legacy-' + randomUUID(),
+      name: 'Unknown period fixture',
+      type: 'SUBSCRIPTION',
+      priceFen: 123,
+      renewalPriceFen: 99,
+      termLabel: '30 天 / 1 个月 / 1 年仅展示',
+    },
+  })
+  const path = '/admin/products/' + legacy.id
+  const detail = await request(path)
+  assert.equal(detail.body.product.servicePeriodUnit, null)
+  assert.equal(detail.body.product.servicePeriodCount, null)
+  assert.equal(
+    (await request(path, 'PATCH', { name: 'Still unknown', listed: true }))
+      .status,
+    200,
+  )
+  const unchanged = await db.product.findUniqueOrThrow({
+    where: { id: legacy.id },
+  })
+  assert.equal(unchanged.servicePeriodUnit, null)
+  assert.equal(unchanged.servicePeriodCount, null)
+  const audits = await db.adminAuditLog.count()
+  for (const fields of [
+    { servicePeriodUnit: 'MONTH' },
+    { servicePeriodCount: 12 },
+    { servicePeriodUnit: 'MONTH', servicePeriodCount: null },
+    { servicePeriodUnit: null, servicePeriodCount: 12 },
+    { servicePeriodUnit: null, servicePeriodCount: null },
+  ]) {
+    assert.equal((await request(path, 'PATCH', fields)).status, 400)
+    assert.deepEqual(
+      await db.product.findUniqueOrThrow({ where: { id: legacy.id } }),
+      unchanged,
+    )
+  }
+  assert.equal(await db.adminAuditLog.count(), audits)
+  const completed = await request(path, 'PATCH', {
+    servicePeriodUnit: 'MONTH',
+    servicePeriodCount: 12,
+  })
+  assert.equal(completed.status, 200)
+  assert.equal(completed.body.product.servicePeriodUnit, 'MONTH')
+  assert.equal(completed.body.product.servicePeriodCount, 12)
+  const saved = await db.product.findUniqueOrThrow({ where: { id: legacy.id } })
+  assert.equal(saved.termLabel, legacy.termLabel)
+  assert.equal(
+    (
+      await request(path, 'PATCH', {
+        servicePeriodUnit: null,
+        servicePeriodCount: null,
+      })
+    ).status,
+    400,
+  )
+  await assert.rejects(
+    productService(db).edit(
+      legacy.id,
+      { servicePeriodUnit: 'YEAR', servicePeriodCount: 2 },
+      adminId,
+      'x'.repeat(100),
+    ),
+  )
+  assert.deepEqual(
+    await db.product.findUniqueOrThrow({ where: { id: legacy.id } }),
+    saved,
+  )
+})
+
+test('HTTP type transitions validate merged records and clear one-time renewal prices and periods', async () => {
+  const once = {
+    name: 'Type transition',
+    type: 'ONE_TIME',
+    priceFen: 100,
+    renewalPriceFen: null,
+    termLabel: '展示说明',
+  }
+  for (const fields of [
+    { servicePeriodUnit: 'DAY', servicePeriodCount: 1 },
+    { servicePeriodUnit: 'DAY', servicePeriodCount: null },
+    { servicePeriodUnit: null, servicePeriodCount: 1 },
+  ])
+    assert.equal(
+      (await request('/admin/products', 'POST', { ...once, ...fields })).status,
+      400,
+    )
+  const created = await request('/admin/products', 'POST', {
+    ...once,
+    servicePeriodUnit: null,
+    servicePeriodCount: null,
+  })
+  assert.equal(created.status, 201)
+  const path = '/admin/products/' + created.body.product.id
+  assert.equal(created.body.product.servicePeriodUnit, null)
+  assert.equal(created.body.product.servicePeriodCount, null)
+  for (const patch of [
+    { type: 'SUBSCRIPTION' },
+    { type: 'SUBSCRIPTION', renewalPriceFen: 99 },
+    { type: 'SUBSCRIPTION', servicePeriodUnit: 'YEAR', servicePeriodCount: 1 },
+    { servicePeriodUnit: 'DAY', servicePeriodCount: 1 },
+  ])
+    assert.equal((await request(path, 'PATCH', patch)).status, 400)
+  const subscription = await request(path, 'PATCH', {
+    type: 'SUBSCRIPTION',
+    renewalPriceFen: 99,
+    servicePeriodUnit: 'YEAR',
+    servicePeriodCount: 1,
+  })
+  assert.equal(subscription.status, 200)
+  assert.equal(subscription.body.product.renewalPriceFen, 99)
+  assert.equal(
+    (
+      await request(path, 'PATCH', {
+        type: 'ONE_TIME',
+        servicePeriodUnit: 'YEAR',
+        servicePeriodCount: 1,
+      })
+    ).status,
+    400,
+  )
+  const reverted = await request(path, 'PATCH', { type: 'ONE_TIME' })
+  assert.equal(reverted.status, 200)
+  for (const field of [
+    'servicePeriodUnit',
+    'servicePeriodCount',
+    'renewalPriceFen',
+  ])
+    assert.equal(reverted.body.product[field], null)
+  assert.equal((await request(path)).body.product.termLabel, once.termLabel)
+})
+
 test('new API instance and database connection read persisted product/schema/settings with existing session', async () => {
+  const period = await request('/admin/products', 'POST', {
+    ...original,
+    name: 'Reconnected period',
+    servicePeriodUnit: 'YEAR',
+    servicePeriodCount: 2,
+  })
+  assert.equal(period.status, 201)
   await db.product.create({
     data: {
       slug: 'restart-persistence',
@@ -648,6 +858,12 @@ test('new API instance and database connection read persisted product/schema/set
   const list = await request('/admin/products?search=Restart')
   assert.equal(list.status, 200)
   assert.equal(list.body.total, 1)
+  assert.equal(list.body.items[0].servicePeriodUnit, null)
+  assert.equal(list.body.items[0].servicePeriodCount, null)
+  const persisted = (await request('/admin/products/' + period.body.product.id))
+    .body.product
+  assert.equal(persisted.servicePeriodUnit, 'YEAR')
+  assert.equal(persisted.servicePeriodCount, 2)
   assert.equal(
     (await request('/admin/settings')).body.settings.storeName,
     'Persisted settings',

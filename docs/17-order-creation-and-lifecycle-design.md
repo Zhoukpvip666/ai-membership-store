@@ -282,20 +282,36 @@ PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备
 
 ### G. 商品周期能力缺口（创建订单前置任务）
 
-当前数据库 Product 已有 `servicePeriodUnit` 和 `servicePeriodCount`，但本次检查的 main 分支产品管理 API 与前端尚未暴露这两个字段：
-
-- `backend/src/modules/products/schemas.ts` 的 create/edit Zod 字段没有周期单位和数量。
-- `backend/src/modules/products/service.ts` 的 Product select 没有返回这两个字段。
-- `frontend/src/api/products.ts` 的 Product 类型没有这两个字段。
-- `frontend/src/views/admin/Products.vue` 仍只编辑展示说明性 `termLabel`，并明确提示“服务周期仅作说明，不推算到期日期”。
-
-因此，在订单创建 API 之前必须先补齐商品周期管理能力：
+T13 已实现，等待本次 PR 人工验收。数据库已有 `servicePeriodUnit` 和 `servicePeriodCount`；商品管理 API、DTO 和前端现在读写这两个字段，不新增 Migration。订单创建 API 尚未开始。
 
 1. 新建 SUBSCRIPTION 商品时，必须提供 DAY/MONTH/YEAR 和正整数数量。
 2. ONE_TIME 商品的结构化服务周期为 NULL。
 3. 对已有周期字段为 NULL 的历史商品，不从 termLabel 猜测；管理员必须显式补录后，才能创建新的订阅订单。
-4. 产品详情/列表 DTO 和管理表单显示结构化周期；编辑其他字段时允许历史 NULL 暂时保留，但订单创建服务拒绝缺少周期的 SUBSCRIPTION 商品。
+4. 产品详情/列表 DTO 和管理表单显示结构化周期；编辑其他字段时允许历史 NULL 暂时保留，后续订单创建服务须拒绝缺少周期的 SUBSCRIPTION 商品。
 5. 不需要新增 Product 表字段；现有数据库列和 CHECK 已提供存储基础。
+
+补充编辑契约：PATCH 为 SUBSCRIPTION 设置或修改周期时必须同时提交单位和数量，且均非 NULL、数量为 1–2147483647 的整数；ONE_TIME 使用 NULL/NULL。只有原本为 SUBSCRIPTION、两个周期字段均为 NULL 且请求省略这两个字段时，允许保留未知周期并修改其他信息。已配置周期不可重新清空；ONE_TIME 转 SUBSCRIPTION 必须显式补齐周期及续费价格，反向转换清空周期和续费价格（显式提交冲突值会被拒绝）。termLabel 继续独立作为展示说明。
+
+列表和详情展示结构化周期；新建默认不选择单位、不预填数量。历史 NULL 商品显示“尚未配置结构化周期”，可先保存其他信息，再显式补录。动态表单、既有订单和订阅快照不随商品周期修改而改变。DAY 是固定天数，MONTH/YEAR 是自然周期；本任务不实现日历计算或到期日推算。
+
+隔离验证入口（不读取开发 `.env`，不执行 Seed）：
+
+```powershell
+npm ci
+npm run format:check
+npm run typecheck
+npm run lint
+npm test
+npm run test:db -w backend -- --products-only
+npm run test:e2e -w backend -- --products-only
+npm run build
+```
+
+`--products-only` 使用现有随机 Compose 项目、随机本机端口、临时密码和独占 MySQL 8.4 测试卷，应用已提交的十条迁移后验证重复部署和 Schema 一致性；只在受保护的空测试库建立虚构管理员及设置夹具，绝不调用 Seed。API 测试通过真实 HTTP 覆盖创建、非法周期、历史 NULL 编辑/补录、类型转换、审计回滚和 API 实例重建后的读取。浏览器测试覆盖桌面及移动视口；现有认证、动态表单、设置和订阅回归继续执行。商品测试每个工作进程通过真实 UI 登录一次，各测试在独立浏览器上下文中复用这个测试会话，避免无关的重复登录触发真实限流；认证套件仍单独验证登录/退出，不放宽或绕过应用鉴权规则。清理仅针对本次随机测试项目。
+
+下一阶段仍须在新订阅订单创建事务中拒绝 NULL 周期商品，冻结周期快照；本次没有新增、修改订单创建接口或数据库约束。
+
+本次本地执行结果（2026-11-19）：Prisma Schema 校验、Client 生成、format:check、typecheck、Lint、前后端 build 均通过；后端单元测试 26/26，前端单元测试 9/9，商品真实 HTTP + 隔离 MySQL 测试 11/11，最终完整 E2E 34/34（桌面 17、移动 17）。首次 E2E 的提示定位歧义和累计登录限流已通过精确定位错误提示、复用工作进程内真实测试会话修正；最终单命令重跑全部通过。没有调整生产认证或限流逻辑，没有新增 Migration，也没有连接开发数据库。
 
 该任务属于订单创建的必要前置工作，应单独实现和验收，不应让订单创建 API 临时解析 termLabel。
 
