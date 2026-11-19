@@ -8,6 +8,8 @@ Base path: /api/v1. All payloads are JSON. Timestamps are UTC ISO-8601. Money is
 
 **Current order-read override:** [Order API stage 1](16-order-read-api.md) implements only GET `/admin/orders`, `/admin/orders/:id`, `/customer/orders`, `/customer/orders/:id`. Both roles exclude hidden rows in list/detail; CUSTOMER ownership comes only from Session. Explicit snapshot DTOs exclude authentication data and audits. ADMIN additionally receives internalNote; CUSTOMER never does. Both receive version, derived expiresAt and server-calculated remainingSeconds; see [revision foundation](18-order-revision-foundation.md). This supersedes the earlier reserved `/me/orders` paths below. No order write/payment/fulfillment/renewal endpoint is implemented.
 
+**Next order creation stage — approved design, not yet implemented:** [Order creation API contract](19-order-creation-api.md) defines POST `/customer/orders` for ACTIVE CUSTOMER self-order and POST `/admin/orders` for ADMIN-created orders. Both use server-derived source/actor, strict role-specific DTOs, full form validation, frozen Product snapshots, required Idempotency-Key, atomic Order + V1 Revision + Event + applicable Audit + idempotency response. ADMIN may select ACTIVE or PENDING_ACTIVATION customers and unlisted/unarchived Products; CUSTOMER must be ACTIVE and may select listed/unarchived Products. Creation returns the complete role-safe order DTO with HTTP 201 (D58). These routes are planned only; do not describe them as implemented until the implementation PR is merged.
+
 `GET /api/v1/health` and its `/health` alias retain their database-readiness behavior. Each request probes MySQL through Prisma. Successful connectivity returns HTTP 200 with `{"status":"ok","database":"ready"}`. Connection/query failure returns HTTP 503 with `{"status":"degraded","database":"unavailable"}`; driver errors and credentials are never returned. This does not verify migration currency: use the local `db:status` command. Authentication, customer/invitation, product/settings, Phase 2 subscription and the four order GETs above are implemented. Order writes, payment, dashboard and customer subscription APIs remain unimplemented and return404. All /admin routes, including unimplemented paths, first require a valid ADMIN session.
 
 ## Model review follow-up (no new endpoints)
@@ -192,3 +194,8 @@ Do not implement public checkout, online payment intent, payment webhook, automa
 ## Order revision infrastructure (2026-11-19)
 
 Migration eleven adds Order.version, permanent append-only OrderRevision and actorUserId-scoped idempotency (D34–D36). There are no new HTTP routes. Existing four order GET endpoints return the additional role-specific fields documented in [order read API](16-order-read-api.md); no history, order creation/edit, payment, cancellation or fulfillment endpoint is added. Full snapshot history is internal and never reused as a customer DTO.
+
+
+## Planned order creation API (not implemented)
+
+The approved next write stage is limited to POST `/customer/orders` and POST `/admin/orders`. Use [the complete order creation contract](19-order-creation-api.md) and ACTIVE decisions D1-D10, D33-D36, D40, D44, D51-D58. ADMIN must explicitly submit final `amountFen`; the UI pre-fills Product.priceFen. The first successful request returns a complete role-safe order resource DTO with HTTP 201. Same-key retries replay the exact stored original response. No order editing, cancellation, payment, fulfillment, renewal, notifications or frontend order-center integration is included in that stage.
