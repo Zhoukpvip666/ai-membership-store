@@ -1,8 +1,8 @@
 # Order cancellation and timeout API — implementation contract
 
 - Document: ORDER-CANCEL-TIMEOUT
-- Version: 1.0
-- Status: Approved design baseline; implementation not started
+- Version: 1.1
+- Status: Implemented for PR review; no development database deployment
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order creation](19-order-creation-api.md), [Order edit](20-order-edit-api.md), [Order revision foundation](18-order-revision-foundation.md), [Order read API](16-order-read-api.md)
 
@@ -29,7 +29,7 @@ The automatic SYSTEM worker is internal only; do not expose a SYSTEM cancellatio
 
 ### ADMIN
 - Must provide a nonblank reason, trimmed and maximum 500 characters.
-- May cancel ordinary `UNPAID + NOT_STARTED` orders, including orders still within their 24-hour window.
+- May cancel ordinary `UNPAID + NOT_STARTED` or `PENDING_VERIFICATION + NOT_STARTED` orders when there are no confirmed PAYMENT transactions, paidAt or paymentConfirmedAt facts, including orders still within their 24-hour window. A pending verification summary is not confirmed payment (D16).
 - May cancel a `PAID + PROCESSING` order only before fulfillment completion, after verifying a confirmed full PAYMENT transaction exactly matches `amountFen` and the order's paidAt/paymentConfirmedAt facts.
 - May cancel `NOT_REQUIRED + PROCESSING` zero-price orders under D53; no payment/refund transaction is created.
 - Cannot cancel completed, already cancelled, hidden/system renewal, or otherwise ineligible orders.
@@ -41,7 +41,7 @@ All eligibility is rechecked after locking the Order row inside the transaction.
 | Starting state | Actor/action | Result | Payment transaction behavior |
 |---|---|---|---|
 | UNPAID + NOT_STARTED or PENDING_VERIFICATION + NOT_STARTED | CUSTOMER cancel | fulfillmentStatus=CANCELLED; paymentStatus=UNPAID | Any pending unconfirmed PAYMENT attempt is marked FAILED and retained; no refund |
-| UNPAID + NOT_STARTED | ADMIN cancel | fulfillmentStatus=CANCELLED; paymentStatus remains UNPAID | Any pending unconfirmed PAYMENT attempt is marked FAILED and retained; no refund |
+| UNPAID + NOT_STARTED or PENDING_VERIFICATION + NOT_STARTED | ADMIN cancel | fulfillmentStatus=CANCELLED; paymentStatus=UNPAID | All pending unconfirmed PAYMENT attempts are marked FAILED and retained; no refund |
 | PAID + PROCESSING | ADMIN cancel | fulfillmentStatus=CANCELLED; paymentStatus=REFUND_PENDING | Preserve confirmed PAYMENT; do not create/confirm refund |
 | NOT_REQUIRED + PROCESSING | ADMIN cancel | fulfillmentStatus=CANCELLED; paymentStatus remains NOT_REQUIRED | No payment/refund transaction |
 
@@ -146,3 +146,101 @@ Reuse existing error codes where an equivalent already exists. Never disclose an
 - Existing order creation/edit/read/revision/subscription suites pass.
 - Use random isolated MySQL and no-Seed runner; never read development .env or touch development DB/volume.
 - Update API contract, roadmap, implementation report and tests. Stop at PR for review; do not merge or start payment/refund/fulfillment UI without review.
+
+## 11. Implementation report (2026-11-19)
+
+The two role-specific POST handlers reuse the existing persisted Session/role/CSRF guards, strict DTO parsing and actorUserId-scoped idempotency helper. A shared cancellation function runs only after the caller has exclusively locked the Order. It checks the locked version and exact eligible state, then commits Order/version, pending-attempt closure, complete V1-schema Revision, CANCELLED Event, ADMIN-only sanitized Audit and the original manual response together. Frozen product/form/contact fields and existing payment timestamps are not changed. A different key with the current version cannot cancel a terminal order again; a stale expectedVersion returns VERSION_CONFLICT.
+
+Paid cancellation requires exactly one confirmed PAYMENT: its amount must equal amountFen, occurredAt must equal paidAt, confirmedAt must equal paymentConfirmedAt, and actual payment cannot follow confirmation. Inconsistent or missing facts return ORDER_NOT_CANCELLABLE. A valid paid cancellation sets REFUND_PENDING without creating a refund. CUSTOMER, ADMIN and SYSTEM accept PENDING_VERIFICATION without confirmed facts under their respective ownership/role/deadline rules. ADMIN must still provide a nonblank reason. Zero-price ADMIN cancellation retains NOT_REQUIRED and creates no money/entitlement rows.
+
+Pending unconfirmed PAYMENT rows are retained. Only their status, failure note and updatedAt change; the failure note is replaced by the fixed sanitized ORDER_CANCELLED or PAYMENT_TIMEOUT marker. IDs, external references, channel, amount, occurrence/confirmation information and creation details remain intact. Existing confirmed/failed transactions and REFUND rows are not changed. Revision stores the protected full snapshot; Event/Audit state JSON contains only the operation, version, amount, statuses and cancellation time, plus the supplied cancellation reason in its dedicated field.
+
+The worker starts once after API listen and then every 60000ms. Each pass selects at most 100 deterministic candidates (createdAt/id), using database UTC time and the inclusive 24-hour boundary. Each candidate gets its own serializable transaction and FOR UPDATE SKIP LOCKED recheck. Concurrent instances share no correctness state outside MySQL. A failed row rolls back and increments the pass's failed count while healthy candidates continue; the next minute retries. The scheduler reports only a sanitized failure message and does not spin to drain a poisoned batch. Shutdown stops both order and existing subscription schedulers and waits for in-flight work before database disconnect.
+
+No Schema or Migration changed: all twelve committed migrations, CHECKs and history/source/renewal triggers are reused unchanged. No frontend page, payment/refund confirmation service, fulfillment, subscription entitlement or internal-note endpoint is added.
+
+### Reproducible isolated verification
+
+```powershell
+npm ci
+npm run db:validate
+npm run db:generate
+npm run format:check
+npm run typecheck
+npm run lint
+npm test
+npm run test:db -w backend -- --cancellation-only
+npm run build
+npm run test:e2e -w backend -- --cancellation-only
+```
+
+The new no-Seed mode first runs the existing edit/create/revision/subscription regression in a separate fresh random database (`--edit-only --fresh`), with read tests in their own pristine project. Another random database exercises migration-twelve historical upgrade, preservation of all thirteen business tables, repeated deploy and schema diff, followed by the cancellation suite. This keeps append-only cancellation fixtures out of regression suites that compare entire tables; no history is deleted to reset tests. Browser mode installs all twelve migrations fresh in a separate random environment. Neither path reads development .env or touches the development database/volume. Build before browser preview; do not rebuild its assets during E2E.
+
+Integration coverage includes role/ownership/CSRF/reason validation, paid/zero/pending states, exact safe DTO parity, immutable history, all-stage database-trigger fault injection, same-key concurrency and competing versions, inclusive database-clock expiry, bounded batches/locked rows, two concurrent worker instances, repeated/restarted sweeps and per-row failure recovery. Payment race coverage uses a **test-only** writer following the shared Order lock/deadline protocol, to demonstrate both winners and rejection after timeout. The production payment-confirmation implementation remains future work and must reapply this protocol and its own full transaction tests.
+
+### Changed files
+
+- `backend/src/modules/orders/cancel-schemas.ts`: strict role-specific cancellation bodies.
+- `backend/src/modules/orders/cancel.ts`: shared locked cancellation transaction, history and manual idempotency.
+- `backend/src/modules/orders/timeout.ts`: bounded database-time scan and minute scheduler wrapper.
+- `backend/src/modules/orders/routes.ts`: the two guarded cancellation POST handlers.
+- `backend/src/server.ts`: start/stop order worker alongside the existing subscription scheduler.
+- `backend/scripts/test-database.ts`: isolated no-Seed cancellation mode and separate existing regression databases.
+- `backend/test/order-cancellation.test.ts`: schema/scheduler unit tests.
+- `backend/test/integration/order-cancellation.test.ts`: real HTTP/MySQL state, concurrency and fault-injection tests.
+- `e2e/order-cancellation.spec.ts`: ADMIN/CUSTOMER browser cancellation and replay on both viewport projects.
+- `README.md`, `docs/04-data-model.md`, `docs/05-api-contract.md`, `docs/07-development-roadmap.md`, `docs/17-order-creation-and-lifecycle-design.md`, this report and `docs/superpowers/plans/2026-11-19-order-cancellation-timeout.md`: contract, scope, implementation status, plan and validation record.
+
+### Initial implementation verification (before PR review correction)
+
+This report does not claim production deployment or physical-device testing. Microsoft Edge runs cover desktop and emulated mobile viewports.
+
+| Command | Actual result |
+|---|---|
+| `npm ci` | Passed; no dependency version/lockfile changes |
+| `npm run db:validate` | Passed |
+| `npm run db:generate` | Passed; Prisma Client 7.10.1 |
+| `npm run format:check` | Passed |
+| `npm run typecheck` | Passed frontend, backend and E2E; backend rechecked after the final lock-wait fixture |
+| `npm run lint` | Passed |
+| `npm test` | Backend 37/37; frontend 9/9 |
+| `npm run test:db -w backend -- --cancellation-only` | 90/90: read 14, edit 19, creation 15, Revision 9, subscription 10, cancellation/timeout 23; three independent random MySQL projects, no Seed |
+| `npm run build` | Frontend and backend passed |
+| `npm run test:e2e -w backend -- --cancellation-only` | 46/46 passed, desktop Edge + mobile viewport; fresh random MySQL, no Seed |
+
+The first run exposed two fixture issues (compound MySQL CLI delimiter and an adapter idle timeout from holding a test lock across 100 other writes). They were corrected while retaining the throughput and short-lock assertions. A later mixed-history run passed cancellation 22/22 but hit the existing edit subprocess's 180-second limit while comparing the enlarged fixture tables. The final runner gives cancellation and existing write regressions separate random databases without deleting history or changing suite timeouts. Final cancellation coverage also includes the post-lock deadline test: 23/23 passed in 86 seconds. The complete command exited 0, preserving all thirteen historical business tables through migration twelve, with no pending migrations on repeat deploy and no Prisma schema difference. All runner-owned projects/volumes were removed afterward; the development volume was not addressed.
+
+The initial independent whole-branch review reported no blockers. Both suggested tests (concurrent different cancellation reasons sharing a key, and paid cancellation final-stage rollback) were added and passed. A follow-up verified the no-Seed nested runner and the test-only payment writer's separate post-lock database-time query. Subsequent owner review found the ADMIN pending-verification eligibility mismatch; its correction and new verification are recorded below. The future payment service must still supply its own implementation and validation.
+
+Original-worktree checks confirmed the same three unstaged layout files and identical SHA-256 values. Existing API/frontend PIDs 1936/1720 were preserved. Development .env was neither read nor modified; no development database/volume operation or service restart was performed. There is no development deployment or manual database setup in this PR. Future payment confirmation must implement the tested lock/deadline protocol in its own production transaction; refund confirmation, fulfillment and subscription entitlement remain out of scope.
+
+### Review delivery
+
+[PR #17](https://github.com/lear111/ai-membership-store/pull/17), branch `codex/order-cancellation-timeout`, targets `main`. Implementation commit: `21a8b6188d79ab6dd3c0b83b8cac09841f4aaca2`; 16 changed files. GitHub reported OPEN/unmerged, clean merge state and no status checks at publication. Local verification above is independent of GitHub CI. This delivery record is a documentation-only follow-up; do not merge or start the next stage automatically.
+
+## 12. PR #17 review correction — ADMIN pending verification (2026-11-19)
+
+The original implementation incorrectly excluded ADMIN from the unpaid PENDING_VERIFICATION branch and included an HTTP test requiring that rejection. This restriction was not part of D16. Remove only that actor exclusion; D16 and all other lifecycle decisions are unchanged.
+
+ADMIN may now cancel PENDING_VERIFICATION + NOT_STARTED ordinary orders when there are no confirmed payment facts. A nonblank reason remains mandatory. The existing transaction retains every PAYMENT row and its external evidence, changes all pending/unconfirmed attempts to FAILED, restores the order summary to UNPAID, sets fulfillmentStatus=CANCELLED, and atomically commits version+1, complete Revision, Event, ADMIN Audit and the original idempotency response. Already-FAILED attempts remain unchanged; REFUND rows are not touched. Confirmed PAYMENT status, a non-NULL transaction confirmedAt, or an order paidAt/paymentConfirmedAt still blocks the unpaid path. The established confirmed-paid cancellation path and REFUND_PENDING behavior are unchanged.
+
+The real HTTP/MySQL regression verifies multiple pending attempts, missing/blank reason rejection without writes, full row/evidence preservation, full V2 snapshot and ADMIN history, replay with no extra history, and defensive rejection of inconsistent confirmation facts. Every ADMIN transaction-stage failure is now injected into a PENDING_VERIFICATION cancellation and compared across all business/history rows, followed by a clean same-key retry. Existing CUSTOMER pending-verification and SYSTEM expiry cases remain in the suite. Browser tests add ADMIN pending-verification cancellation through real cookies/CSRF/Vite proxy on desktop/mobile viewports.
+
+Changed files in this follow-up: `backend/src/modules/orders/cancel.ts`, `backend/test/integration/order-cancellation.test.ts`, `e2e/order-cancellation.spec.ts`, `docs/05-api-contract.md`, and this contract/report. No migration, Schema, dependency, frontend business code or original checkout change; no development .env/database/volume access or Seed.
+
+All results below were rerun for this review correction. Initial results in section 11 are historical and are not presented as rerun results.
+
+| Command | Actual follow-up result |
+|---|---|
+| `npm run format:check` | Passed |
+| `npm run typecheck` | Passed frontend, backend and E2E |
+| `npm run lint` | Passed |
+| `npm test` | Backend 37/37; frontend 9/9 |
+| `npm run db:validate` / `npm run db:generate` | Passed; Prisma Client 7.10.1 |
+| `npm run test:db -w backend -- --cancellation-only` | 92/92: read 14, edit 19, creation 15, Revision 9, subscription 10, cancellation/timeout 25; exit 0 |
+| `npm run build` | Frontend and backend passed |
+| `npm run test:e2e -w backend -- --cancellation-only e2e/order-cancellation.spec.ts e2e/order-creation.spec.ts e2e/order-edit.spec.ts` | 14/14 passed: cancellation 6, creation 4, edit 4, desktop Edge and emulated mobile viewport; exit 0 |
+
+Before the production fix, the new pending-verification browser test reproduced HTTP 409 instead of the required 200 on both viewports. After removing the incorrect ADMIN exclusion, both cases and all selected order browser regressions passed. This follow-up reran those 14 relevant browser cases, not the entire original 46-case suite.
+
+The database command used three random isolated MySQL 8.4 projects and retained all thirteen historical business tables/revisions through migration twelve. Repeat deploy had no pending migrations and Prisma schema diff passed. The browser command used a fourth independent fresh random project. No path executed Seed or read development .env; only runner-owned resources were removed. The original checkout still has exactly the same three layout edits with identical SHA-256 values. Existing CUSTOMER and SYSTEM pending-verification cases passed unchanged.

@@ -4,6 +4,8 @@ import { id } from '../users/schemas.ts'
 import { orderReadService } from './service.ts'
 import { orderCreationService } from './create.ts'
 import { orderEditService } from './edit.ts'
+import { orderCancellationService } from './cancel.ts'
+import { cancelAdminOrder, cancelCustomerOrder } from './cancel-schemas.ts'
 import { editAdminOrder, editCustomerOrder } from './edit-schemas.ts'
 import {
   createAdminOrder,
@@ -23,6 +25,19 @@ export function adminOrderRoutes(database: PrismaClient) {
     service = orderReadService(database)
   const create = orderCreationService(database)
   const edit = orderEditService(database)
+  const cancel = orderCancellationService(database)
+  router.post('/orders/:id/cancel', async (request, response) => {
+    response.json(
+      await cancel(
+        'ADMIN',
+        cancelAdminOrder.parse(request.body),
+        id.parse(request.params.id),
+        response.locals.principal.user.id,
+        creationKey(request.get('Idempotency-Key')),
+        response.locals.requestId,
+      ),
+    )
+  })
   router.patch('/orders/:id', async (request, response) => {
     response.json(
       await edit(
@@ -63,6 +78,19 @@ export function customerOrderRoutes(database: PrismaClient) {
     service = orderReadService(database)
   const create = orderCreationService(database)
   const edit = orderEditService(database)
+  const cancel = orderCancellationService(database)
+  router.post('/orders/:id/cancel', async (request, response) => {
+    response.json(
+      await cancel(
+        'CUSTOMER',
+        cancelCustomerOrder.parse(request.body),
+        id.parse(request.params.id),
+        response.locals.principal.user.id,
+        creationKey(request.get('Idempotency-Key')),
+        response.locals.requestId,
+      ),
+    )
+  })
   router.patch('/orders/:id', async (request, response) => {
     response.json(
       await edit(

@@ -14,6 +14,8 @@ Changing a positive amount to zero atomically uses NOT_REQUIRED/PROCESSING, keep
 
 ## 1. Design boundaries
 
+**T16 cancellation implementation:** [Cancellation/timeout report](21-order-cancellation-timeout.md) reuses this Schema and all twelve migrations unchanged. Manual cancellation and database-clock SYSTEM expiry atomically update Order/version, pending PAYMENT attempts (FAILED, retained), complete OrderRevision and CANCELLED OrderEvent; only ADMIN actions append AdminAuditLog, only manual requests persist idempotency responses. PAID cancellation validates the matching confirmed full receipt and moves to REFUND_PENDING without refund records; zero-price cancellation retains NOT_REQUIRED. SYSTEM actor references are NULL, and protected snapshots/payment facts remain intact. Payment/refund confirmation and fulfillment remain future stages.
+
 - Single merchant: the site owner is the only ADMIN and seller. There is no Merchant, CustomerWallet, merchant balance, withdrawal, or sub-merchant model.
 - A customer is a User with role CUSTOMER. There is no separate customers table.
 - Customers may have orders and subscriptions while their account status is PENDING_ACTIVATION.
