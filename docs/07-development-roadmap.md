@@ -324,7 +324,7 @@ These remain future work and must not be pulled into Task 1.2:
 
 ## Current review boundary
 
-Tasks 1.2.1–1.2.3, Phase 2 and order foundation/read/create/edit/cancel/payment/refund/fulfillment stages through T19 are merged. T20 implementation is complete in its isolated feature branch and awaits PR review. Do not begin T21 customer UI, renewal or deployment automatically.
+Tasks 1.2.1–1.2.3, Phase 2 and order foundation/read/create/edit/cancel/payment/refund/fulfillment stages through T20 are merged. T21 customer order center design is approved and documented; its implementation PR is the next authorized task. Do not begin renewal or deployment automatically.
 
 
 T19 supersedes the earlier generic Task 1.2.4 fulfillment placeholder below: use the merged D24-D32/D37/D52/D59/D64/D83-D88 contract in [docs/24-manual-fulfillment-api.md](24-manual-fulfillment-api.md). In particular, NOT_REQUIRED zero-price orders are fulfillable, and renewal/SYSTEM_RENEWAL are excluded.
