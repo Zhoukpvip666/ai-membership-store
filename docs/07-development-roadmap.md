@@ -91,18 +91,30 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 - Add desktop/mobile E2E for create → payment → fulfillment and cancel → refund, plus note/version/idempotency and safe timeline tests.
 - No Prisma Schema/Migration or new dependency was added. CUSTOMER order UI, overview, online payment, supplier, email, renewal and deployment remained outside T20.
 
-## T21 customer order center — implemented for review
+## T21 customer order center — merged in PR #31
 
-**Status: D98-D105 implemented in codex/customer-order-center and pending PR review.** [Full implementation contract](26-customer-order-center.md). No development database deployment.
+**Status: D98-D105 implemented and merged in PR #31 (squash commit d166c53).** [Full implementation contract and verification](26-customer-order-center.md). No development database deployment.
 
-- Replace only the CUSTOMER `/account/orders` Mock page with real own-order list/detail/edit/cancel flows, reusing the existing customer APIs. Require an ACTIVE CUSTOMER Session and preserve hidden/ownership 404 behavior.
+- Replace only the CUSTOMER /account/orders Mock page with real own-order list/detail/edit/cancel flows, reusing the existing customer APIs. Require an ACTIVE CUSTOMER Session and preserve hidden/ownership 404 behavior.
 - Display frozen product/form snapshots, separate payment/fulfillment states, server pagination/search, and the original 24-hour countdown. NOT_REQUIRED + PROCESSING zero-price orders appear as 处理中.
 - Customer can edit only eligible UNPAID + NOT_STARTED formData using the frozen schema; customer can cancel own UNPAID/PENDING_VERIFICATION orders only when no confirmed payment fact exists. PENDING_VERIFICATION cancellation requires a clear warning.
 - Refund visibility is order-level only. REFUND_PENDING is labeled 待退款 (it does not prove the external transfer has started); REFUNDED is shown only after ADMIN confirms actual external refund completion.
 - Timeline uses createdAt/paidAt/paymentConfirmedAt/fulfilledAt/cancelledAt only; no CUSTOMER OrderEvent, Revision, Audit or payment/refund attempt read.
-- Extend ADMIN settings PATCH to update the existing AppSettings.paymentInstructions plain-text field (max 4000, empty clears); add CUSTOMER-only GET `/customer/order-guidance` returning storeName/businessTimezone/paymentInstructions only. No migration is expected.
-- Show payment instructions only for positive UNPAID + NOT_STARTED orders with remainingSeconds > 0. PENDING_VERIFICATION says wait/do not transfer again. No online payment, proof upload, refund request, checkout/order creation, subscription UI or email.
-- Desktop/mobile E2E, ownership/privacy, edit/cancel/idempotency/version, guidance settings/read, and T20 ADMIN regression are required.
+- The existing AppSettings.paymentInstructions plain-text field and CUSTOMER GET /customer/order-guidance provide eligible offline payment instructions. No migration was added.
+- T21 includes no online payment, proof upload, refund request, checkout/order creation, subscription UI or email. Its final review follow-up covers response-anchored countdowns and empty-form edit visibility.
+
+## T22 customer storefront and offline order placement — approved design, implementation not started
+
+**Status: D106-D112 approved.** [Complete T22 design baseline](27-customer-storefront-and-order-placement.md). This is a documentation milestone only; implementation requires a separate owner authorization after the design PR is merged.
+
+- Public GET catalog list/detail exposes only listed, unarchived product display fields. Public DTOs never expose formSchema, defaults, administrator fields, or archive/listing internals.
+- Product detail does not load or display dynamic form fields. Only after clicking 立即购买 does an ACTIVE CUSTOMER enter /purchase/:slug and fetch the customer-safe form projection.
+- Guests are redirected to login with a validated same-origin purchase destination; successful CUSTOMER login automatically returns to the same purchase route and loads the form. ADMIN does not use customer purchase routes.
+- Reuse the existing eight-type form contract and ProductFormInputs. Do not apply administrator defaultValue values or persist incomplete drafts.
+- Reuse POST /customer/orders. Customer price remains server-derived; product/form snapshots, complete validation, zero-price behavior, atomic history and Idempotency-Key remain unchanged.
+- The approved forward request adds expectedProductUpdatedAt. Under the existing Product row lock, a stale value returns 409 PRODUCT_CHANGED with no writes; the frontend reloads and requires explicit review. No migration is expected.
+- On success, navigate to /account/orders?orderId=:id and open the existing T21 order detail. T21 payment guidance remains the only offline payment instruction.
+- No cart, online payment, proof upload, customer subscription/renewal, email, supplier automation, migration, deployment, or runtime dependency is included.
 
 ## Order revision / generic idempotency foundation
 
@@ -324,8 +336,7 @@ These remain future work and must not be pulled into Task 1.2:
 
 ## Current review boundary
 
-Tasks 1.2.1–1.2.3, Phase 2 and order foundation/read/create/edit/cancel/payment/refund/fulfillment stages through T20 are merged. T21 customer order center is implemented and awaits review. Do not begin renewal or deployment automatically.
-
+Tasks 1.2.1–1.2.3, Phase 2, order foundation/read/create/edit/cancel/payment/refund/fulfillment, T20 and T21 are merged. T22 design is approved and documented in docs/27; implementation has not started and requires separate owner authorization after the design PR is merged. Do not begin renewal, payment-provider integration, or deployment automatically.
 
 T19 supersedes the earlier generic Task 1.2.4 fulfillment placeholder below: use the merged D24-D32/D37/D52/D59/D64/D83-D88 contract in [docs/24-manual-fulfillment-api.md](24-manual-fulfillment-api.md). In particular, NOT_REQUIRED zero-price orders are fulfillable, and renewal/SYSTEM_RENEWAL are excluded.
 
@@ -342,7 +353,6 @@ T19 supersedes the earlier generic Task 1.2.4 fulfillment placeholder below: use
 No Migration, development database operation, renewal, provider integration, email or frontend page. Actual validation is recorded in docs/24.
 
 
-T20 supersedes only the ADMIN order-page Mock boundary in the original Task 1.2.3 UI prototype. CUSTOMER order UI and the operating overview remain Mock. See [the T20 contract](25-admin-order-center.md).
+T20 supersedes only the ADMIN order-page Mock boundary in the original Task 1.2.3 UI prototype. T21 supersedes the CUSTOMER `/account/orders` Mock boundary for existing-order management. The operating overview remains Mock. See [T20](25-admin-order-center.md) and [T21](26-customer-order-center.md).
 
-
-T21 supersedes the original CUSTOMER `/account/orders` Mock boundary only for existing-order management. Customer catalog/checkout/order creation and customer subscription UI remain unavailable/Mock. The ADMIN order center and operating overview are unchanged. See [the T21 contract](26-customer-order-center.md).
+T22 now defines the approved future CUSTOMER catalog and offline order-placement behavior in [docs/27](27-customer-storefront-and-order-placement.md). Until its implementation is separately authorized and merged, the current main runtime still exposes the catalog only as an ADMIN preview and does not provide customer purchase UI.

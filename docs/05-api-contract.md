@@ -12,9 +12,21 @@ Base path: /api/v1. All payloads are JSON. Timestamps are UTC ISO-8601. Money is
 
 `GET /api/v1/health` and its `/health` alias retain their database-readiness behavior. Each request probes MySQL through Prisma. Successful connectivity returns HTTP 200 with `{"status":"ok","database":"ready"}`. Connection/query failure returns HTTP 503 with `{"status":"degraded","database":"unavailable"}`; driver errors and credentials are never returned. This does not verify migration currency: use the local `db:status` command. Authentication, customer/invitation, product/settings, Phase 2 subscription and the existing order list/detail GETs are implemented; the additional ADMIN event GET is implemented and merged in T20 (PR #29). Order creation, edit, cancellation, T17 payment, T18 refund and T19 fulfillment mutations are implemented; renewal, dashboard and customer subscription APIs remain future work. All /admin routes, including unimplemented paths, first require a valid ADMIN session.
 
-## T21 customer order center — implemented for review
+## T21 customer order center — implemented and merged in PR #31
 
-See [the complete T21 contract](26-customer-order-center.md) and decisions D98-D105. T21 replaces only the CUSTOMER `/account/orders` Mock page with the existing own-order list/detail/edit/cancel APIs. It adds `GET /customer/order-guidance` requiring an ACTIVE CUSTOMER Session and returning only storeName, businessTimezone and plain-text paymentInstructions. The existing ADMIN `PATCH /admin/settings` gains optional paymentInstructions (max 4000); the AppSettings column already exists, so no migration is expected. Customer refund visibility remains order-level only; no payment/refund attempts, OrderEvent, Revision, audit or customer refund request is exposed. No customer checkout/order creation, online payment, proof upload, subscription page, email or deployment is in scope. Implementation and actual tests are recorded in docs/26.
+See [the complete T21 contract](26-customer-order-center.md) and decisions D98-D105. T21 replaces only the CUSTOMER /account/orders Mock page with the existing own-order list/detail/edit/cancel APIs. It adds GET /customer/order-guidance requiring an ACTIVE CUSTOMER Session and returning only storeName, businessTimezone and plain-text paymentInstructions. The existing ADMIN PATCH /admin/settings gains optional paymentInstructions (max 4000); the AppSettings column already exists, so no migration was needed. Customer refund visibility remains order-level only; no payment/refund attempts, OrderEvent, Revision, audit or customer refund request is exposed. No online payment, proof upload, subscription page, email or deployment was included. Implementation and actual tests are recorded in docs/26.
+
+## T22 customer storefront and offline order placement — approved design only
+
+See [the T22 design baseline](27-customer-storefront-and-order-placement.md) and decisions D106-D112. These routes are approved but not implemented on main:
+
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| GET | /catalog/products | Public | Listed/unarchived product list; safe display DTO only |
+| GET | /catalog/products/:slug | Public | Listed/unarchived product detail; no formSchema |
+| GET | /customer/products/:slug | ACTIVE CUSTOMER | Purchase projection with safe formSchema and Product.updatedAt |
+
+T22 reuses the existing POST /customer/orders. Its approved forward CUSTOMER request adds expectedProductUpdatedAt to the current productId/formData body; the service will compare it after the Product row lock and return 409 PRODUCT_CHANGED without writes when stale. This forward extension is not yet implemented; see the addendum in docs/19. The login flow returns a guest to the same purchase route after successful CUSTOMER login. No online payment, proof upload, cart, subscription UI, renewal, email, migration, or deployment is included.
 
 ## Order edit API (implemented and merged in PR #14)
 
@@ -183,12 +195,13 @@ The customer login/me projection includes username but never adminLabel; adminis
 | GET | /customer/orders | Implemented: current customer's own visible ordinary orders |
 | GET | /customer/orders/:id | Implemented: own ordinary order snapshot; no internal timeline |
 | GET | /customer/order-guidance | Implemented T21: ACTIVE CUSTOMER only; safe `{storeName,businessTimezone,paymentInstructions}` allowlist |
+| GET | /customer/products/:slug | Approved T22 design, not implemented: ACTIVE CUSTOMER purchase projection; includes safe formSchema and updatedAt |
 
 | PATCH | /customer/orders/:id | Implemented T15: own eligible ordinary-order full form replacement |
 | GET | /me/subscriptions | Current customer's own subscriptions |
 | GET | /me/subscriptions/:id | Own subscription detail and renewal history |
 
-No customer purchase or online renewal endpoint in Task 1.2.
+No customer subscription read or renewal endpoint is implemented. T22 approves public catalog reads, an ACTIVE-CUSTOMER purchase-product read, and integration of the existing customer order-creation POST; those catalog/purchase reads are not yet implemented.
 
 ## 8. Dashboard
 
@@ -211,7 +224,7 @@ Dashboard totals must be computed from confirmed PaymentTransaction records and 
 
 ## 10. Explicitly absent endpoints
 
-Do not implement public checkout, online payment intent, payment webhook, automatic refund API, supplier email, supplier API, supplier transfer, SMTP, email outbox, settlement, split payment, merchant wallet, or withdrawal routes.
+Do not implement online checkout/payment intents, payment webhooks, automatic refund, supplier email/API/transfer, SMTP/email outbox, settlement, split payment, merchant wallet, or withdrawal routes. T22 approves public product browsing and creation of an ordinary offline-payment order only; it does not authorize online payment or money movement.
 
 ## Order revision infrastructure (2026-11-19)
 
@@ -224,7 +237,7 @@ This implemented write stage is limited to POST `/customer/orders` and POST `/ad
 
 ## Order creation implementation details
 
-Both POST routes require a valid persisted Session, CSRF Origin/custom header, strict JSON body and Idempotency-Key (1–128 ASCII letters/digits or `_.:-`). The customer schema is exactly `{productId,formData}`; ADMIN additionally requires `{userId,amountFen}` and permits priceAdjustmentReason (trimmed nonblank, max500) and internalNote (nullable, max2000, defaultNULL). No client source/identity override, statuses, version or snapshots. See [creation contract](19-order-creation-api.md).
+Both POST routes require a valid persisted Session, CSRF Origin/custom header, strict JSON body and Idempotency-Key (1–128 ASCII letters/digits or `_.:-`). On current main, the implemented customer schema is exactly `{productId,formData}`; ADMIN additionally requires `{userId,amountFen}` and permits priceAdjustmentReason (trimmed nonblank, max500) and internalNote (nullable, max2000, defaultNULL). No client source/identity override, statuses, version or snapshots. See [creation contract](19-order-creation-api.md).
 
 The existing serializable transaction helper performs bounded retries for recognized MySQL write/deadlock conflicts. User and Product are locked in that order after persisted idempotency lookup. The same transaction commits Order, immutable V1 revision, ORDER_CREATED event, ADMIN-only sanitized audit and original `{order}` response. Customer contact snapshots use notificationEmail, falling back to loginEmail; new targetIdentifier remainsNULL. Both roles reject unknown periods and invalid/credential-collecting forms, without changing catalog rows. Existing subscription idempotency semantics remain unchanged.
 

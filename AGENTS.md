@@ -116,12 +116,14 @@ A task is complete only when:
 - Nullable source storage is deliberate to reject non-strict implicit ENUM defaults; a required-source CHECK and INSERT Trigger forbid persisted NULL. Future order services must explicitly require a source from trusted server context.
 
 
-## T20/T21 order-center overrides (2026-11-20)
+## T20/T21/T22 storefront and order overrides (2026-11-20)
 
 - T20 is merged: `/admin/orders` is a real ADMIN API-backed order center. Do not restore its old Mock order list/dialog or mock completion/refund actions.
 - T21 implements `/account/orders` as a real CUSTOMER API-backed view of the signed-in customer's existing orders only. Reuse the existing own-order list/detail/edit/cancel APIs. Do not create orders from this page.
-- T21 does not open the storefront checkout. Customer product catalog, purchase/checkout/order creation, customer subscription UI, online payment, proof upload, refund requests, payment/refund evidence, email and notifications remain unavailable/Mock or out of scope until separately approved.
+- T21 does not open the storefront checkout. Customer product catalog and purchase UI remain unavailable on main pending the separately authorized T22 implementation. Customer subscription UI, online payment, proof upload, refund requests, payment/refund evidence, email and notifications remain unavailable/Mock or out of scope.
 - Customer refund status is order-level only. `REFUND_PENDING` means `待退款`, not proof that an external refund transfer has started; `REFUNDED` appears only after ADMIN confirms actual refund completion.
 - Customer order detail must use frozen snapshots, hide internalNote/creator/audit/revision/payment/refund attempt data, and render only non-sensitive form values. Preserve ownership/hidden 404 behavior and existing Session/ACTIVE checks.
-- T21 edits the existing `AppSettings.paymentInstructions` field and expose it only through the strict CUSTOMER order-guidance projection defined in docs/26. No new migration/dependency is expected. The guidance is plain text, never HTML, and does not move/verify money or send notifications.
-- For UI work, docs/08-interface-specification.md plus docs/25-admin-order-center.md and docs/26-customer-order-center.md are the task-specific source of truth. Preserve the Mock boundary for all pages not explicitly overridden by T20/T21.
+- T21 edits the existing `AppSettings.paymentInstructions` field and exposes it only through the strict CUSTOMER order-guidance projection defined in docs/26. No new migration/dependency is expected. The guidance is plain text, never HTML, and does not move/verify money or send notifications.
+- T22 has an approved documentation baseline in docs/27 but is not implemented. Do not start T22 source-code changes until the design PR is merged and the owner separately authorizes implementation.
+- T22 public catalog DTOs must never expose formSchema/defaultValue or administrator fields. Dynamic form schema is loaded only for an ACTIVE CUSTOMER after the explicit purchase action. Guest login must return to the same validated purchase route. Customer order creation reuses the existing API and adds the approved expectedProductUpdatedAt stale-product guard; no online payment or proof upload.
+- For UI work, docs/08-interface-specification.md plus docs/25-admin-order-center.md, docs/26-customer-order-center.md, and docs/27-customer-storefront-and-order-placement.md are the task-specific source of truth. Preserve the Mock boundary for all pages not explicitly overridden by T20/T21; T22 remains design-only until separately authorized.
