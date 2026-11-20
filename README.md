@@ -95,6 +95,7 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 20. docs/20-order-edit-api.md — approved USER/ADMIN order edit endpoints, complete form replacement, price edits, zero-price transition, optimistic concurrency and transaction contract.
 21. docs/21-order-cancellation-timeout.md — approved manual cancellation and SYSTEM 24-hour timeout worker contract.
 22. docs/22-offline-payment-api.md — approved ADMIN offline payment-attempt registration, verification, failure, concurrency and history contract.
+23. docs/23-offline-refund-api.md — approved ADMIN offline full-refund attempt, confirmation, failure, retry and history contract.
 
 ## Important launch gates
 
@@ -175,3 +176,6 @@ The order read API adds no frontend history integration. The order creation POST
 **T16 cancellation and timeout (merged PR #17):** [Contract and actual validation](docs/21-order-cancellation-timeout.md) implements customer/admin cancellation POSTs and a database-clock SYSTEM minute worker, with versioned atomic history, paid REFUND_PENDING handling and pending-attempt closure. No new migration, refund/payment confirmation API or order UI. Run `npm run test:db -w backend -- --cancellation-only` for no-Seed historical-upgrade/read/cancel/edit/create/revision/subscription regression, and `npm run test:e2e -w backend -- --cancellation-only` after building for fresh isolated browser checks. The worker starts immediately with the API and every minute thereafter; shutdown waits for its in-flight work. Do not start the modified API against development data as an implementation test; deployment requires separate operator review.
 
 **T17 offline payment (merged PR #20):** [docs/22-offline-payment-api.md](docs/22-offline-payment-api.md) implements ADMIN-only attempt listing/registration/confirmation/failure, with exact full-payment verification, multiple-attempt closure, 24-hour deadline and atomic order history. No payment gateway or money movement. Use `npm run test:db -w backend -- --payments-only` for no-Seed isolated historical-upgrade/payment/order/subscription regression and `npm run test:e2e -w backend -- --payments-only` after building for fresh desktop/mobile browser checks. All twelve migrations remain unchanged; development deployment is not included. T17 is merged; do not deploy to the development database without separate authorization.
+
+
+**T18 offline refunds (approved design, not implemented):** [docs/23-offline-refund-api.md](docs/23-offline-refund-api.md) specifies ADMIN-only full-refund attempts for cancelled REFUND_PENDING orders, exact original payment channel/amount matching, two-stage PENDING/CONFIRMED handling, failed-attempt retry and atomic versioned history. No provider API or money movement. Wait for a separate implementation PR before treating refund endpoints as available.
