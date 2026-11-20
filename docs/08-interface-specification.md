@@ -180,15 +180,16 @@ No merchant registration, merchant onboarding, merchant wallet, merchant balance
 
 ## 5. Prototype behavior and current implementation boundary
 
-The original Task 1.1 prototype uses Mock data. T20 supersedes that baseline only for the ADMIN order page:
+The original Task 1.1 prototype uses Mock data. T20 supersedes that baseline for the ADMIN order page; T21 is approved to supersede it for CUSTOMER `/account/orders` only after the T21 implementation is merged:
 - `/admin/orders` uses real API-backed list/detail/create/edit/cancel/payment/refund/fulfillment and safe event history.
 - Mock confirmation/refund actions must not appear in the real ADMIN order workspace.
-- Mock operating overview and CUSTOMER order history remain Mock until separately authorized.
+- Mock operating overview remains Mock. CUSTOMER order history remains Mock until the approved T21 implementation PR is merged.
 - Product filters and product add/edit/listing/archive continue to use the existing local ADMIN APIs.
 - Unlisted/unarchived products remain manageable; archived products are unlisted, cannot be edited/relisted, and retain readable details. Product changes never rewrite historical orders or current entitlement dates. Dynamic form configuration and preview remain available.
 - Customer checkout remains a local mock order only.
 - Mock data and simulated actions outside the T20 ADMIN order page must be clearly labelled.
 - The ADMIN order center never claims that the application itself transferred customer money, initiated a refund, contacted a supplier, or sent email.
+- T21 will replace only the CUSTOMER order-history Mock branch with the existing own-order list/detail/edit/cancel APIs and the safe order-guidance endpoint. It does not enable customer checkout/order creation, online payment, proof upload, refund requests, subscription UI or email. Until T21 merges, the customer order page remains Mock.
 
 ## 6. Implementation acceptance criteria
 
