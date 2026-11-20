@@ -133,6 +133,16 @@ Before accepting real orders, the operator must verify that the supplier is auth
     ├── 13-products-settings-forms.md
     ├── 14-user-subscription-core.md
     ├── 15-order-subscription-foundation.md
+    ├── 16-order-read-api.md
+    ├── 17-order-creation-and-lifecycle-design.md
+    ├── 18-order-revision-foundation.md
+    ├── 19-order-creation-api.md
+    ├── 20-order-edit-api.md
+    ├── 21-order-cancellation-timeout.md
+    ├── 22-offline-payment-api.md
+    ├── 23-offline-refund-api.md
+    ├── 24-manual-fulfillment-api.md
+    ├── 25-admin-order-center.md
     ├── 26-customer-order-center.md
     └── 27-customer-storefront-and-order-placement.md
 ```
@@ -175,7 +185,7 @@ Database/E2E tests use random isolated MySQL 8.4 projects/volumes and temporary 
 
 Build artifacts are frontend/dist and backend/dist. Preview can use `npm run preview -w frontend` with the port matching APP_BASE_URL and `npm start -w backend`; these are local previews, not production deployment configuration.
 
-The order read API adds no frontend history integration. The order creation POST APIs (PR #11) and core order edit PATCH APIs (PR #14) are merged, specified with verification results in [docs/19-order-creation-api.md](docs/19-order-creation-api.md) and [docs/20-order-edit-api.md](docs/20-order-edit-api.md). Offline payment attempts and full manual confirmation are merged (T17, PR #20); T19 fulfillment is merged (PR #26); renewal, customer subscription reads, notifications and API keys remain unimplemented. Use task-specific no-Seed isolated database modes; never target development configuration during implementation tests. Stop at each PR for review.
+The T14 order read API originally added no frontend history integration; T20 and T21 now provide the ADMIN and CUSTOMER order centers respectively. The order creation POST APIs (PR #11) and core order edit PATCH APIs (PR #14) are merged, specified with verification results in [docs/19-order-creation-api.md](docs/19-order-creation-api.md) and [docs/20-order-edit-api.md](docs/20-order-edit-api.md). Offline payment attempts and full manual confirmation are merged (T17, PR #20); T19 fulfillment is merged (PR #26); renewal, customer subscription reads, notifications and API keys remain unimplemented. Use task-specific no-Seed isolated database modes; never target development configuration during implementation tests. Stop at each PR for review.
 
 **Order revision foundation:** [Order versions, append-only history and generic idempotency](docs/18-order-revision-foundation.md). Migration eleven and existing order DTO extensions. The merged [order creation implementation](docs/19-order-creation-api.md) adds customer/admin creation POSTs and migration twelve. T15 reuses those twelve migrations unchanged for the [order edit implementation](docs/20-order-edit-api.md); payment/fulfillment remain deferred. Its no-Seed regression command is `npm run test:db -w backend -- --edit-only`, with read regression in a separate random isolated database. Browser regression uses `npm run test:e2e -w backend -- --edit-only` after building.
 
@@ -187,7 +197,7 @@ The order read API adds no frontend history integration. The order creation POST
 
 **T19 manual fulfillment (merged PR #26):** [docs/24-manual-fulfillment-api.md](docs/24-manual-fulfillment-api.md) defines ADMIN-only fulfillment for INITIAL subscription and ONE_TIME orders, exact PAID/NOT_REQUIRED checks, immutable order snapshot copying, fulfillment-time timezone and structured subscription expiry, and atomic order/subscription/history/audit/idempotency. Delivery failure reuses T16/T18. No renewal or development database deployment. Use `npm run test:db -w backend -- --fulfillment-only` for no-Seed historical-upgrade and T16/T17/T18/order/subscription regression; `npm run test:e2e -w backend -- --fulfillment-only` exercises the endpoint through Edge desktop/mobile cookies and the Vite proxy. The exact new backend runtime dependency is @js-temporal/polyfill 0.5.1; existing dependency versions are unchanged.
 
-**T20 administrator order center (merged PR #29):** `/admin/orders` uses real ADMIN APIs for lists, snapshot details, creation/editing, independent notes, cancellation, offline payment/refund evidence and manual fulfillment. See [docs/25-admin-order-center.md](docs/25-admin-order-center.md). No money is moved by the application. The operating overview remains Mock. T21 implements the CUSTOMER order center separately. No migration/dependency/development deployment was included. Use `npm run test:db -w backend -- --admin-orders-only` for no-Seed isolated historical-upgrade and T20 HTTP checks; `--fresh` independently verifies a fresh installation. Browser UI acceptance: `npm run test:e2e -w backend -- --admin-orders-only`. Existing startup commands remain `npm run dev:api` and `npm run dev:web` (loopback only); review schema/deployment separately before starting against development data.
+**T20 administrator order center (merged PR #29):** `/admin/orders` uses real ADMIN APIs for lists, snapshot details, creation/editing, independent notes, cancellation, offline payment/refund evidence and manual fulfillment. See [docs/25-admin-order-center.md](docs/25-admin-order-center.md). No money is moved by the application. The operating overview remains Mock. T21 customer order center was implemented and merged separately in PR #31. No migration/dependency/development deployment was included. Use `npm run test:db -w backend -- --admin-orders-only` for no-Seed isolated historical-upgrade and T20 HTTP checks; `--fresh` independently verifies a fresh installation. Browser UI acceptance: `npm run test:e2e -w backend -- --admin-orders-only`. Existing startup commands remain `npm run dev:api` and `npm run dev:web` (loopback only); review schema/deployment separately before starting against development data.
 
 **T21 customer order center (merged PR #31):** D98-D105 are implemented in [docs/26-customer-order-center.md](docs/26-customer-order-center.md). `/account/orders` provides the real own-order list/detail/edit/cancel flows and safe offline payment guidance. The existing `/orders` link remains an alias. No online payment, payment evidence, customer refund request, subscription UI or email was added.
 
