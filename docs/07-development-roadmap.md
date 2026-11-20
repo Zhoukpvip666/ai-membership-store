@@ -78,6 +78,19 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 - No fulfillment FAILED state; undeliverable orders reuse T16 cancellation and T18 refund. No renewal, system renewal, subscription expiry worker, supplier API, customer subscription UI or notifications.
 - No migration expected. Stop at PR review; no development database deployment.
 
+## T20 administrator order center — approved design, implementation not started
+
+**Status: D89-D97 confirmed and documented; awaiting one implementation PR.** [Full implementation contract](25-admin-order-center.md). No development database deployment.
+
+- Replace only the ADMIN `/admin/orders` Mock page with a real API-driven order workspace; keep the CUSTOMER order page and operating overview unchanged.
+- Reuse T14-T19 create/edit/cancel/payment/refund/fulfillment APIs. Add only ADMIN OrderEvent timeline GET, minimal linkedSubscription detail summary, frozen productType list filter, and D48 internal-note PATCH.
+- The list uses separate payment/fulfillment states; `fulfillmentStatus=PROCESSING` includes PAID and NOT_REQUIRED zero-price orders.
+- The detail includes safe order/customer/form snapshots, payment/refund evidence, linked subscription summary, internal note and a safe OrderEvent timeline. Never expose raw event JSON, AdminAuditLog or OrderRevision; D41 remains active.
+- Internal-note update is ADMIN-only, allowed for visible USER/ADMIN orders including terminal states, requires expectedVersion and Idempotency-Key, increments version once, and writes complete Revision/Event/Audit/idempotency atomically. SYSTEM_RENEWAL remains immutable.
+- Refund is only available after cancellation to REFUND_PENDING; fulfillment reuses T19. Unsupported renewal/system/legacy states are read-only.
+- Add desktop/mobile E2E for create → payment → fulfillment and cancel → refund, plus note/version/idempotency and safe timeline tests.
+- No Prisma Schema/Migration or new dependency expected. No customer UI, overview, online payment, supplier, email, renewal or deployment work.
+
 ## Order revision / generic idempotency foundation
 
 **Status: Merged in PR #9; development database migration remains a separately authorized operation.** [Schema, immutable history and test guide](18-order-revision-foundation.md).
@@ -298,7 +311,7 @@ These remain future work and must not be pulled into Task 1.2:
 
 ## Current review boundary
 
-Tasks 1.2.1–1.2.3, Phase 2 and order foundation/read/create/edit/cancel/payment/refund/fulfillment stages through T19 are merged. Do not begin renewal or frontend order work automatically.
+Tasks 1.2.1–1.2.3, Phase 2 and order foundation/read/create/edit/cancel/payment/refund/fulfillment stages through T19 are merged. T20 design is approved and documented; its implementation PR is the next authorized task. Do not begin T21 customer UI, renewal or deployment automatically.
 
 
 T19 supersedes the earlier generic Task 1.2.4 fulfillment placeholder below: use the merged D24-D32/D37/D52/D59/D64/D83-D88 contract in [docs/24-manual-fulfillment-api.md](24-manual-fulfillment-api.md). In particular, NOT_REQUIRED zero-price orders are fulfillable, and renewal/SYSTEM_RENEWAL are excluded.
@@ -314,3 +327,6 @@ T19 supersedes the earlier generic Task 1.2.4 fulfillment placeholder below: use
 - [ ] Implementation PR review and separately authorized deployment.
 
 No Migration, development database operation, renewal, provider integration, email or frontend page. Actual validation is recorded in docs/24.
+
+
+T20 supersedes only the ADMIN order-page Mock boundary in the original Task 1.2.3 UI prototype. CUSTOMER order UI and the operating overview remain Mock. See [the T20 contract](25-admin-order-center.md).
