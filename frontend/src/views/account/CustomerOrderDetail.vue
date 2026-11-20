@@ -42,7 +42,7 @@ const actionError = ref('')
 const notice = ref('')
 const draft = ref<FormData>({})
 const reason = ref('')
-const receivedAt = ref(performance.now())
+const receivedAt = ref(0)
 const clock = useOrderClock()
 const mobile = useNarrowOrderDialog()
 const request = new OrderRequest<CustomerOrder>()
@@ -56,12 +56,13 @@ const date = (value: string) =>
   props.guidance ? businessDate(value, props.guidance.businessTimezone) : '—'
 
 async function load() {
-  receivedAt.value = performance.now()
   loading.value = true
   error.value = ''
   order.value = undefined
   try {
-    order.value = (await readCustomerOrder(props.id)).order
+    const result = await readCustomerOrder(props.id)
+    receivedAt.value = performance.now()
+    order.value = result.order
   } catch (cause) {
     error.value =
       cause instanceof ApiError && cause.status === 404
@@ -361,7 +362,7 @@ onMounted(load)
       <div class="customer-order-actions">
         <template v-if="mode === 'detail'">
           <ElButton
-            v-if="order && remaining > 0 && snapshot"
+            v-if="order && remaining > 0 && snapshot?.schema.fields.length"
             :disabled="busy"
             type="primary"
             @click="begin('edit')"

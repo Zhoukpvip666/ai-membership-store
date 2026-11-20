@@ -1,5 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
+import { setTimeout as delay } from 'node:timers/promises'
 import type { Prisma } from '../backend/src/generated/prisma/client.ts'
 import { createDatabase } from '../backend/src/db/client.ts'
 import { integrationEnvironment } from '../backend/test/integration/support.ts'
@@ -502,4 +503,100 @@ test('customer must confirm pending-verification cancellation and closes only un
       })
     ).status,
   ).toBe('FAILED')
+})
+
+for (const view of ['list', 'detail'] as const) {
+  test(`${view} countdown starts when a delayed real order response arrives`, async ({
+    page,
+    context,
+  }) => {
+    const { createOrder } = await setup(context)
+    const order = await createOrder()
+    const path = view === 'list' ? customerApi : customerApi + '/' + order.id
+    await page.route(
+      (url) => url.pathname === path,
+      async (route) => {
+        const response = await route.fetch()
+        await delay(2750)
+        await route.fulfill({ response })
+      },
+    )
+    if (view === 'detail') await page.goto(ordersPath)
+
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'GET' &&
+          new URL(response.url()).pathname === path,
+      ),
+      view === 'list' ? page.goto(ordersPath) : open(page, order.orderNo),
+    ])
+    expect(response.ok()).toBe(true)
+    const payload = await response.json()
+    const dto =
+      view === 'list'
+        ? payload.items.find((item: { id: string }) => item.id === order.id)
+        : payload.order
+    const supplied: number = dto.remainingSeconds
+    expect(supplied).toBeGreaterThan(0)
+
+    const scope =
+      view === 'list'
+        ? row(page, order.orderNo)
+        : page.getByRole('dialog', { name: '订单详情', exact: true })
+    const timer = scope.locator('.customer-countdown')
+    await expect(timer).toBeVisible()
+    async function displayedSeconds() {
+      const match = (await timer.innerText()).match(/(\d{2}):(\d{2}):(\d{2})/)
+      expect(match).not.toBeNull()
+      return (
+        Number(match![1]) * 3600 + Number(match![2]) * 60 + Number(match![3])
+      )
+    }
+    const first = await displayedSeconds()
+    // The first browser tick may occur before this assertion. Even then, the
+    // 2.75 seconds for which the response was held must not be debited.
+    expect(supplied - first).toBeGreaterThanOrEqual(0)
+    expect(supplied - first).toBeLessThanOrEqual(1)
+    await expect.poll(displayedSeconds).toBeLessThan(first)
+  })
+}
+
+test('valid empty dynamic form keeps order details and cancellation without an edit action', async ({
+  page,
+  context,
+}) => {
+  const { createOrder } = await setup(context)
+  const empty = { version: 1, fields: [] }
+  const order = await createOrder({
+    formSchemaSnapshot: empty,
+    formData: {},
+  })
+  await page.goto(ordersPath)
+  const [response, detail] = await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === customerApi + '/' + order.id,
+    ),
+    open(page, order.orderNo),
+  ])
+  expect(response.ok()).toBe(true)
+  expect((await response.json()).order).toMatchObject({
+    formSchemaSnapshot: empty,
+    formData: {},
+  })
+  await expect(
+    detail.getByRole('heading', { name: order.productNameSnapshot }),
+  ).toBeVisible()
+  await expect(detail).toContainText('冻结商品说明')
+  await expect(detail).toContainText('¥10.00')
+  await expect(
+    detail.getByRole('region', { name: '线下付款说明' }),
+  ).toBeVisible()
+  await expect(
+    detail.getByRole('button', { name: '修改订单', exact: true }),
+  ).toHaveCount(0)
+  await expect(
+    detail.getByRole('button', { name: '取消订单', exact: true }),
+  ).toBeVisible()
 })

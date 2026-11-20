@@ -34,7 +34,7 @@ const search = ref('')
 const kind = ref('')
 const preset = ref(0)
 const filters = shallowRef(new URLSearchParams())
-const receivedAt = ref(performance.now())
+const receivedAt = ref(0)
 const clock = useOrderClock()
 let sequence = 0
 
@@ -50,7 +50,6 @@ async function loadGuidance() {
 
 async function loadOrders() {
   const current = ++sequence
-  const startedAt = performance.now()
   const query = new URLSearchParams(filters.value)
   query.set('page', String(page.value))
   query.set('pageSize', '20')
@@ -64,9 +63,9 @@ async function loadOrders() {
       page.value = lastPage
       return await loadOrders()
     }
+    receivedAt.value = performance.now()
     rows.value = result.items
     total.value = result.total
-    receivedAt.value = startedAt
   } catch {
     if (current !== sequence) return
     rows.value = []
