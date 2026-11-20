@@ -146,7 +146,7 @@ No partial payments or partial refunds in Task 1.2. T18 supports only full refun
 
 
 
-**T20 administrator order center (implemented; pending PR review):** [Full contract](25-admin-order-center.md). The ADMIN order page consumes the existing T14-T19 APIs; only the event read endpoint, linkedSubscription minimal detail expansion, productType list filter and internal-note PATCH are new. Refunds remain restricted to CANCELLED + REFUND_PENDING; a paid pending order must first be cancelled. The `PROCESSING` fulfillment filter includes both PAID and NOT_REQUIRED zero-price orders. Internal-note writes use expectedVersion, actor-scoped Idempotency-Key, one version increment and complete Revision/Event/AdminAuditLog in one transaction. No schema or migration change is included.
+**T20 administrator order center (implemented and merged in PR #29):** [Full contract](25-admin-order-center.md). The ADMIN order page consumes the existing T14-T19 APIs; only the event read endpoint, linkedSubscription minimal detail expansion, productType list filter and internal-note PATCH are new. Refunds remain restricted to CANCELLED + REFUND_PENDING; a paid pending order must first be cancelled. The `PROCESSING` fulfillment filter includes both PAID and NOT_REQUIRED zero-price orders. Internal-note writes use expectedVersion, actor-scoped Idempotency-Key, one version increment and complete Revision/Event/AdminAuditLog in one transaction. No schema or migration change is included.
 
 ## 6. Admin subscriptions — Phase 2
 
