@@ -44,7 +44,7 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 
 ## T17 offline payment attempts and confirmation — merged
 
-**Status: D70-D75 implemented; isolated validation and implementation report accompany the PR. No development deployment.** [Implementation contract and actual results](22-offline-payment-api.md).
+**Status: Merged in PR #20; implementation and isolated validation recorded in [T17 report](22-offline-payment-api.md). No development deployment.** [Implementation contract and actual results](22-offline-payment-api.md).
 
 - ADMIN-only GET payment attempts; POST register PENDING; POST confirm full payment; POST mark one attempt FAILED.
 - Registration is separate from confirmation. Amount mismatch may be recorded as PENDING but must fail verification; never rewrite actual amount.
@@ -53,6 +53,18 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 - Every successful register/confirm/fail operation increments Order.version once and writes Revision/Event/AdminAuditLog/idempotency atomically.
 - Payment routes lock Order before PaymentTransaction, matching T16 timeout/cancellation. No payment gateway, refunds, fulfillment, subscriptions or frontend UI.
 - Reuses all twelve migrations unchanged; stop at PR review and do not deploy to development DB. Use `npm run test:db -w backend -- --payments-only` for historical-upgrade and existing order/subscription regression, and `npm run test:e2e -w backend -- --payments-only` after building for fresh desktop/mobile browser checks. No Seed or development configuration is used.
+
+## T18 offline refund management — approved design, implementation not started
+
+**Status: D76-D82 confirmed and documented; awaiting one implementation PR.** [Full implementation contract](23-offline-refund-api.md).
+
+- ADMIN-only GET refund attempts; POST register externally initiated full refund as PENDING; POST confirm after verifying actual return; POST fail with mandatory reason.
+- Only CANCELLED + REFUND_PENDING orders with exactly one confirmed full PAYMENT are eligible. No refunds for completed fulfillment or zero-price orders.
+- Refund amount and channel must exactly match the original confirmed PAYMENT.
+- At most one PENDING REFUND and one CONFIRMED full REFUND per order. FAILED attempts remain in history and may be retried with a new attempt.
+- PENDING does not mean money returned. Confirmation changes paymentStatus to REFUNDED while fulfillmentStatus remains CANCELLED.
+- Every successful mutation increments Order.version once and writes Revision/Event/AdminAuditLog/idempotency atomically. Lock order remains Order -> PaymentTransaction, matching T16/T17.
+- No partial refunds, provider APIs, money movement, fulfillment or subscription work. No migration expected; stop at PR review and do not deploy to development DB.
 
 ## Order revision / generic idempotency foundation
 

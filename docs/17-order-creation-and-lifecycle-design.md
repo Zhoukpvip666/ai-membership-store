@@ -123,6 +123,13 @@
 | D73 | 付款尝试核实失败 | ADMIN 可将一笔仍为 PENDING 的 PAYMENT 尝试标记为 FAILED，必须填写非空失败原因（最多 500 字符）；不得删除交易或改写原始金额、渠道、流水号、occurredAt、创建者和创建时间。原始 note 保留，失败原因记录在 OrderEvent 和 AdminAuditLog 的 reason/note 字段。若该订单仍有其他 PENDING PAYMENT，paymentStatus 保持 PENDING_VERIFICATION；若已无其他 PENDING 且没有任何确认付款事实，paymentStatus 恢复 UNPAID。已 CONFIRMED/FAILED 的交易不可再次失败或确认。失败操作受 D39 截止和 D65-D69 取消状态约束 | ACTIVE |
 | D74 | 多笔待核实付款的确认门槛 | 一个订单允许保留多笔 PAYMENT 尝试，且可以同时存在多笔 PENDING 以便完整记录核实过程；但确认其中任何一笔前，必须先由 ADMIN 逐笔将同一订单的其他 PENDING PAYMENT 核实并关闭为 FAILED。确认时若存在任何其他 PENDING 尝试，整个请求拒绝且不写入。不得因某一笔到账就自动将其他尝试标记 FAILED；必须逐笔核实，防止隐藏重复到账或多收款事实。已确认一笔后不得再确认第二笔；多收款争议在订单系统外线下处理 | ACTIVE |
 | D75 | 付款操作的订单版本与历史 | 每次成功的付款尝试登记、付款确认或付款尝试失败，均必须在同一数据库事务中使 Order.version 恰好递增 1，并追加一条完整 OrderRevision、一条 OrderEvent、一条 ADMIN AdminAuditLog 和一条 actorUserId-scoped IdempotencyRecord 原始响应。每个独立成功操作只产生一个新版本；失败/拒绝请求不改变订单、付款交易或历史。Revision actorType=ADMIN/actorUserId=当前管理员；Event 使用既有 PAYMENT_RECORDED、PAYMENT_CONFIRMED；付款失败使用既有 NOTE event 并在安全状态 JSON 中标记 operation=PAYMENT_FAILED，避免新增枚举迁移。三个接口均要求 expectedVersion 与 Idempotency-Key，遵守 D34-D36/D40/D54 | ACTIVE |
+| D76 | 线下退款采用登记与确认两个阶段（澄清 D59） | 只有 ADMIN 可以操作线下退款。退款转账已在订单系统外实际发起后，ADMIN 才能登记 `kind=REFUND,status=PENDING` 的退款尝试；登记不代表退款成功。ADMIN 核实款项确已实际退回客户后，才可将该尝试确认成 `CONFIRMED` 并将订单 paymentStatus 更新为 REFUNDED。D59 中“实际退款完成后才登记退款交易并转为 REFUNDED”指不得提前登记/确认已完成退款事实或提前置 REFUNDED；D76 明确允许先保留 PENDING 尝试记录，但它不构成退款完成证明、不计入已退款金额。未实际发起外部退款时不得创建 PENDING 退款尝试 | ACTIVE |
+| D77 | 退款适用订单范围 | T18 第一阶段仅允许对 `fulfillmentStatus=CANCELLED` 且 `paymentStatus=REFUND_PENDING` 的订单登记、确认或失败退款尝试；订单必须有且仅有一笔已确认全额 PAYMENT，且不存在已确认 REFUND。已完成履约订单、未取消订单、零元订单、已 REFUNDED 订单均不允许通过 T18 退款。若未来需要对已完成履约订单退款，必须另行决策，不得复用本接口绕过 D77。沿用 D17/D18/D53/D59/D67/D68 | ACTIVE |
+| D78 | 退款渠道必须与原付款渠道一致 | 每笔 REFUND 的 channel 必须与该订单唯一已确认全额 PAYMENT 的 channel 完全一致；不允许管理员选择其他渠道退款。退款金额必须等于原已确认 PAYMENT 金额及订单 amountFen。现金原路退现金，微信原路退微信，支付宝原路退支付宝，银行转账原路退回对应付款渠道；实际执行仍由 ADMIN 在线下完成。退款流水号和备注沿用 D22 的字段语义 | ACTIVE |
+| D79 | 多笔退款尝试与重试 | 一个订单同一时刻最多允许一笔 `kind=REFUND,status=PENDING`；存在 PENDING 时禁止登记第二笔。PENDING 只能由 ADMIN 确认成功或登记失败关闭；FAILED 记录永久保留且不可重新激活，允许在没有其他 PENDING、没有 CONFIRMED REFUND 时新建一笔新的退款尝试。一个订单最多只能有一笔 CONFIRMED 全额 REFUND；确认后禁止任何新的退款尝试。不得自动把其他退款尝试标记 FAILED，也不得以多笔部分金额累加成全额退款 | ACTIVE |
+| D80 | 退款确认后的订单状态 | ADMIN 确认外部全额退款实际完成后，目标 REFUND 从 PENDING 转为 CONFIRMED，写入 confirmedAt/confirmedByAdminId；同一事务将订单 paymentStatus 从 REFUND_PENDING 更新为 REFUNDED。fulfillmentStatus 必须保持 CANCELLED，cancelledAt、原始 paidAt/paymentConfirmedAt 和原 PAYMENT 交易均保持不变。退款确认不恢复订单、不删除或修改原收款记录、不创建订阅、不改变 fulfilledAt；退款失败也不得将订单恢复为 PAID | ACTIVE |
+| D81 | 退款失败原因 | ADMIN 将 PENDING REFUND 尝试标记为 FAILED 时必须填写非空 reason，去除首尾空格后最多 500 字符。只修改退款尝试 status/updatedAt；保留原始 amountFen、channel、externalReference、occurredAt、createdByAdminId、createdAt 和 note。失败原因写入 OrderRevision.reason、OrderEvent.note/from/to 安全状态及 AdminAuditLog.reason，不覆盖原始退款备注。订单 paymentStatus 保持 REFUND_PENDING，fulfillmentStatus 保持 CANCELLED；允许按 D79 重新登记新的全额退款尝试 | ACTIVE |
+| D82 | 退款操作的版本、历史与幂等 | 每次成功的退款尝试登记、退款确认或退款失败，必须在同一事务中使 Order.version 恰好递增 1，并追加一条完整 OrderRevision、一条 OrderEvent、一条 ADMIN AdminAuditLog 和一条 actorUserId-scoped IdempotencyRecord 原始响应。登记使用 REFUND_RECORDED，确认使用 REFUND_CONFIRMED，失败复用既有 NOTE event 并在安全状态 JSON 标记 `operation=REFUND_FAILED`，不得新增 Event 枚举或 Migration。所有三个 POST 均要求 expectedVersion 与 Idempotency-Key；拒绝/失败请求不得留下任何状态或历史副作用。退款交易、订单汇总、版本、Revision/Event/Audit/幂等响应原子提交 | ACTIVE |
 ## 2. 关键概念与字段语义
 
 ### 2.1 订单、付款、履约、订阅是不同维度
@@ -388,6 +395,7 @@ npm run build
 | 2026-11-19 | 新增 D64：管理员将符合编辑条件的未付款订单调价为 0 时，同一事务转为 NOT_REQUIRED + PROCESSING；已有付款事实不得转零元，须走取消退款流程。 |
 | 2026-11-19 | 新增 D65-D69：定义客户/管理员取消 API、客户原因可选与管理员原因必填、已付款订单仅管理员取消并进入 REFUND_PENDING、零元订单按 D53 取消，以及每分钟 SYSTEM 超时任务和待核实付款交易关闭规则。均补充 D16-D18/D39/D53/D59，不替代既有规则。 |
 | 2026-11-19 | 新增 D70-D75：明确线下付款尝试登记/确认/失败三个接口；金额不匹配可登记但不可确认；确认必须全额、在 24 小时内且无其他待核实尝试；失败原因必填；每次成功付款操作均递增订单版本并追加完整历史。补充 D19-D23/D39/D59/D65-D69，不覆盖旧决策。 |
+| 2026-11-19 | 新增 D76-D82：明确线下退款先登记 PENDING、实际退款完成后确认；仅允许已取消且 REFUND_PENDING 订单全额退款；退款渠道必须与原付款一致；同一订单最多一笔 PENDING、FAILED 后可重试、最多一笔 CONFIRMED；退款成功保持 CANCELLED 并转 REFUNDED；失败原因必填；每次成功退款操作均递增版本并写完整历史。D76 澄清 D59 的“登记退款交易”是登记已完成退款事实，PENDING 仅为已发起外部退款的尝试记录，不代表退款成功。 |
 
 后续每次业务决定都必须分配新的 D 编号，并按第 1.3 节维护冲突、替代和撤销关系。
 

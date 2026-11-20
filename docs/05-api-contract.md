@@ -6,7 +6,7 @@ Base path: /api/v1. All payloads are JSON. Timestamps are UTC ISO-8601. Money is
 
 ## Implemented surface
 
-**Current order-read override:** [Order API stage 1](16-order-read-api.md) implements only GET `/admin/orders`, `/admin/orders/:id`, `/customer/orders`, `/customer/orders/:id`. Both roles exclude hidden rows in list/detail; CUSTOMER ownership comes only from Session. Explicit snapshot DTOs exclude authentication data and audits. ADMIN additionally receives internalNote; CUSTOMER never does. Both receive version, derived expiresAt and server-calculated remainingSeconds; see [revision foundation](18-order-revision-foundation.md). This supersedes the earlier reserved `/me/orders` paths below. The two creation POST routes below are implemented and merged; payment/fulfillment/renewal remain absent.
+**Current order-read override:** [Order API stage 1](16-order-read-api.md) implements only GET `/admin/orders`, `/admin/orders/:id`, `/customer/orders`, `/customer/orders/:id`. Both roles exclude hidden rows in list/detail; CUSTOMER ownership comes only from Session. Explicit snapshot DTOs exclude authentication data and audits. ADMIN additionally receives internalNote; CUSTOMER never does. Both receive version, derived expiresAt and server-calculated remainingSeconds; see [revision foundation](18-order-revision-foundation.md). This supersedes the earlier reserved `/me/orders` paths below. The two creation POST routes and T17 offline PAYMENT routes below are implemented and merged; T18 REFUND routes are design-only, while fulfillment/renewal remain future work.
 
 **Order creation stage — implemented (PR #11):** [Order creation API contract](19-order-creation-api.md) defines POST `/customer/orders` for ACTIVE CUSTOMER self-order and POST `/admin/orders` for ADMIN-created orders. Both use server-derived source/actor, strict role-specific DTOs, full form validation, frozen Product snapshots, required Idempotency-Key, atomic Order + V1 Revision + Event + applicable Audit + idempotency response. ADMIN may select ACTIVE or PENDING_ACTIVATION customers and unlisted/unarchived Products; CUSTOMER must be ACTIVE and may select listed/unarchived Products. Creation returns the complete role-safe order DTO with HTTP 201 (D58). Merged in PR #11; migration is included in main but development deployment requires separate authorization. Zero amount uses NOT_REQUIRED/PROCESSING without PaymentTransaction or payment times; positive amount uses UNPAID/NOT_STARTED. Responses are `{order}` and exact persisted role-specific DTOs are replayed for the same actor/key/input. See the contract for strict request/error definitions and isolated verification.
 
@@ -116,7 +116,7 @@ Settings PATCH is nonempty and accepts only storeName (1–80), ownerEmail (norm
 
 ## 5. Admin offline orders and payment transactions
 
-The two GET routes, ordinary-order creation POST and core-edit PATCH below are implemented. Other mutation/payment/fulfillment routes and rules remain future contracts.
+The order read/create/edit/cancel and T17 offline PAYMENT routes below are implemented. T18 offline REFUND routes are approved design only until implementation is separately reviewed and merged; fulfillment remains future work.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -127,15 +127,17 @@ The two GET routes, ordinary-order creation POST and core-edit PATCH below are i
 | GET | /admin/orders/:id/payment-transactions | ADMIN-only paginated payment-attempt evidence (merged PR #20) |
 | POST | /admin/orders/:id/payment-transactions | ADMIN-only offline PAYMENT attempt registration (merged PR #20) |
 | POST | /admin/payment-transactions/:id/confirm | ADMIN-only full-payment confirmation (merged PR #20) |
-| POST | /admin/orders/:id/refunds | Record a pending full-refund action after private agreement |
-| POST | /admin/payment-transactions/:id/confirm-refund | Confirm only after refund has actually been sent externally |
+| GET | /admin/orders/:id/refunds | T18 planned: paginated ADMIN-only REFUND attempt history |
+| POST | /admin/orders/:id/refunds | T18 planned: register externally initiated full REFUND as PENDING |
+| POST | /admin/payment-transactions/:id/confirm-refund | T18 planned: confirm actual full refund completion |
 | POST | /admin/payment-transactions/:id/fail | ADMIN-only payment-attempt failure (merged PR #20) |
+| POST | /admin/payment-transactions/:id/fail-refund | T18 planned: mark one PENDING REFUND FAILED with reason |
 | PATCH | /admin/orders/:id/fulfillment | Change fulfillment status with required reason |
 | POST | /admin/orders/:id/complete | Complete paid order; for subscription order include supplier-confirmed dates and create/update entitlement atomically |
 
 Supported offline channels: WECHAT, ALIPAY, CASH, BANK_TRANSFER, OTHER. Payment and fulfillment states are independent. Order.paymentStatus is recomputed from transaction records in the same DB transaction. The app does not move money.
 
-No partial payments or partial refunds in Task 1.2. Refund is confirmed only after external money return. A confirmed full refund before fulfillment completion cancels fulfillment; a refund after completion does not erase historical completion.
+No partial payments or partial refunds in Task 1.2. T18 supports only full refunds for CANCELLED + REFUND_PENDING orders; completed-fulfillment refunds are explicitly out of scope under D77 and require a separate future decision. A refund is successful only after external money has actually been returned and ADMIN confirms it.
 
 ## 6. Admin subscriptions — Phase 2
 
@@ -228,3 +230,8 @@ Paid cancellation enters CANCELLED + REFUND_PENDING only with exactly one full c
 ## T17 offline payment attempt and confirmation API (implemented and merged in PR #20)
 
 The merged T17 contract is [docs/22-offline-payment-api.md](22-offline-payment-api.md), governed by D19-D23, D39, D59, D65-D69 and D70-D75. It adds ADMIN-only GET `/admin/orders/:id/payment-transactions`, POST `/admin/orders/:id/payment-transactions`, POST `/admin/payment-transactions/:id/confirm`, and POST `/admin/payment-transactions/:id/fail`. Registration creates a PENDING PAYMENT attempt; a mismatched amount may be retained but cannot be confirmed. Confirmation requires exact full amount, no sibling PENDING attempts, no confirmed facts, and database time strictly before the original 24-hour deadline. Failure requires a reason and preserves original transaction evidence. Each successful mutation increments Order.version once and appends one Revision, Event, AdminAuditLog and idempotent response atomically. All payment routes use Order-first locking to serialize with T16 timeout/cancellation. This is offline manual recordkeeping only; no provider API or money movement. Registration returns HTTP 201; confirm/fail return HTTP 200, each with `{order,paymentTransaction}`. Listing returns `{items,total,page,pageSize}` using the exact ADMIN payment-evidence whitelist and has no version/history writes. Strict DTOs, original-response idempotency, post-lock and conditional-write DB-clock checks, immutable revisions and sanitized event/audit records are implemented. See docs/22 for error codes and actual isolated results. No development deployment is included.
+
+
+## T18 offline refund API (approved design; not implemented)
+
+See [docs/23-offline-refund-api.md](23-offline-refund-api.md), governed by D18/D59/D67 and D76-D82. T18 adds ADMIN-only GET `/admin/orders/:id/refunds`, POST `/admin/orders/:id/refunds`, POST `/admin/payment-transactions/:id/confirm-refund`, and POST `/admin/payment-transactions/:id/fail-refund`. It only handles cancelled orders in `REFUND_PENDING`; only full refunds are allowed and the refund channel/amount must match the original unique confirmed PAYMENT. Registration creates one PENDING attempt only after the external refund transfer has been initiated; confirmation requires ADMIN verification that the money was actually returned and then sets Order.paymentStatus=REFUNDED while fulfillmentStatus remains CANCELLED. Failure requires a reason and leaves the order REFUND_PENDING. One PENDING at a time; FAILED attempts can be retried with a new record; only one CONFIRMED REFUND is allowed. Every successful mutation increments Order.version and writes Revision/Event/AdminAuditLog/idempotency atomically. No partial refund, refund after completed fulfillment, provider API or money movement. T18 is design-only and not available until a separate implementation PR is reviewed and merged.
