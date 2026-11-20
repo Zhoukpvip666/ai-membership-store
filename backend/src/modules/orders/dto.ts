@@ -1,4 +1,11 @@
 import type { Prisma } from '../../generated/prisma/client.ts'
+import {
+  hasCredentialFields,
+  hasCredentialText,
+  hasCredentialValues,
+} from '../../contracts/credential-fields.ts'
+import { productFormSchema } from '../../contracts/product-form.ts'
+import { formDataSchema } from '../../contracts/form-data.ts'
 
 // Explicit projections: never join today's Product or fetch internal order data.
 export const customerOrderSelect = {
@@ -82,7 +89,7 @@ export function orderDeadline(
   }
 }
 
-export function customerOrderDto(order: CustomerOrder, now = new Date()) {
+function orderDto(order: CustomerOrder, now: Date) {
   return {
     ...orderDeadline(order, now),
     version: order.version,
@@ -113,9 +120,33 @@ export function customerOrderDto(order: CustomerOrder, now = new Date()) {
   }
 }
 
+export function customerOrderDto(order: CustomerOrder, now = new Date()) {
+  const dto = orderDto(order, now)
+  const schema = productFormSchema.safeParse(dto.formSchemaSnapshot)
+  // Suppress unsafe historical forms without exposing their values or changing the DTO allowlist.
+  const unsafe =
+    (dto.formSchemaSnapshot !== null &&
+      (!schema.success || hasCredentialFields(schema.data))) ||
+    (dto.formData !== null &&
+      (!schema.success ||
+        !formDataSchema(schema.data).safeParse(dto.formData).success)) ||
+    hasCredentialValues(dto.formSchemaSnapshot) ||
+    hasCredentialValues(dto.formData)
+  return {
+    ...dto,
+    formSchemaSnapshot: unsafe ? null : dto.formSchemaSnapshot,
+    formData: unsafe ? null : dto.formData,
+    targetIdentifier:
+      unsafe ||
+      (dto.targetIdentifier && hasCredentialText(dto.targetIdentifier))
+        ? null
+        : dto.targetIdentifier,
+  }
+}
+
 export function adminOrderDto(order: AdminOrder, now = new Date()) {
   return {
-    ...customerOrderDto(order, now),
+    ...orderDto(order, now),
     internalNote: order.internalNote,
     customer: {
       id: order.user.id,

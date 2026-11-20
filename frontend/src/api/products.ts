@@ -35,6 +35,7 @@ export interface AppSettings {
   storeName: string
   ownerEmail: string
   timezone: string
+  paymentInstructions: string
   updatedAt: string
 }
 export const readProducts = (query: URLSearchParams) =>

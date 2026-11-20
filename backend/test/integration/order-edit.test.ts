@@ -738,7 +738,7 @@ test('paid, cancelled, processing, completed, timestamp facts, zero-price and ex
   }
 })
 
-test('hidden SYSTEM_RENEWAL orders are immutable; foreign hidden IDs still use 404', async () => {
+test('hidden SYSTEM_RENEWAL orders are immutable; customer requests uniformly use 404', async () => {
   const now = new Date(),
     day = 86400000
   const subscription = await db.subscription.create({
@@ -777,12 +777,12 @@ test('hidden SYSTEM_RENEWAL orders are immutable; foreign hidden IDs still use 4
       .digest('hex'),
     renewalRequestHash: createHash('sha256').update(randomUUID()).digest('hex'),
   })
-  for (const role of ['customer', 'admin'] as const)
-    await rejected(
-      () => request(role, order.id, input()),
-      409,
-      'ORDER_NOT_EDITABLE',
-    )
+  await rejected(
+    () => request('admin', order.id, input()),
+    409,
+    'ORDER_NOT_EDITABLE',
+  )
+  await rejected(() => request('customer', order.id, input()), 404, 'NOT_FOUND')
   await rejected(
     () => request('customer', order.id, input(), randomUUID(), cookies.bob),
     404,

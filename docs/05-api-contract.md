@@ -12,9 +12,9 @@ Base path: /api/v1. All payloads are JSON. Timestamps are UTC ISO-8601. Money is
 
 `GET /api/v1/health` and its `/health` alias retain their database-readiness behavior. Each request probes MySQL through Prisma. Successful connectivity returns HTTP 200 with `{"status":"ok","database":"ready"}`. Connection/query failure returns HTTP 503 with `{"status":"degraded","database":"unavailable"}`; driver errors and credentials are never returned. This does not verify migration currency: use the local `db:status` command. Authentication, customer/invitation, product/settings, Phase 2 subscription and the existing order list/detail GETs are implemented; the additional ADMIN event GET is implemented and merged in T20 (PR #29). Order creation, edit, cancellation, T17 payment, T18 refund and T19 fulfillment mutations are implemented; renewal, dashboard and customer subscription APIs remain future work. All /admin routes, including unimplemented paths, first require a valid ADMIN session.
 
-## T21 customer order center — approved design, implementation not started
+## T21 customer order center — implemented for review
 
-See [the complete T21 contract](26-customer-order-center.md) and decisions D98-D105. T21 replaces only the CUSTOMER `/account/orders` Mock page with the existing own-order list/detail/edit/cancel APIs. It adds `GET /customer/order-guidance` requiring an ACTIVE CUSTOMER Session and returning only storeName, businessTimezone and plain-text paymentInstructions. The existing ADMIN `PATCH /admin/settings` gains optional paymentInstructions (max 4000); the AppSettings column already exists, so no migration is expected. Customer refund visibility remains order-level only; no payment/refund attempts, OrderEvent, Revision, audit or customer refund request is exposed. No customer checkout/order creation, online payment, proof upload, subscription page, email or deployment is in scope. Implementation has not started.
+See [the complete T21 contract](26-customer-order-center.md) and decisions D98-D105. T21 replaces only the CUSTOMER `/account/orders` Mock page with the existing own-order list/detail/edit/cancel APIs. It adds `GET /customer/order-guidance` requiring an ACTIVE CUSTOMER Session and returning only storeName, businessTimezone and plain-text paymentInstructions. The existing ADMIN `PATCH /admin/settings` gains optional paymentInstructions (max 4000); the AppSettings column already exists, so no migration is expected. Customer refund visibility remains order-level only; no payment/refund attempts, OrderEvent, Revision, audit or customer refund request is exposed. No customer checkout/order creation, online payment, proof upload, subscription page, email or deployment is in scope. Implementation and actual tests are recorded in docs/26.
 
 ## Order edit API (implemented and merged in PR #14)
 
@@ -90,7 +90,7 @@ Creating a user and creating a subscription are independent. A pending customer 
 - Revoke: JSON `{}`; HTTP 204. Already used/revoked invitations return 409. The UI retains no recoverable URL after closing the detail.
 - Customer creation/edit/disable/restore, invitation issue/revoke and administrator login/logout append sanitized audit records transactionally. Audit snapshots omit names/emails, raw tokens and password/token hashes; edit logs name changed fields only.
 
-Customer order reads are implemented at `/customer/orders` as documented above; customer subscription reads remain future work. The CUSTOMER order UI is approved for T21 but remains Mock until its implementation PR is merged. Administrator products/subscriptions, order GETs, order creation/edit/cancel, offline payment/refund and manual fulfillment APIs are implemented; frontend order management and renewal APIs remain future work.
+Customer order reads are implemented at `/customer/orders` as documented above; customer subscription reads remain future work. The T21 review branch connects the CUSTOMER order UI to those existing endpoints. Administrator products/subscriptions, order GETs, order creation/edit/cancel, offline payment/refund and manual fulfillment APIs are implemented; frontend order management and renewal APIs remain future work.
 
 ## 4. Admin products and settings
 
@@ -102,7 +102,7 @@ Customer order reads are implemented at `/customer/orders` as documented above; 
 | PATCH | /admin/products/:id | Edit unarchived product and catalog listing |
 | POST | /admin/products/:id/archive | Irreversibly archive and unlist product |
 | GET | /admin/settings | Read ADMIN settings including store name, owner email, timezone and paymentInstructions |
-| PATCH | /admin/settings | Update store name, owner email and timezone; approved T21 extension adds optional plain-text paymentInstructions (max 4000) |
+| PATCH | /admin/settings | Update store name, owner email and timezone; T21 accepts optional plain-text paymentInstructions (max 4000) |
 
 No supplier-cost or secret credential fields.
 
@@ -182,7 +182,7 @@ The customer login/me projection includes username but never adminLabel; adminis
 |---|---|---|
 | GET | /customer/orders | Implemented: current customer's own visible ordinary orders |
 | GET | /customer/orders/:id | Implemented: own ordinary order snapshot; no internal timeline |
-| GET | /customer/order-guidance | Planned T21: ACTIVE CUSTOMER only; safe `{storeName,businessTimezone,paymentInstructions}` allowlist |
+| GET | /customer/order-guidance | Implemented T21: ACTIVE CUSTOMER only; safe `{storeName,businessTimezone,paymentInstructions}` allowlist |
 
 | PATCH | /customer/orders/:id | Implemented T15: own eligible ordinary-order full form replacement |
 | GET | /me/subscriptions | Current customer's own subscriptions |

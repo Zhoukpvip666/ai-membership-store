@@ -39,6 +39,7 @@ const cancellationOnly = process.argv.includes('--cancellation-only')
 const paymentsOnly = process.argv.includes('--payments-only')
 const refundsOnly = process.argv.includes('--refunds-only')
 const adminCenterOnly = process.argv.includes('--admin-orders-only')
+const customerCenterOnly = process.argv.includes('--customer-orders-only')
 const fulfillmentOnly = process.argv.includes('--fulfillment-only')
 const editOnly = process.argv.includes('--edit-only')
 // Editing reuses the committed twelve-migration compatibility path, without Seed.
@@ -49,7 +50,8 @@ const creationOnly =
   paymentsOnly ||
   refundsOnly ||
   fulfillmentOnly ||
-  adminCenterOnly
+  adminCenterOnly ||
+  customerCenterOnly
 const creationUpgradeSnapshot = join(directory, 'creation-upgrade.json')
 const revisionUpgradeSnapshot = join(directory, 'revision-upgrade.json')
 // Protected history cannot be deleted to prepare empty-database API/seed tests.
@@ -627,7 +629,12 @@ try {
     // Fresh runner-owned database, fictional login/settings fixtures; never Seed.
     run(process.execPath, ['test/integration/product-fixture.ts'], env)
   }
-  if (adminCenterOnly && !browserMode) {
+  if (customerCenterOnly && !browserMode) {
+    for (const suite of ['customer-order-center.test.ts', 'auth.test.ts'])
+      console.info(
+        run(process.execPath, ['--test', 'test/integration/' + suite], env),
+      )
+  } else if (adminCenterOnly && !browserMode) {
     console.info(
       run(
         process.execPath,
@@ -774,11 +781,13 @@ try {
           '--config',
           join(cwd, '..', 'playwright.config.ts'),
           ...(splitBrowserProjects ? ['--project=mobile-edge'] : []),
-          ...(adminCenterOnly
-            ? ['admin-order-center.spec.ts']
-            : fulfillmentOnly
-              ? ['manual-fulfillment.spec.ts']
-              : []),
+          ...(customerCenterOnly
+            ? ['customer-order-center.spec.ts']
+            : adminCenterOnly
+              ? ['admin-order-center.spec.ts']
+              : fulfillmentOnly
+                ? ['manual-fulfillment.spec.ts']
+                : []),
           ...process.argv
             .slice(2)
             .filter(
@@ -794,6 +803,7 @@ try {
                   '--refunds-only',
                   '--fulfillment-only',
                   '--admin-orders-only',
+                  '--customer-orders-only',
                   '--focused',
                 ].includes(argument),
             ),

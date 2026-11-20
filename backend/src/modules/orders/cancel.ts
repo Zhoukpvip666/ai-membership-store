@@ -170,13 +170,13 @@ export function orderCancellationService(database: PrismaClient) {
       { orderId, ...input },
       async (tx) => {
         if (role === 'CUSTOMER')
-          await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND userId = ${actorId} FOR UPDATE`
+          await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND userId = ${actorId} AND hidden = FALSE FOR UPDATE`
         else
           await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`
         const order = await tx.order.findFirst({
           where: {
             id: orderId,
-            ...(role === 'CUSTOMER' ? { userId: actorId } : {}),
+            ...(role === 'CUSTOMER' ? { userId: actorId, hidden: false } : {}),
           },
           select: cancellationSelect,
         })

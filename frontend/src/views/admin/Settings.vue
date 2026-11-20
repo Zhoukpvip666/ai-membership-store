@@ -6,6 +6,7 @@ const form = reactive({
   storeName: '',
   ownerEmail: '',
   timezone: 'Asia/Shanghai',
+  paymentInstructions: '',
 })
 const loading = ref(true),
   busy = ref(false),
@@ -19,6 +20,7 @@ async function load() {
       storeName: value.storeName,
       ownerEmail: value.ownerEmail,
       timezone: value.timezone,
+      paymentInstructions: value.paymentInstructions ?? '',
     })
   } catch (e) {
     error.value = (e as Error).message
@@ -30,7 +32,8 @@ async function save() {
   busy.value = true
   error.value = ''
   try {
-    await settings.save({ ...form })
+    const saved = await settings.save({ ...form })
+    form.paymentInstructions = saved.paymentInstructions
     ElMessage.success('设置已保存至数据库')
   } catch (e) {
     error.value = (e as Error).message
@@ -87,6 +90,19 @@ onMounted(load)
         <p class="inline-note">
           通知邮箱不改变管理员登录邮箱，本阶段不发送任何邮件。
         </p>
+        <ElFormItem label="线下付款说明">
+          <ElInput
+            v-model="form.paymentInstructions"
+            type="textarea"
+            :rows="5"
+            maxlength="4000"
+            show-word-limit
+            aria-label="线下付款说明"
+          />
+          <small class="muted"
+            >客户会在有效的待付款订单中看到这段纯文本。请勿填写密码、验证码或密钥。留空可清除说明。</small
+          >
+        </ElFormItem>
       </div>
       <ElButton type="primary" native-type="submit" :loading="busy"
         >保存设置</ElButton

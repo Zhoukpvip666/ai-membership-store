@@ -2,6 +2,20 @@ import { z } from 'zod'
 import type { PrismaClient } from '../../generated/prisma/client.ts'
 import { transaction } from '../../db/transaction.ts'
 import { ApiError } from '../../http/errors.ts'
+import { hasCredentialText } from '../../contracts/credential-fields.ts'
+
+const timezone = z
+  .string()
+  .min(1)
+  .max(64)
+  .refine((value) => {
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: value })
+      return !/^[+-]/.test(value)
+    } catch {
+      return false
+    }
+  }, '请输入有效的 IANA 时区')
 
 export const editSettings = z
   .strictObject({
@@ -12,23 +26,37 @@ export const editSettings = z
       .toLowerCase()
       .pipe(z.email().max(254))
       .optional(),
-    timezone: z
+    timezone: timezone.optional(),
+    paymentInstructions: z
       .string()
-      .min(1)
-      .max(64)
-      .refine((value) => {
-        try {
-          new Intl.DateTimeFormat('en', { timeZone: value })
-          return !/^[+-]/.test(value)
-        } catch {
-          return false
-        }
-      }, '请输入有效的 IANA 时区')
+      .transform((value) => value.replace(/\r\n?/g, '\n'))
+      .pipe(
+        z
+          .string()
+          .max(4000)
+          .refine((value) => !hasCredentialText(value)),
+      )
       .optional(),
   })
   .refine((value) => Object.keys(value).length > 0)
 export function settingsService(database: PrismaClient) {
   return {
+    async orderGuidance() {
+      const settings = await database.appSettings.findUnique({
+        where: { id: 1 },
+        select: { storeName: true, timezone: true, paymentInstructions: true },
+      })
+      const zone = timezone.safeParse(settings?.timezone)
+      if (!settings || !zone.success)
+        throw new ApiError(503, 'SETTINGS_UNAVAILABLE', '付款说明暂不可用')
+      return {
+        storeName: settings.storeName,
+        businessTimezone: zone.data,
+        paymentInstructions: hasCredentialText(settings.paymentInstructions)
+          ? ''
+          : settings.paymentInstructions,
+      }
+    },
     async get() {
       const settings = await database.appSettings.findUnique({
         where: { id: 1 },
@@ -59,7 +87,11 @@ export function settingsService(database: PrismaClient) {
             entityId: '1',
             beforeJson: { timezone: current.timezone },
             afterJson: {
-              fields: Object.keys(input),
+              fields: Object.keys(input).filter(
+                (field) =>
+                  field !== 'paymentInstructions' ||
+                  current.paymentInstructions !== settings.paymentInstructions,
+              ),
               timezone: settings.timezone,
             },
           },

@@ -20,6 +20,7 @@ import {
   creationKey,
 } from './create-schemas.ts'
 import { ApiError } from '../../http/errors.ts'
+import { settingsService } from '../settings/service.ts'
 import {
   listAdminOrders,
   listCustomerOrders,
@@ -123,6 +124,11 @@ export function customerOrderRoutes(database: PrismaClient) {
   const create = orderCreationService(database)
   const edit = orderEditService(database)
   const cancel = orderCancellationService(database)
+  const settings = settingsService(database)
+  router.get('/order-guidance', async (request, response) => {
+    orderDetailQuery.parse(request.query)
+    response.json(await settings.orderGuidance())
+  })
   router.post('/orders/:id/cancel', async (request, response) => {
     response.json(
       await cancel(

@@ -107,7 +107,8 @@ test('all admin routes require a database session, even unimplemented routes', a
   assert.equal((await request('/auth/me', 'GET', undefined, '')).status, 401)
   assert.equal((await request('/auth/register', 'POST', {}, '')).status, 404)
   assert.equal((await request('/admin/products')).status, 200)
-  assert.equal((await request('/admin/orders', 'POST', {})).status, 404)
+  assert.equal((await request('/admin/orders', 'POST', {})).status, 400)
+  assert.equal((await request('/admin/unknown')).status, 404)
 })
 
 test('admin login stores only a hash, rotates tokens and emits safe cookie/me responses', async () => {
@@ -493,6 +494,49 @@ test('disable revokes sessions/invitations; restore preserves activation status 
   )
   const pending = await customer()
   const unused = await issue(pending.id)
+  const product = await db.product.create({
+    data: {
+      slug: randomUUID(),
+      name: 'Auth preservation fixture',
+      type: 'SUBSCRIPTION',
+      priceFen: 1000,
+      renewalPriceFen: 1000,
+      termLabel: 'Fixture term',
+      servicePeriodUnit: 'DAY',
+      servicePeriodCount: 30,
+    },
+  })
+  const frozen = {
+    userId: pending.id,
+    productId: product.id,
+    productNameSnapshot: product.name,
+    productTypeSnapshot: product.type,
+    priceSnapshotFen: product.priceFen,
+    termSnapshot: product.termLabel,
+    servicePeriodUnitSnapshot: product.servicePeriodUnit,
+    servicePeriodCountSnapshot: product.servicePeriodCount,
+    createdByAdminId: adminId,
+  }
+  await db.order.create({
+    data: {
+      ...frozen,
+      source: 'ADMIN',
+      kind: 'INITIAL',
+      orderNo: 'AUTH-' + randomUUID().replaceAll('-', ''),
+      amountFen: product.priceFen,
+      renewalPriceSnapshotFen: product.renewalPriceFen,
+      contactEmailSnapshot: pending.loginEmail,
+    },
+  })
+  await db.subscription.create({
+    data: {
+      ...frozen,
+      sourceType: 'ADMIN',
+      startedAt: new Date(),
+      expiresAt: new Date(Date.now() + 86_400_000),
+      renewalPriceFen: 1000,
+    },
+  })
   await request('/admin/users/' + pending.id + '/status', 'PATCH', {
     disabled: true,
     reason: '停用未激活客户',
@@ -516,15 +560,13 @@ test('disable revokes sessions/invitations; restore preserves activation status 
     ).status,
     409,
   )
-  // Foundation fixtures already attach real foreign-key records to a pending customer.
+  // The exact customer whose state changed retains its order and entitlement.
   const pendingOwner = await db.user.findUniqueOrThrow({
-    where: { loginEmail: 'pending-customer@example.com' },
+    where: { id: pending.id },
     include: { _count: { select: { orders: true, subscriptions: true } } },
   })
   assert.equal(pendingOwner.status, 'PENDING_ACTIVATION')
-  assert.ok(
-    pendingOwner._count.orders > 0 && pendingOwner._count.subscriptions > 0,
-  )
+  assert.deepEqual(pendingOwner._count, { orders: 1, subscriptions: 1 })
   assert.equal(
     (await request('/admin/users/' + pendingOwner.id)).body.user._count
       .subscriptions,

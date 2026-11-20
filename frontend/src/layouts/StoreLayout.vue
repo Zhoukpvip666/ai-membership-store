@@ -22,7 +22,12 @@ const nav = [
     short: '订阅',
     icon: CalendarDays,
   },
-  { path: '/orders', text: '我的订单', short: '订单', icon: ReceiptText },
+  {
+    path: '/account/orders',
+    text: '我的订单',
+    short: '订单',
+    icon: ReceiptText,
+  },
   { path: '/profile', text: '个人中心', short: '我的', icon: UserRound },
 ]
 </script>

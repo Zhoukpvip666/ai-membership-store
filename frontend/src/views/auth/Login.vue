@@ -26,7 +26,9 @@ async function submit() {
     const allowed =
       user.role === 'ADMIN'
         ? target.startsWith('/admin') && !target.startsWith('/admin/login')
-        : ['/profile', '/orders', '/subscriptions'].includes(target)
+        : ['/profile', '/orders', '/account/orders', '/subscriptions'].includes(
+            target,
+          )
     await router.replace(
       allowed ? target : user.role === 'ADMIN' ? '/admin/users' : '/profile',
     )

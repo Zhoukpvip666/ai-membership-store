@@ -2,7 +2,7 @@
 
 - Document: CUSTOMER-ORDER-CENTER
 - Version: 1.0
-- Status: Approved design baseline; implementation not started
+- Status: Implemented in codex/customer-order-center; pending PR review
 - Date: 2026-11-20
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [UI specification](08-interface-specification.md), [Order read API](16-order-read-api.md), [Order edit](20-order-edit-api.md), [Cancellation/timeout](21-order-cancellation-timeout.md), [Admin order center](25-admin-order-center.md), [Data model](04-data-model.md)
 
@@ -296,3 +296,35 @@ Use random isolated MySQL and real HTTP with persisted CUSTOMER/ADMIN sessions. 
 ## 15. Delivery
 
 One T21 implementation PR targeting `main`, using an independent worktree/branch `codex/customer-order-center`. Preserve all existing user changes, original worktree, running services and database volume. Update this document, D98-D105 decision register, docs/08, docs/05, docs/04, docs/07, docs/16, AGENTS and README. Stop after pushing the PR; do not merge, deploy or start T22 without separate authorization.
+
+## 16. Implementation report
+
+- `/account/orders` is the canonical signed-in customer route. Existing `/orders` links use the same route via an alias. The storefront navigation and login return path use the canonical URL.
+- The desktop list and mobile cards use server-side search, filters and pagination. The detail dialog uses frozen snapshots and business-zone timestamps. The countdown starts from the server's remaining seconds and decreases using the browser's monotonic clock. Edit and guidance become unavailable at zero; cancellation eligibility follows T16.
+- Customer reads, edits and cancellations share the safe 404 behavior for hidden, foreign and missing IDs. The customer projection retains its exact keys and suppresses unsafe historical form schemas and values before serialization. Administrator projections and stored history are preserved. The browser validates the safe frozen form independently before rendering service fields.
+- Edit and cancel call the existing T15 and T16 endpoints with the current version and a per-intent idempotency key. An uncertain response retries the original request. Stale versions refresh the detail and list for review.
+- The guidance GET uses the existing ACTIVE CUSTOMER session and role middleware. The settings PATCH normalizes newlines, preserves literal text, rejects recognized credential patterns and accepts an explicit empty string. The audit records the changed field name without duplicating instruction text. The page offers a safe fallback if no guidance is configured.
+- All database verification uses disposable MySQL 8.4 with fictional data and the no-Seed runner. There are no schema, migration or runtime dependency changes.
+
+### Tests executed
+
+Node 24.13.0 and the repository lockfile were used. `npm ci --ignore-scripts --include=dev --no-audit --no-fund` installed existing dependencies and `npm run db:generate` generated Prisma Client.
+
+| Command | Result |
+| --- | --- |
+| `npm test` | Backend 71/71 and frontend 24/24. New unit tests exercise server-seconds countdown, terminal states, timeline and unsafe snapshots. |
+| `npm run typecheck`, `npm run lint`, `npm run format:check` | Passed, including browser test TypeScript. |
+| `npm run db:validate`, `npm run build` | Prisma schema validation and both builds passed. |
+| `npm run test:db -w backend -- --customer-orders-only --fresh` | T21 HTTP 3/3 and auth HTTP 14/14. Includes exact guidance keys and no-store, persisted role/account guards, normalizing and clearing text, audit isolation and legacy snapshot redaction. |
+| `npm run test:db -w backend -- --cancellation-only --fresh` | 92/92. Order read 14, edit 19, creation 15, revision 9, subscriptions 10 and cancellation/timeout 25. |
+| `npm run test:db -w backend -- --products-only` | 11/11. Existing products and settings retain their behavior. |
+| `npm run test:db -w backend -- --admin-orders-only --fresh` | T20 HTTP 14/14. |
+| `npm run test:e2e -w backend -- --customer-orders-only --project desktop-edge` | 5/5. |
+| `npm run test:e2e -w backend -- --customer-orders-only --project mobile-edge` | 5/5. Each case ran against actual HTTP and MySQL. |
+| `npm run test:e2e -w backend -- --admin-orders-only --project desktop-edge` and the corresponding `mobile-edge` command | T20 10/10 in each viewport, including the DST rollback case. |
+| `npm run test:e2e -w backend -- --creation-only auth.spec.ts prototype.spec.ts --project desktop-edge` | 8/8, including the existing order-link alias and unrelated navigation. |
+| `git diff --check` | Passed. |
+
+The initial validation found a Vue template handler that the production compiler could not parse after formatting. It now uses a named handler. Mobile E2E initially checked the dialog class on the ARIA wrapper. The test now checks the actual dialog panel and its viewport width. Both full customer browser suites passed on rerun. The auth suite now creates its own entitlement fixture without Seed and expects 400 for an invalid body on the implemented admin order creation endpoint. The cancellation fixtures distinguish a visible, ineligible order (409) from a hidden customer order (404), and the full lifecycle run passed after that correction.
+
+The original checkout remains on its existing local main. The three pre-existing layout edits match their preflight SHA-256 hashes. Development configuration, data and services were outside the test runs. Mobile verification used Edge with a phone-sized emulated viewport. Unsafe or malformed legacy form snapshots cannot be rendered or edited by the customer. This keeps the stored history intact and leaves those exceptional records for merchant review.

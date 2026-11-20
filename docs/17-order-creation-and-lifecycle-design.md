@@ -448,3 +448,8 @@ PR #11 已合并 docs/19 的两个创建 POST；一次事务完成订单 V1、�
 ## T20 implementation record
 
 D89-D97 are implemented by the ADMIN workspace and the additive read/note services described in docs/25. No ACTIVE decision, existing lifecycle service, migration or dependency was changed. D41 revision browsing remains prohibited. Development database deployment and T21 are outside this delivery.
+
+
+## T21 实现记录
+
+D98–D105 已在独立分支实现，见 [客户订单中心实现与验证](26-customer-order-center.md)。客户本人订单页面沿用 T14–T16 API。隐藏订单的客户读取、修改和取消统一返回 404。订单状态与退款展示保留独立付款及履约事实，付款说明使用现有 AppSettings 字段。此阶段未新增 Migration 或运行时依赖。

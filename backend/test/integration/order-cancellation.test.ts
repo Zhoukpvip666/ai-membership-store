@@ -961,8 +961,8 @@ test('hidden immutable SYSTEM_RENEWAL orders cannot be cancelled by any role or 
       .digest('hex'),
     renewalRequestHash: createHash('sha256').update(randomUUID()).digest('hex'),
   })
-  for (const role of ['customer', 'admin'] as const)
-    await rejected(() => request(role, order.id), 409, 'ORDER_NOT_CANCELLABLE')
+  await rejected(() => request('admin', order.id), 409, 'ORDER_NOT_CANCELLABLE')
+  await rejected(() => request('customer', order.id), 404, 'NOT_FOUND')
   await rejected(
     () => request('customer', order.id, body(), randomUUID(), cookies.bob),
     404,
