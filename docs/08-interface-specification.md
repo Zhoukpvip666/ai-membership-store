@@ -1,9 +1,12 @@
 # Interface Specification
 
+> **T20 administrator order center override (2026-11-20):** `/admin/orders` is the real ADMIN order workspace, not Mock. It uses the merged order list/detail/create/edit/cancel/payment/refund/fulfillment APIs plus the T20 OrderEvent timeline and internal-note API. The order detail actions are state-driven: paid pending orders must be cancelled before a refund; PAID and NOT_REQUIRED PROCESSING orders may be fulfilled; zero-price orders remain in the fulfillment queue. The original Task 1.2.3 statement that order screens remain Mock is superseded only for the ADMIN order page. The customer order page and operating overview remain Mock until separately authorized. See [T20 contract](25-admin-order-center.md).
+
+
 > **Current Phase 2 override (2026-11-17):** The owner separately authorized user-name refactoring and administrator-only subscription management before offline orders. `displayName` becomes nullable `username` (customer-owned, no new editing/activation flow yet) and `adminLabel` (admin-only). Admin naming is adminLabel → username → login-email prefix; customer responses exclude adminLabel. Subscription sources are ADMIN/SYSTEM, stored states ACTIVE/TERMINATED. Admin creates independent subscription records and directly edits/renews/terminates them without orders, payments, email or automatic duration arithmetic. Product/form snapshots are frozen; archived products block new subscriptions/renewals but allow maintenance of existing unexpired subscriptions. Expired ACTIVE rows grant no entitlement and cannot be edited/renewed, even before the minute worker terminates them. [Phase 2 details](14-user-subscription-core.md) supersede conflicting legacy subscription rules below. No development database migration is performed by implementation/tests.
 
 
-Task 1.2.3 persistence update: product management and settings use local ADMIN APIs, alongside persistent customer management. Product dialogs add description, sort order and a responsive field editor/preview for eight supported types; archive replaces deletion, immediately unlists and cannot be reversed. Only listed/archivedAt represent product state; there are no separate purchase or renewal switches. Every field has a fixed read-only ID, editable label/hint/required/default, optional choices and move/delete controls. Schema limits/errors are visible before saving. Preview input is ephemeral and has no submission action. Existing order/subscription/overview screens remain explicitly Mock. The catalog shows persisted listed/unarchived products only to ADMIN as a preview; public/customers see a not-yet-open notice. All purchasing and renewal creation are disabled in this stage, and no public product API is added. The desktop/mobile layout baseline below remains applicable. See [13-products-settings-forms.md](13-products-settings-forms.md).
+Task 1.2.3 persistence update: product management and settings use local ADMIN APIs, alongside persistent customer management. Product dialogs add description, sort order and a responsive field editor/preview for eight supported types; archive replaces deletion, immediately unlists and cannot be reversed. Only listed/archivedAt represent product state; there are no separate purchase or renewal switches. Every field has a fixed read-only ID, editable label/hint/required/default, optional choices and move/delete controls. Schema limits/errors are visible before saving. Preview input is ephemeral and has no submission action. The original Task 1.2.3 prototype kept order/subscription/overview screens Mock; T20 supersedes only the ADMIN order page. CUSTOMER orders and the operating overview remain Mock until separately authorized. The catalog shows persisted listed/unarchived products only to ADMIN as a preview; public/customers see a not-yet-open notice. All purchasing and renewal creation are disabled in this stage, and no public product API is added. The desktop/mobile layout baseline below remains applicable. See [13-products-settings-forms.md](13-products-settings-forms.md).
 
 This document is the approved first-version UI baseline for the customer storefront and the single-owner management console. It is intentionally simple and should be implemented before real payment, supplier, or database workflows.
 
@@ -132,17 +135,19 @@ No merchant registration, merchant onboarding, merchant wallet, merchant balance
 - Archiving must preserve existing subscription entitlements and historical orders.
 - No supplier cost field in the first-version UI.
 
-**订单管理**
-- List/search/filter by order number, customer, and primary status.
-- Customer-facing primary states: 待发货, 已完成; show 已退款 after confirmed refund.
-- Display payment separately from order/fulfillment state. Unpaid pending orders display 未付款 in lists, details and linked history; they must not match the 待发货 filter.
-- Order detail shows order number, product snapshot, customer contact email, approved non-sensitive form data, amount, payment status, and fulfillment state.
-- Main actions for a paid pending order: 确认已完成 and 申请退款.
-- 确认已完成 means the owner confirms service fulfillment; it does not automatically prove payment settlement or release funds.
-- Refund action creates a refund request through the payment provider when integrated. Keep internal refund states separate: 未申请, 处理中, 成功, 失败.
-- Never mark an order refunded merely because the owner clicked the refund button. Only a confirmed provider result changes refund status to success.
-- In the local mock flow, simulated success also changes fulfillment to CANCELLED (已取消), while retaining historical payment confirmation. A pending/failed refund leaves fulfillment unchanged. Refunded fixtures and detail views must follow the same rule.
-- No customer self-service refund application in the first version; customers contact the merchant privately.
+**订单管理（T20 ADMIN 真实业务工作台）**
+- `/admin/orders` 使用真实 ADMIN API，不读取 Mock store；客户订单页和经营概览仍保持各自的 Mock 状态。
+- 列表按订单号、冻结商品名称、客户搜索；支持商品快照类型、订单 kind、付款状态、履约状态筛选和服务端分页。默认创建时间倒序。
+- 付款状态与履约状态始终分开显示。待履约筛选使用 `fulfillmentStatus=PROCESSING`，必须同时包含 PAID 和 NOT_REQUIRED 零元订单；UNPAID/PENDING_VERIFICATION 不进入待履约队列。
+- 详情显示冻结商品/表单快照、客户资料、原价与最终应付金额、订单版本、付款尝试、退款尝试、关联订阅的最小摘要、内部备注和安全 OrderEvent 时间线。
+- OrderEvent 时间线只展示白名单字段和脱敏摘要，不展示原始事件 JSON、AdminAuditLog 或 OrderRevision。不得提供历史版本浏览、比较或恢复。
+- 创建订单复用现有 ADMIN 创建 API；客户可选 ACTIVE/PENDING_ACTIVATION，商品可选未归档（允许未上架），表单按当前商品 Schema 完整填写，最终金额默认预填原价。
+- 编辑仅在 T15 允许的未付款/未开始/有效期内状态开放，并使用订单冻结的 formSchemaSnapshot；内部备注使用独立 D48/D92 接口。
+- 付款操作分为登记、确认、失败；金额不匹配可登记为待核实，但不能确认。确认时存在其他待核实尝试必须先逐笔关闭。
+- 已付款未履约订单不能直接退款：管理员先取消订单，使其进入 CANCELLED + REFUND_PENDING，再按 T18 登记外部已发起的全额退款、确认实际到账或登记失败。
+- 履约仅开放给 T19 支持的 INITIAL/ONE_TIME 普通订单；PAID + PROCESSING 和 NOT_REQUIRED + PROCESSING 均可履约。INITIAL 创建关联订阅，ONE_TIME 不创建订阅。
+- 已完成、已退款、已取消以及不支持的 RENEWAL/SYSTEM_RENEWAL/历史异常订单仅显示可用的只读信息；普通订单仍可按 D92 修改内部备注。
+- 不提供客户自助退款申请；客户与商户线下沟通。订单中心不发送邮件、不调用支付渠道或供应商接口。
 
 **订阅管理**
 - List customer, subscription ID, product, expiry date, renewal price, and status.
@@ -165,20 +170,17 @@ No merchant registration, merchant onboarding, merchant wallet, merchant balance
 - Payment provider configuration status (not secret values).
 - SMTP credentials and payment secrets remain deployment secrets, never displayed or edited as plaintext in the UI.
 
-## 5. Prototype behavior
+## 5. Prototype behavior and current implementation boundary
 
-The first implementation is a frontend prototype using mock data:
-- Navigation between all customer and management pages works.
-- Product filters work.
-- Product add/edit/listing and irreversible archive persist through the local ADMIN API.
+The original Task 1.1 prototype uses Mock data. T20 supersedes that baseline only for the ADMIN order page:
+- `/admin/orders` uses real API-backed list/detail/create/edit/cancel/payment/refund/fulfillment and safe event history.
+- Mock confirmation/refund actions must not appear in the real ADMIN order workspace.
+- Mock operating overview and CUSTOMER order history remain Mock until separately authorized.
+- Product filters and product add/edit/listing/archive continue to use the existing local ADMIN APIs.
 - Unlisted/unarchived products remain manageable; archived products are unlisted, cannot be edited/relisted, and retain readable details. Product changes never rewrite historical orders or current entitlement dates. Dynamic form configuration and preview remain available.
-- Order list filters and detail view work.
-- Mock 确认已完成 updates the local mock order state.
-- Mock 申请退款 shows a confirmation and a clearly labelled simulated result; it must not call a real provider or claim real money moved.
-- Subscription filters and detail views work.
-- Customer checkout creates a local mock order only.
-- No real authentication, database, SMTP, payment gateway, supplier API, refund, settlement, or funds-hold behavior is implemented in this prototype.
-- Clearly mark mock data and simulated actions in the UI or README.
+- Customer checkout remains a local mock order only.
+- Mock data and simulated actions outside the T20 ADMIN order page must be clearly labelled.
+- The ADMIN order center never claims that the application itself transferred customer money, initiated a refund, contacted a supplier, or sent email.
 
 ## 6. Implementation acceptance criteria
 
