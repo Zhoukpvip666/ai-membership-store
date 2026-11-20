@@ -78,9 +78,9 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 - No fulfillment FAILED state; undeliverable orders reuse T16 cancellation and T18 refund. No renewal, system renewal, subscription expiry worker, supplier API, customer subscription UI or notifications.
 - No migration expected. Stop at PR review; no development database deployment.
 
-## T20 administrator order center — approved design, implementation not started
+## T20 administrator order center — implemented, pending PR review
 
-**Status: D89-D97 confirmed and documented; awaiting one implementation PR.** [Full implementation contract](25-admin-order-center.md). No development database deployment.
+**Status: D89-D97 implemented in codex/admin-order-center; pending PR review.** [Contract and actual validation report](25-admin-order-center.md). No development database deployment.
 
 - Replace only the ADMIN `/admin/orders` Mock page with a real API-driven order workspace; keep the CUSTOMER order page and operating overview unchanged.
 - Reuse T14-T19 create/edit/cancel/payment/refund/fulfillment APIs. Add only ADMIN OrderEvent timeline GET, minimal linkedSubscription detail summary, frozen productType list filter, and D48 internal-note PATCH.
@@ -311,7 +311,7 @@ These remain future work and must not be pulled into Task 1.2:
 
 ## Current review boundary
 
-Tasks 1.2.1–1.2.3, Phase 2 and order foundation/read/create/edit/cancel/payment/refund/fulfillment stages through T19 are merged. T20 design is approved and documented; its implementation PR is the next authorized task. Do not begin T21 customer UI, renewal or deployment automatically.
+Tasks 1.2.1–1.2.3, Phase 2 and order foundation/read/create/edit/cancel/payment/refund/fulfillment stages through T19 are merged. T20 implementation is complete in its isolated feature branch and awaits PR review. Do not begin T21 customer UI, renewal or deployment automatically.
 
 
 T19 supersedes the earlier generic Task 1.2.4 fulfillment placeholder below: use the merged D24-D32/D37/D52/D59/D64/D83-D88 contract in [docs/24-manual-fulfillment-api.md](24-manual-fulfillment-api.md). In particular, NOT_REQUIRED zero-price orders are fulfillable, and renewal/SYSTEM_RENEWAL are excluded.

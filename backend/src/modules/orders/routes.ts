@@ -1,3 +1,6 @@
+import { orderEventService } from './events.ts'
+import { orderNoteService } from './internal-note.ts'
+import { listOrderEvents, updateInternalNote } from './center-schemas.ts'
 import { Router } from 'express'
 import type { PrismaClient } from '../../generated/prisma/client.ts'
 import { id } from '../users/schemas.ts'
@@ -32,6 +35,28 @@ export function adminOrderRoutes(database: PrismaClient) {
   const cancel = orderCancellationService(database)
   router.use(offlinePaymentRoutes(database))
   router.use(offlineRefundRoutes(database))
+  const events = orderEventService(database),
+    note = orderNoteService(database)
+  router.get('/orders/:id/events', async (request, response) => {
+    response.json(
+      await events(
+        id.parse(request.params.id),
+        listOrderEvents.parse(request.query),
+      ),
+    )
+  })
+  router.patch('/orders/:id/internal-note', async (request, response) => {
+    orderDetailQuery.parse(request.query)
+    response.json(
+      await note(
+        id.parse(request.params.id),
+        updateInternalNote.parse(request.body),
+        response.locals.principal.user.id,
+        creationKey(request.get('Idempotency-Key')),
+        response.locals.requestId,
+      ),
+    )
+  })
   const fulfill = orderFulfillmentService(database)
   router.post('/orders/:id/fulfill', async (request, response) => {
     orderDetailQuery.parse(request.query)

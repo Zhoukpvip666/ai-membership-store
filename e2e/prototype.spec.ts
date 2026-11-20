@@ -30,6 +30,7 @@ test.beforeEach(async ({ page }) => {
       })
     if (
       [
+        '/api/v1/admin/orders',
         '/api/v1/admin/users',
         '/api/v1/admin/products',
         '/api/v1/admin/subscriptions',
@@ -73,7 +74,7 @@ test('all ten pages navigate and responsive layouts fit', async ({
     info.project.name.startsWith('mobile') ? 'row' : 'column',
   )
 })
-test('unpaid orders are excluded from waiting fulfillment and overview metric', async ({
+test('Mock overview retains independent waiting-fulfillment metric', async ({
   page,
 }) => {
   await page.goto('/admin')
@@ -84,19 +85,11 @@ test('unpaid orders are excluded from waiting fulfillment and overview metric', 
       .locator('strong'),
   ).toHaveText('2')
   await page.goto('/admin/orders')
-  await page.getByRole('button', { name: '未付款', exact: true }).click()
-  await expect(page.locator('tbody tr')).toHaveCount(1)
-  const id = await page.locator('tbody tr .mono').first().innerText()
-  await page.getByRole('button', { name: '查看详情', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '订单详情', exact: true })
-  await expect(dialog.locator('.badge')).toHaveText('未付款')
+  await expect(page.getByText('暂无符合条件的订单')).toBeVisible()
   await expect(
-    dialog.getByRole('button', { name: '模拟确认已完成' }),
-  ).toHaveCount(0)
-  await dialog.getByRole('button', { name: 'Close this dialog' }).click()
-  await page.getByRole('button', { name: '待发货', exact: true }).click()
-  await expect(page.locator('tbody tr')).toHaveCount(2)
-  await expect(page.locator('tbody')).not.toContainText(id)
+    page.getByRole('button', { name: '新建订单', exact: true }),
+  ).toBeVisible()
+  await expect(page.getByText('模拟确认已完成')).toHaveCount(0)
 })
 test('subscription history details remain available without creating renewal orders', async ({
   page,
@@ -115,99 +108,5 @@ test('subscription history details remain available without creating renewal ord
     page.getByRole('button', { name: '续费', exact: true }),
   ).toHaveCount(0)
 })
-test('paid completion and refund require explicit simulation steps', async ({
-  page,
-}) => {
-  await page.goto('/admin/orders')
-  await page
-    .getByRole('textbox', { name: '搜索订单', exact: true })
-    .fill('1008')
-  await page.getByRole('button', { name: '查看详情', exact: true }).click()
-  await page
-    .getByRole('button', { name: '模拟确认已完成', exact: true })
-    .click()
-  await page
-    .getByRole('dialog', { name: '模拟确认服务完成', exact: true })
-    .getByRole('button', { name: '确认模拟操作' })
-    .click()
-  await expect(
-    page
-      .getByRole('dialog', { name: '订单详情', exact: true })
-      .locator('.badge'),
-  ).toHaveText('已完成')
-  await page
-    .getByRole('dialog', { name: '订单详情', exact: true })
-    .getByRole('button', { name: 'Close this dialog' })
-    .click()
-  await page
-    .getByRole('textbox', { name: '搜索订单', exact: true })
-    .fill('1007')
-  await page.getByRole('button', { name: '查看详情', exact: true }).click()
-  await page.getByRole('button', { name: '模拟申请退款', exact: true }).click()
-  await page
-    .getByRole('dialog', { name: '模拟申请退款', exact: true })
-    .getByRole('button', { name: '确认模拟操作' })
-    .click()
-  await expect(
-    page
-      .getByRole('dialog', { name: '订单详情', exact: true })
-      .locator('.badge'),
-  ).toHaveText('待发货')
-  await page.getByRole('button', { name: '模拟回执失败' }).click()
-  await expect(
-    page.getByRole('dialog', { name: '订单详情', exact: true }),
-  ).toContainText('模拟退款失败')
-  await expect(
-    page
-      .getByRole('dialog', { name: '订单详情', exact: true })
-      .locator('.detail-grid > div')
-      .filter({ hasText: '履约状态（模拟）' })
-      .locator('dd'),
-  ).toHaveText('处理中')
-  await page.getByRole('button', { name: '模拟申请退款', exact: true }).click()
-  await page
-    .getByRole('dialog', { name: '模拟申请退款', exact: true })
-    .getByRole('button', { name: '确认模拟操作' })
-    .click()
-  await page.getByRole('button', { name: '模拟回执成功' }).click()
-  await expect(
-    page
-      .getByRole('dialog', { name: '订单详情', exact: true })
-      .locator('.badge'),
-  ).toHaveText('已退款')
-  const refundedDetail = page.getByRole('dialog', {
-    name: '订单详情',
-    exact: true,
-  })
-  await expect(
-    refundedDetail
-      .locator('.detail-grid > div')
-      .filter({ hasText: '付款状态（模拟）' })
-      .locator('dd'),
-  ).toHaveText('已确认付款')
-  await expect(
-    refundedDetail
-      .locator('.detail-grid > div')
-      .filter({ hasText: '履约状态（模拟）' })
-      .locator('dd'),
-  ).toHaveText('已取消')
-  await expect(
-    page.getByRole('button', { name: '模拟申请退款', exact: true }),
-  ).toHaveCount(0)
-  await expect(
-    page.getByRole('button', { name: '模拟确认已完成', exact: true }),
-  ).toHaveCount(0)
-  await refundedDetail
-    .getByRole('button', { name: 'Close this dialog' })
-    .click()
-  await page
-    .getByRole('textbox', { name: '搜索订单', exact: true })
-    .fill('1005')
-  await page.getByRole('button', { name: '查看详情', exact: true }).click()
-  await expect(
-    refundedDetail
-      .locator('.detail-grid > div')
-      .filter({ hasText: '履约状态（模拟）' })
-      .locator('dd'),
-  ).toHaveText('已取消')
-})
+// Real order/payment/refund flows are tested through HTTP/MySQL in
+// admin-order-center.spec.ts; the ADMIN route no longer uses Mock actions.

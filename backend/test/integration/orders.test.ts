@@ -913,7 +913,12 @@ test('ADMIN and CUSTOMER list/detail DTOs match independent complete key allowli
       const detail = await request(prefix + '/orders/' + order.id, cookie)
       assert.equal(detail.status, 200)
       assertKeys(detail.body, ['order'])
-      dtos.push(detail.body.order)
+      if (prefix === '/admin') {
+        assertKeys(detail.body.order, [...adminKeys, 'linkedSubscription'])
+        const { linkedSubscription, ...baseDto } = detail.body.order
+        assert.equal(linkedSubscription, null)
+        dtos.push(baseDto)
+      } else dtos.push(detail.body.order)
     }
     for (const order of dtos) {
       assertKeys(order, prefix === '/admin' ? adminKeys : customerKeys)

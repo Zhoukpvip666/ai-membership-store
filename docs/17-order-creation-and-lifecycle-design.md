@@ -215,17 +215,11 @@
 
 PR #6 已合并，十条 Migration 已应用于当前开发数据库。已具备 Order、OrderEvent、PaymentTransaction、Subscription 的快照、来源、时间、事件及账期存储基础。PR #7 已合并订单列表和详情 API。
 
-### 4.2 尚未实现
+### 4.2 当前实现与后续边界
 
-订单创建 API 已于 PR #11 合并；T15 待付款订单编辑和 version 并发控制已实现待审查，见第 10 节。第十二条 Migration 已进入 main；开发数据库部署须单独授权，本轮不检查或迁移。当前尚待实现的主要内容：
+T14-T19 的读取、创建、编辑、取消/超时、付款、退款、履约和首次订阅兑现已合并，各阶段测试见 docs/16、docs/19-docs/24。T20 管理员订单中心及新增事件读取、独立内部备注修改已实现，等待 PR 审查，实际验证见 docs/25。第十二条 Migration 已进入 main；本轮不检查、连接或部署开发数据库。
 
-1. 订单 24 小时自动取消任务。
-2. 用户/管理员取消 API，以及已付款订单取消后的线下退款登记流程（D17/D18/D59）。
-3. 管理员全额付款确认与 PaymentTransaction 原子写入。
-4. 管理员履约 API 与订单到订阅原子兑现。
-5. 订阅商品自然周期计算与月底/闰年规则。
-6. 订单及订阅管理前端。
-7. 后续生命周期的并发、回滚、权限、API、浏览器 E2E 验收；创建及核心编辑的本轮覆盖见各自实现报告。
+后续仍需单独授权：客户订单/订阅界面接入、续费业务、通知及部署。历史阶段记录保留为当时的范围说明；当前实现状态以本节、路线图及各阶段实现报告为准。
 
 ## 5. 待确认技术设计清单
 
@@ -439,3 +433,8 @@ PR #11 已合并 docs/19 的两个创建 POST；一次事务完成订单 V1、�
 [取消/超时契约及实现报告](21-order-cancellation-timeout.md) 实现两个取消 POST 和每分钟 SYSTEM 任务。客户只取消本人未付款/待核实普通订单；管理员可取消未付款、已确认全额付款且未完成履约、或零元订单，并必须提供原因。已付款取消只进入 REFUND_PENDING，不伪造退款。待核实交易保留并标记 FAILED。所有修改、version、完整 Revision、事件、适用的管理员审计和手动幂等响应均原子提交。
 
 超时任务使用数据库 UTC 的 24 小时包含边界、每批最多 100 条、逐笔 SKIP LOCKED 事务、NULL SYSTEM 主体；并发实例和重复扫描不会重复取消。测试用付款事务仅验证未来付款服务必须遵循的共享行锁协议，不实现付款确认接口。Schema 与十二条迁移不变；不访问开发数据库，不修改原工作区。付款确认、退款完成、履约、订阅兑现、续费及前端接入仍待独立授权。
+
+
+## T20 implementation record
+
+D89-D97 are implemented by the ADMIN workspace and the additive read/note services described in docs/25. No ACTIVE decision, existing lifecycle service, migration or dependency was changed. D41 revision browsing remains prohibited. Development database deployment and T21 are outside this delivery.

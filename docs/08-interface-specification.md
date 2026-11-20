@@ -201,3 +201,8 @@ The original Task 1.1 prototype uses Mock data. T20 supersedes that baseline onl
 - No real payment, refund, settlement, email, or supplier operation is triggered.
 - No sensitive customer credential fields exist.
 - npm run build and available lint/type-check commands pass.
+
+
+## T20 implementation details
+
+The ADMIN order workspace now uses typed real APIs. Create/edit use the existing dynamic form inputs; detail, evidence, notes and safe event timeline use responsive dialogs. Payment and fulfillment remain separate columns; the fulfillment queue includes NOT_REQUIRED. For more than one evidence page, lifecycle controls remain disabled until explicit full-evidence review. Network-uncertain mutations retain their exact body/key in memory and offer original-request retry; version conflicts refresh for human review. Overview and CUSTOMER orders remain unchanged.
