@@ -180,7 +180,7 @@ Existing `GET /api/v1/admin/settings` already returns AppSettings. Extend the ex
 
 - string, maximum 4000 characters after newline normalization (`CRLF`/`CR` → `LF`).
 - Preserve line breaks and plain text; empty string explicitly clears the field.
-- Do not accept HTML/Markdown executable content or extra unknown fields.
+- Accept plain text only; do not parse/render HTML or Markdown and reject extra unknown fields.
 - ADMIN settings page adds a textarea with a 4000-character counter and save/error state.
 - Extend the frontend `AppSettings` type and settings store save payload.
 - `AppSettings.paymentInstructions` already exists; no Prisma schema or migration is expected.
