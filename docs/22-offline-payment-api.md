@@ -6,7 +6,7 @@
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order creation](19-order-creation-api.md), [Order edit](20-order-edit-api.md), [Order cancellation/timeout](21-order-cancellation-timeout.md), [Order revision foundation](18-order-revision-foundation.md), [Order read API](16-order-read-api.md)
 
-T17 implements ADMIN-only offline payment-attempt listing, registration, confirmation and failure. It records money received externally; the application never initiates, transfers or verifies money automatically. It does not implement refunds, fulfillment, subscription entitlement, payment-provider callbacks, customer payment uploads, frontend order/payment UI, or development database deployment.
+T17 is designed to add ADMIN-only offline payment-attempt listing, registration, confirmation and failure. It records money received externally; the application never initiates, transfers or verifies money automatically. It does not implement refunds, fulfillment, subscription entitlement, payment-provider callbacks, customer payment uploads, frontend order/payment UI, or development database deployment.
 
 ## Decision conflict reconciliation
 
