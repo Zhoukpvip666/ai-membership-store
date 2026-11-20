@@ -1,12 +1,12 @@
 # Manual order fulfillment and initial subscription entitlement — implementation contract
 
 - Document: MANUAL-FULFILLMENT-API
-- Version: 1.0
-- Status: Implemented and isolated acceptance passed; awaiting PR review; not deployed
+- Version: 1.1
+- Status: Merged in PR #26 (`b64d608a9d4772b7c351986ed93c8feecfbcf3d1`); not deployed
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order revision foundation](18-order-revision-foundation.md), [Order creation](19-order-creation-api.md), [Order cancellation/timeout](21-order-cancellation-timeout.md), [Offline payment](22-offline-payment-api.md), [Offline refund](23-offline-refund-api.md), [Order/subscription foundation](15-order-subscription-foundation.md), [Subscription core compatibility](14-user-subscription-core.md)
 
-T19 implements one ADMIN-only manual fulfillment action for ordinary first-purchase subscription orders and one-time orders. It does not implement renewal orders, system renewals, fulfillment failure state, refund operations, provider/supplier integration, automated fulfillment, customer subscription APIs/UI, notifications, or development database deployment.
+T19 adds one merged ADMIN-only manual fulfillment action for ordinary first-purchase subscription orders and one-time orders. It does not implement renewal orders, system renewals, fulfillment failure state, refund operations, provider/supplier integration, automated fulfillment, customer subscription APIs/UI, notifications, or development database deployment.
 
 ## 1. Decision reconciliation
 
@@ -303,3 +303,8 @@ The final complete `--fulfillment-only` aggregate was then run by itself and exi
 - Documentation: this report, README, data model, API contract and roadmap (16 changed/new files in total).
 
 No Schema/Migration change: all twelve committed migrations are retained verbatim. No development deployment, frontend page, renewal/SYSTEM_RENEWAL handling, refund behavior change, automatic fulfillment, provider API, email or notification is included. Original shopping Header/Sidebar/layout documentation hashes are unchanged. Database/service deployment and any subsequent task require separate operator authorization after PR review.
+
+
+## 14. PR #26 merge record
+
+PR #26 merged into `main` using squash commit `b64d608a9d4772b7c351986ed93c8feecfbcf3d1`. Final reviewed implementation commit: `96a646a94f2bc051721c8688acce379f829909cd`. GitHub did not report CI checks for this PR; local isolated MySQL, unit, browser, type, lint, format, build and Prisma validation results are recorded in section 13. All twelve migrations remain unchanged. The development database has not been migrated and no deployment was performed. Production rollout still requires a separately authorized operator action.
