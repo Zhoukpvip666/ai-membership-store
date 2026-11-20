@@ -6,7 +6,7 @@
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Offline payment API](22-offline-payment-api.md), [Order cancellation/timeout](21-order-cancellation-timeout.md), [Order revision foundation](18-order-revision-foundation.md)
 
-T18 implements ADMIN-only manual offline refund-attempt listing, registration, confirmation and failure. The application records an external refund transfer; it never sends money or calls a payment provider. A PENDING REFUND is an attempt record after the external refund has actually been initiated, not proof that the customer has received the money. Only confirmation after external completion changes the order to REFUNDED (D76 clarifies D59).
+T18 is designed to add ADMIN-only manual offline refund-attempt listing, registration, confirmation and failure. The application records an external refund transfer; it never sends money or calls a payment provider. A PENDING REFUND is an attempt record after the external refund has actually been initiated, not proof that the customer has received the money. Only confirmation after external completion changes the order to REFUNDED (D76 clarifies D59).
 
 ## 1. Decision reconciliation
 
