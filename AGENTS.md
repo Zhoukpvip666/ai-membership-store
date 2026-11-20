@@ -114,3 +114,14 @@ A task is complete only when:
 - OFFLINE_MANUAL is retired. Remove it from the current Prisma enum and final database CHECK/trigger definitions; retain immutable historical migration SQL.
 - Only random isolated migration fixtures may be cleaned in this task. Do not connect to the development database, inspect its orders, remove its records or modify its volume/.env. Report its order counts/relationships as uninspected.
 - Nullable source storage is deliberate to reject non-strict implicit ENUM defaults; a required-source CHECK and INSERT Trigger forbid persisted NULL. Future order services must explicitly require a source from trusted server context.
+
+
+## T20/T21 order-center overrides (2026-11-20)
+
+- T20 is merged: `/admin/orders` is a real ADMIN API-backed order center. Do not restore its old Mock order list/dialog or mock completion/refund actions.
+- T21 is approved for implementation: `/account/orders` becomes a real CUSTOMER API-backed view of the signed-in customer's existing orders only. Reuse the existing own-order list/detail/edit/cancel APIs. Do not create orders from this page.
+- T21 does not open the storefront checkout. Customer product catalog, purchase/checkout/order creation, customer subscription UI, online payment, proof upload, refund requests, payment/refund evidence, email and notifications remain unavailable/Mock or out of scope until separately approved.
+- Customer refund status is order-level only. `REFUND_PENDING` means `待退款`, not proof that an external refund transfer has started; `REFUNDED` appears only after ADMIN confirms actual refund completion.
+- Customer order detail must use frozen snapshots, hide internalNote/creator/audit/revision/payment/refund attempt data, and render only non-sensitive form values. Preserve ownership/hidden 404 behavior and existing Session/ACTIVE checks.
+- T21 may edit the existing `AppSettings.paymentInstructions` field and expose it only through the strict CUSTOMER order-guidance projection defined in docs/26. No new migration/dependency is expected. The guidance is plain text, never HTML, and does not move/verify money or send notifications.
+- For UI work, docs/08-interface-specification.md plus docs/25-admin-order-center.md and docs/26-customer-order-center.md are the task-specific source of truth. Preserve the Mock boundary for all pages not explicitly overridden by T20/T21.
