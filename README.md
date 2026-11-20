@@ -94,6 +94,7 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 19. docs/19-order-creation-api.md — approved USER/ADMIN order creation endpoints, validation, transaction, idempotency and acceptance contract.
 20. docs/20-order-edit-api.md — approved USER/ADMIN order edit endpoints, complete form replacement, price edits, zero-price transition, optimistic concurrency and transaction contract.
 21. docs/21-order-cancellation-timeout.md — approved manual cancellation and SYSTEM 24-hour timeout worker contract.
+22. docs/22-offline-payment-api.md — approved ADMIN offline payment-attempt registration, verification, failure, concurrency and history contract.
 
 ## Important launch gates
 
@@ -172,3 +173,6 @@ The order read API adds no frontend history integration. The order creation POST
 **Order revision foundation:** [Order versions, append-only history and generic idempotency](docs/18-order-revision-foundation.md). Migration eleven and existing order DTO extensions. The merged [order creation implementation](docs/19-order-creation-api.md) adds customer/admin creation POSTs and migration twelve. T15 reuses those twelve migrations unchanged for the [order edit implementation](docs/20-order-edit-api.md); payment/fulfillment remain deferred. Its no-Seed regression command is `npm run test:db -w backend -- --edit-only`, with read regression in a separate random isolated database. Browser regression uses `npm run test:e2e -w backend -- --edit-only` after building.
 
 **T16 cancellation and timeout (merged PR #17):** [Contract and actual validation](docs/21-order-cancellation-timeout.md) implements customer/admin cancellation POSTs and a database-clock SYSTEM minute worker, with versioned atomic history, paid REFUND_PENDING handling and pending-attempt closure. No new migration, refund/payment confirmation API or order UI. Run `npm run test:db -w backend -- --cancellation-only` for no-Seed historical-upgrade/read/cancel/edit/create/revision/subscription regression, and `npm run test:e2e -w backend -- --cancellation-only` after building for fresh isolated browser checks. The worker starts immediately with the API and every minute thereafter; shutdown waits for its in-flight work. Do not start the modified API against development data as an implementation test; deployment requires separate operator review.
+
+
+**T17 offline payment (approved design, not implemented):** [docs/22-offline-payment-api.md](docs/22-offline-payment-api.md) specifies ADMIN-only attempt listing/registration/confirmation/failure, with exact full-payment verification, multiple-attempt closure, 24-hour deadline and atomic order history. No payment gateway or money movement. Wait for the separate implementation PR before treating these endpoints as available.
