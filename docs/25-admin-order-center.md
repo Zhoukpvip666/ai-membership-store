@@ -2,7 +2,7 @@
 
 - Document: ADMIN-ORDER-CENTER
 - Version: 1.0
-- Status: Implemented and validated in codex/admin-order-center; pending PR review
+- Status: Merged in PR #29 (`6b1a30d361b463fcc2d8aac1b7cc4e38a91e30c0`); not deployed
 - Date: 2026-11-20
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [UI specification](08-interface-specification.md), [Order read API](16-order-read-api.md), [Order creation](19-order-creation-api.md), [Order edit](20-order-edit-api.md), [Cancellation/timeout](21-order-cancellation-timeout.md), [Offline payment](22-offline-payment-api.md), [Offline refund](23-offline-refund-api.md), [Manual fulfillment](24-manual-fulfillment-api.md)
 
@@ -391,3 +391,8 @@ The payment and refund dialogs use the already pinned Temporal polyfill to resol
 - Documentation: `README.md`; `docs/{04-data-model,05-api-contract,07-development-roadmap,08-interface-specification,16-order-read-api,17-order-creation-and-lifecycle-design,25-admin-order-center}.md`; `docs/superpowers/plans/2026-11-20-admin-order-center.md`.
 
 The scoped implementation contains 35 files. Generated output, test logs, screenshots, dependencies and local configuration are not committed.
+
+
+## 16. Merge record
+
+T20 was reviewed after the DST-fold follow-up commit `55442668f324c2d328ee0249c85a316aa3dc981e` and merged by squash in PR #29 as `6b1a30d361b463fcc2d8aac1b7cc4e38a91e30c0`. The review verified explicit UTC-offset selection for ambiguous local payment/refund times and the full mobile regression. No development database migration or deployment was performed. T21 is a separate approved task and is documented in [docs/26-customer-order-center.md](26-customer-order-center.md).
