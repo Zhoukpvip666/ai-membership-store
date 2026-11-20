@@ -1,8 +1,8 @@
 # Order cancellation and timeout API — implementation contract
 
 - Document: ORDER-CANCEL-TIMEOUT
-- Version: 1.1
-- Status: Implemented for PR review; no development database deployment
+- Version: 1.2
+- Status: Merged in PR #17 (`56b0ba40ff803179bf8e2ce6849b345a0ec3caf9`); no development database deployment
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order creation](19-order-creation-api.md), [Order edit](20-order-edit-api.md), [Order revision foundation](18-order-revision-foundation.md), [Order read API](16-order-read-api.md)
 
@@ -145,7 +145,7 @@ Reuse existing error codes where an equivalent already exists. Never disclose an
 - Worker is safe with multiple instances, repeated scans, bounded batches, process restart and transient failure.
 - Existing order creation/edit/read/revision/subscription suites pass.
 - Use random isolated MySQL and no-Seed runner; never read development .env or touch development DB/volume.
-- Update API contract, roadmap, implementation report and tests. Stop at PR for review; do not merge or start payment/refund/fulfillment UI without review.
+- Update API contract, roadmap, implementation report and tests. T16 was merged in PR #17. Do not start payment/refund/fulfillment UI or deploy to the development database without separate authorization.
 
 ## 11. Implementation report (2026-11-19)
 
@@ -216,7 +216,7 @@ Original-worktree checks confirmed the same three unstaged layout files and iden
 
 ### Review delivery
 
-[PR #17](https://github.com/lear111/ai-membership-store/pull/17), branch `codex/order-cancellation-timeout`, targets `main`. Implementation commit: `21a8b6188d79ab6dd3c0b83b8cac09841f4aaca2`; 16 changed files. GitHub reported OPEN/unmerged, clean merge state and no status checks at publication. Local verification above is independent of GitHub CI. This delivery record is a documentation-only follow-up; do not merge or start the next stage automatically.
+[PR #17](https://github.com/lear111/ai-membership-store/pull/17) merged into `main` using squash commit `56b0ba40ff803179bf8e2ce6849b345a0ec3caf9`. Implementation branch: `codex/order-cancellation-timeout`; final reviewed implementation commit: `28ba356fff092f3a928e792d81e8b3455119ee67`; 16 changed files. No GitHub CI checks were configured/reported; all results above are local isolated verification. The development database remains unmigrated and no deployment was performed.
 
 ## 12. PR #17 review correction — ADMIN pending verification (2026-11-19)
 
