@@ -238,3 +238,8 @@ The first full browser run passed 41/42, including all four new edit checks. Its
 The original shopping checkout stays on its existing main commit with its three layout changes and existing services preserved. The new worktree is based on the latest fetched origin/main; the original checkout was not advanced or overwritten. No development database inspection/write, migration, Seed, permission/global-variable change, .env read/write or original-volume operation occurs. Existing twelve migration files, Prisma Schema, dependency versions and frontend application source remain unchanged.
 
 The internal-note endpoint, cancellation/expiry worker, payments/refunds, fulfillment/subscription entitlement, renewals, notifications and frontend order editing remain separately authorized future work. In particular, T15 does not claim to implement any of those APIs merely because its zero transition enters PROCESSING.
+
+
+## T20 D48 internal-note endpoint — approved design, not implemented
+
+The T15 core edit endpoints continue to reject `internalNote`; this field is not part of formData or price editing. T20 adds the separate ADMIN-only `PATCH /api/v1/admin/orders/:id/internal-note` defined in [docs/25-admin-order-center.md](25-admin-order-center.md). It requires expectedVersion and Idempotency-Key, accepts a trimmed nullable string up to 2000 characters, and may update visible USER/ADMIN orders even after payment, completion or cancellation. It increments Order.version once and atomically appends a full Revision, existing NOTE Event, AdminAuditLog and original idempotency response. SYSTEM_RENEWAL remains immutable; CUSTOMER never receives or edits internalNote. This is a T20 addition, not part of the historical T15 implementation.
