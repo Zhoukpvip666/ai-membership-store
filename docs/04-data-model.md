@@ -252,6 +252,9 @@ Singleton row, initialized with id = 1.
 
 No SMTP or payment credentials belong in AppSettings.
 
+**T21 payment-guidance use (approved design; not implemented):** `paymentInstructions` remains the existing singleton plain-text field, maximum 4000 characters, with no new column or migration. The ADMIN settings PATCH may update/clear it; AdminAuditLog records only the changed field name, not the text itself. The CUSTOMER `GET /customer/order-guidance` projection exposes only storeName, businessTimezone (AppSettings.timezone) and paymentInstructions to an ACTIVE CUSTOMER Session. It never exposes ownerEmail or other settings. The customer UI shows the text only for positive UNPAID + NOT_STARTED orders with remainingSeconds > 0. No HTML or executable markup is stored/rendered. Authentication secrets (passwords, OTPs, API keys, private keys) do not belong in this field.
+
+
 ## 3. Relationships
 
 - User has many orders, subscriptions, sessions, invitation tokens, and admin audit actions.
@@ -312,3 +315,8 @@ DDL is not an all-or-nothing migration: Order ALTER may commit before the OrderR
 ## T20 ADMIN order center implementation
 
 No Schema, CHECK, trigger or migration change. The independent internal-note mutation locks the visible USER/ADMIN Order, increments version once and appends a complete immutable snapshotSchemaVersion=1 Revision, NOTE event, exact before/after audit and actor-scoped idempotency response in the existing transaction. Lifecycle and payment facts are unchanged even in terminal states. ADMIN detail projects only seven linked-subscription fields; event reads reconstruct operation-specific scalar summaries, never raw JSON.
+
+
+## T21 customer order center — no schema change
+
+T21 reuses the existing Order customer projection, OrderRevision, OrderEvent and AppSettings models. It adds no customer-specific order status, payment/refund attempt visibility, event table, or migration. Customer order DTOs continue excluding internalNote, creator/source, cancellationReason and all audit/history data. The new order-guidance endpoint is a read projection over the existing AppSettings singleton only.
