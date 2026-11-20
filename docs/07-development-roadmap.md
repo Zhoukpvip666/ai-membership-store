@@ -78,9 +78,9 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 - No fulfillment FAILED state; undeliverable orders reuse T16 cancellation and T18 refund. No renewal, system renewal, subscription expiry worker, supplier API, customer subscription UI or notifications.
 - No migration expected. Stop at PR review; no development database deployment.
 
-## T20 administrator order center — implemented, pending PR review
+## T20 administrator order center — merged in PR #29
 
-**Status: D89-D97 implemented in codex/admin-order-center; pending PR review.** [Contract and actual validation report](25-admin-order-center.md). No development database deployment.
+**Status: D89-D97 implemented and merged in PR #29 (squash commit `6b1a30d3`).** [Contract and actual validation report](25-admin-order-center.md). No development database deployment.
 
 - Replace only the ADMIN `/admin/orders` Mock page with a real API-driven order workspace; keep the CUSTOMER order page and operating overview unchanged.
 - Reuse T14-T19 create/edit/cancel/payment/refund/fulfillment APIs. Add only ADMIN OrderEvent timeline GET, minimal linkedSubscription detail summary, frozen productType list filter, and D48 internal-note PATCH.
@@ -89,7 +89,20 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 - Internal-note update is ADMIN-only, allowed for visible USER/ADMIN orders including terminal states, requires expectedVersion and Idempotency-Key, increments version once, and writes complete Revision/Event/Audit/idempotency atomically. SYSTEM_RENEWAL remains immutable.
 - Refund is only available after cancellation to REFUND_PENDING; fulfillment reuses T19. Unsupported renewal/system/legacy states are read-only.
 - Add desktop/mobile E2E for create → payment → fulfillment and cancel → refund, plus note/version/idempotency and safe timeline tests.
-- No Prisma Schema/Migration or new dependency expected. No customer UI, overview, online payment, supplier, email, renewal or deployment work.
+- No Prisma Schema/Migration or new dependency was added. CUSTOMER order UI, overview, online payment, supplier, email, renewal and deployment remained outside T20.
+
+## T21 customer order center — approved design, implementation not started
+
+**Status: D98-D105 confirmed and documented; awaiting one implementation PR.** [Full implementation contract](26-customer-order-center.md). No development database deployment.
+
+- Replace only the CUSTOMER `/account/orders` Mock page with real own-order list/detail/edit/cancel flows, reusing the existing customer APIs. Require an ACTIVE CUSTOMER Session and preserve hidden/ownership 404 behavior.
+- Display frozen product/form snapshots, separate payment/fulfillment states, server pagination/search, and the original 24-hour countdown. NOT_REQUIRED + PROCESSING zero-price orders appear as 处理中.
+- Customer can edit only eligible UNPAID + NOT_STARTED formData using the frozen schema; customer can cancel own UNPAID/PENDING_VERIFICATION orders only when no confirmed payment fact exists. PENDING_VERIFICATION cancellation requires a clear warning.
+- Refund visibility is order-level only. REFUND_PENDING is labeled 待退款 (it does not prove the external transfer has started); REFUNDED is shown only after ADMIN confirms actual external refund completion.
+- Timeline uses createdAt/paidAt/paymentConfirmedAt/fulfilledAt/cancelledAt only; no CUSTOMER OrderEvent, Revision, Audit or payment/refund attempt read.
+- Extend ADMIN settings PATCH to update the existing AppSettings.paymentInstructions plain-text field (max 4000, empty clears); add CUSTOMER-only GET `/customer/order-guidance` returning storeName/businessTimezone/paymentInstructions only. No migration is expected.
+- Show payment instructions only for positive UNPAID + NOT_STARTED orders with remainingSeconds > 0. PENDING_VERIFICATION says wait/do not transfer again. No online payment, proof upload, refund request, checkout/order creation, subscription UI or email.
+- Desktop/mobile E2E, ownership/privacy, edit/cancel/idempotency/version, guidance settings/read, and T20 ADMIN regression are required.
 
 ## Order revision / generic idempotency foundation
 
@@ -311,7 +324,7 @@ These remain future work and must not be pulled into Task 1.2:
 
 ## Current review boundary
 
-Tasks 1.2.1–1.2.3, Phase 2 and order foundation/read/create/edit/cancel/payment/refund/fulfillment stages through T19 are merged. T20 implementation is complete in its isolated feature branch and awaits PR review. Do not begin T21 customer UI, renewal or deployment automatically.
+Tasks 1.2.1–1.2.3, Phase 2 and order foundation/read/create/edit/cancel/payment/refund/fulfillment stages through T20 are merged. T21 customer order center design is approved and documented; its implementation PR is the next authorized task. Do not begin renewal or deployment automatically.
 
 
 T19 supersedes the earlier generic Task 1.2.4 fulfillment placeholder below: use the merged D24-D32/D37/D52/D59/D64/D83-D88 contract in [docs/24-manual-fulfillment-api.md](24-manual-fulfillment-api.md). In particular, NOT_REQUIRED zero-price orders are fulfillable, and renewal/SYSTEM_RENEWAL are excluded.
@@ -330,3 +343,6 @@ No Migration, development database operation, renewal, provider integration, ema
 
 
 T20 supersedes only the ADMIN order-page Mock boundary in the original Task 1.2.3 UI prototype. CUSTOMER order UI and the operating overview remain Mock. See [the T20 contract](25-admin-order-center.md).
+
+
+T21 supersedes the original CUSTOMER `/account/orders` Mock boundary only for existing-order management. Customer catalog/checkout/order creation and customer subscription UI remain unavailable/Mock. The ADMIN order center and operating overview are unchanged. See [the T21 contract](26-customer-order-center.md).

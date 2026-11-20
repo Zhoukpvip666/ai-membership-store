@@ -1,6 +1,6 @@
 # Order API stage 1 — lists and details
 
-Originally implemented four role-specific list/detail endpoints for owner acceptance after merged PR #6; T20 extends the ADMIN read surface with an event timeline and minimal linked-subscription summary. T20 contract: [admin order center](25-admin-order-center.md). CUSTOMER read ownership and DTO behavior remain unchanged.
+Originally implemented four role-specific list/detail endpoints for owner acceptance after merged PR #6; T20 (merged PR #29) extends the ADMIN read surface with an event timeline and minimal linked-subscription summary. T20 contract: [admin order center](25-admin-order-center.md). CUSTOMER read ownership and DTO behavior remain unchanged.
 
 ## Access and responses
 
@@ -110,8 +110,17 @@ Verified on 2026-11-18:
 The final negative-control follow-up reran format/type/Lint/orders-only tests/frontend and backend builds. The13 tests passed through real HTTP against disposable MySQL8.4; no Mock Prisma was used. Its five additional ordinary-order fixtures and assertions cover both customers' status-matching non-search results plus percent/underscore/backslash lookalikes. Changes are confined to the order integration fixtures/assertions and this verification record; order business code is unchanged. Setup/Client generation and Schema validation above are retained from the initial implementation, and backend unit results are retained from the previous follow-up. Full Seed-dependent database/E2E suites were not run. No migration was added or changed, and no development database was connected for this task. Preserve the original shopping checkout, its three layout edits, `.env`, services and development volume; stop for acceptance before any order write/payment/fulfillment/renewal/frontend stage.
 
 
-## T20 ADMIN read extension — implemented, pending PR review
+## T20 ADMIN read extension — implemented and merged in PR #29
 
 T20 adds `GET /api/v1/admin/orders/:id/events?page=1&pageSize=20`, requiring the existing persisted ADMIN Session/role/CSRF/read middleware and `hidden=false` order predicate. It returns a paginated `OrderEvent` timeline ordered createdAt DESC/id ASC with explicit eventType/allowlisted operation/actor display/time/note and a reconstructed safe summary. Raw `fromStateJson`, `toStateJson`, AdminAuditLog and OrderRevision are never returned. The only internal-note before/after values surfaced are the explicit `internalNoteBefore`/`internalNoteAfter` fields for `ORDER_INTERNAL_NOTE_UPDATED`, ADMIN-only. No Revision browsing, comparison or restore API is added (D41).
 
 The existing ADMIN detail response is extended with nullable `linkedSubscription` minimal summary (id/sourceType/status/version/productNameSnapshot/startedAt/expiresAt), resolved from `sourcedSubscription` for INITIAL or `subscription` for a renewal order. It does not include subscription formData or targetIdentifier. Existing payment and refund evidence remain separate T17/T18 endpoints. The ADMIN list adds optional `productType=SUBSCRIPTION|ONE_TIME` filtered against frozen productTypeSnapshot; customer list filters are unchanged. These changes add no schema or migration.
+
+
+## T21 CUSTOMER order center — approved design, implementation not started
+
+T21 consumes the existing `GET /api/v1/customer/orders` and `GET /api/v1/customer/orders/:id` endpoints from the real `/account/orders` page, plus existing T15 customer edit and T16 customer cancellation. No changes to the CUSTOMER order list/detail DTO or ownership predicate are approved. The DTO continues to expose only the explicit customer allowlist; internalNote, creator/source, cancellationReason, payment/refund attempts, OrderEvent, OrderRevision and AdminAuditLog remain unavailable.
+
+T21 adds only `GET /api/v1/customer/order-guidance`, mounted behind the existing ACTIVE CUSTOMER Session/role guard, returning `{storeName,businessTimezone,paymentInstructions}`. It never returns ownerEmail or other internal AppSettings. `businessTimezone` is a public display setting so UTC order timestamps can be rendered consistently. The existing ADMIN `PATCH /api/v1/admin/settings` is extended with optional `paymentInstructions` (plain text, max 4000, empty clears); the AppSettings column already exists, so no migration is expected. Audit records the changed field name, not the full instruction content.
+
+Customer status/time display, edit/cancel controls, refund summary and payment-instructions visibility are defined by [D98-D105](17-order-creation-and-lifecycle-design.md) and [the T21 contract](26-customer-order-center.md). `REFUND_PENDING` is shown as `待退款`, not `退款处理中`, because the order enters that state before an external transfer is necessarily initiated. No CUSTOMER OrderEvent API, payment/refund evidence API, checkout, order creation, online payment, proof upload, refund request, subscription UI or notification is added. T21 is not implemented yet.

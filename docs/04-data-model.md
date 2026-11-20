@@ -252,6 +252,9 @@ Singleton row, initialized with id = 1.
 
 No SMTP or payment credentials belong in AppSettings.
 
+**T21 payment-guidance use (approved design; not implemented):** `paymentInstructions` remains the existing singleton plain-text field, maximum 4000 characters, with no new column or migration. The ADMIN settings PATCH may update/clear it; AdminAuditLog records only the changed field name, not the text itself. The CUSTOMER `GET /customer/order-guidance` projection exposes only storeName, businessTimezone (AppSettings.timezone) and paymentInstructions to an ACTIVE CUSTOMER Session. It never exposes ownerEmail or other settings. The customer UI shows the text only for positive UNPAID + NOT_STARTED orders with remainingSeconds > 0. No HTML or executable markup is stored/rendered. Authentication secrets (passwords, OTPs, API keys, private keys) do not belong in this field.
+
+
 ## 3. Relationships
 
 - User has many orders, subscriptions, sessions, invitation tokens, and admin audit actions.
@@ -304,7 +307,7 @@ DDL is not an all-or-nothing migration: Order ALTER may commit before the OrderR
 **T19 manual fulfillment (merged PR #26):** [docs/24-manual-fulfillment-api.md](24-manual-fulfillment-api.md) adds one ADMIN fulfillment action for INITIAL subscription and ONE_TIME orders. It uses exact PAID or NOT_REQUIRED eligibility; ONE_TIME becomes COMPLETED without a Subscription. INITIAL creates one unique ORDER-linked Subscription copied from frozen Order snapshots, with `startedAt=billingAnchorAt=currentPeriodStartAt=fulfilledAt`, a canonical `AppSettings.timezone` frozen at fulfillment, structured period-derived `expiresAt`, billingRevision=1 and earlyRenewalUsed=false. The same transaction completes Order/version/Revision/Event, creates Subscription/CREATED event, writes separate Order and Subscription AdminAuditLog rows and stores idempotency response. RENEWAL/SYSTEM_RENEWAL, fulfillment FAILED, refunds and automatic renewal are excluded. No Schema or Migration is added: all twelve committed SQL files and source/version/renewal/revision guards remain unchanged. The service deep-copies Order JSON, initializes every ORDER billing/renewal marker and guards sourceOrderId under the parent lock; both audits commit atomically. The approved Temporal 0.5.1 helper computes expiry. Unknown periods or invalid settings are rejected, never inferred or repaired. Phase 2 ADMIN/SYSTEM services and existing rows remain unchanged.
 
 
-## T20 administrator order center data access and internal-note history (implemented; pending PR review)
+## T20 administrator order center data access and internal-note history (implemented and merged in PR #29)
 
 [T20 contract](25-admin-order-center.md) adds no Prisma model or migration. The ADMIN order detail may project only a minimal linkedSubscription summary from the existing `sourcedSubscription` or renewal `subscription` relation; it must not expose subscription formData/targetIdentifier in that expansion. The new ADMIN OrderEvent list is a safe read projection of existing OrderEvent rows and never returns raw from/to JSON, AdminAuditLog or OrderRevision. The D92 internal-note PATCH updates only `Order.internalNote` plus the required version/updatedAt fields, then atomically appends the existing immutable OrderRevision, existing NOTE OrderEvent, AdminAuditLog and IdempotencyRecord. Before/after internalNote values live in the existing Event/Audit JSON allowlists; the Event note column is not used for the 2000-character note. CUSTOMER projections continue to exclude internalNote and ADMIN-only event/payment/refund data. SYSTEM_RENEWAL remains immutable. The ADMIN list adds a query filter on the existing frozen `Order.productTypeSnapshot`; no new persisted field is required.
 
@@ -312,3 +315,8 @@ DDL is not an all-or-nothing migration: Order ALTER may commit before the OrderR
 ## T20 ADMIN order center implementation
 
 No Schema, CHECK, trigger or migration change. The independent internal-note mutation locks the visible USER/ADMIN Order, increments version once and appends a complete immutable snapshotSchemaVersion=1 Revision, NOTE event, exact before/after audit and actor-scoped idempotency response in the existing transaction. Lifecycle and payment facts are unchanged even in terminal states. ADMIN detail projects only seven linked-subscription fields; event reads reconstruct operation-specific scalar summaries, never raw JSON.
+
+
+## T21 customer order center — no schema change
+
+T21 reuses the existing Order customer projection, OrderRevision, OrderEvent and AppSettings models. It adds no customer-specific order status, payment/refund attempt visibility, event table, or migration. Customer order DTOs continue excluding internalNote, creator/source, cancellationReason and all audit/history data. The new order-guidance endpoint is a read projection over the existing AppSettings singleton only.

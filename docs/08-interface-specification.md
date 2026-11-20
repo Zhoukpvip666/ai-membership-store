@@ -1,5 +1,8 @@
 # Interface Specification
 
+> **T21 CUSTOMER order center override (2026-11-20):** `/account/orders` becomes the real API-backed view of the signed-in customer's own orders, using the existing customer list/detail/edit/cancel APIs plus the new safe `GET /customer/order-guidance`. This override applies only to existing-order management. Customer product catalog, checkout/order creation and customer subscription pages remain unavailable/Mock; no payment gateway, payment proof upload, customer refund request, event/audit history or notifications are added. See [T21 contract](26-customer-order-center.md).
+
+
 > **T20 administrator order center override (2026-11-20):** `/admin/orders` is the real ADMIN order workspace, not Mock. It uses the merged order list/detail/create/edit/cancel/payment/refund/fulfillment APIs plus the T20 OrderEvent timeline and internal-note API. The order detail actions are state-driven: paid pending orders must be cancelled before a refund; PAID and NOT_REQUIRED PROCESSING orders may be fulfilled; zero-price orders remain in the fulfillment queue. The original Task 1.2.3 statement that order screens remain Mock is superseded only for the ADMIN order page. The customer order page and operating overview remain Mock until separately authorized. See [T20 contract](25-admin-order-center.md).
 
 
@@ -74,13 +77,18 @@ The same Vue application may serve both surfaces with route-level layouts and au
 - A product being delisted does not itself terminate an existing subscription.
 - Archived products retain current entitlements/expiry and historical details, but cannot start new renewals. In Task 1.2.3 all renewal creation remains unavailable with a short explanation; no separate renewal switch exists.
 
-**我的订单**
-- Customer-facing primary order statuses are only 待发货 and 已完成.
-- Payment is a separate dimension: an unpaid local order displays 未付款 with fulfillment 未开始. Only confirmed-paid pending orders display 待发货. The unpaid filter is a payment-derived view, not a new fulfillment state.
-- A refunded order may display 已退款 as a terminal outcome.
-- Show product, order number, date, amount, and status.
-- Detail view can show a concise timeline.
-- Refund requests are handled privately between customer and merchant outside the first-version UI; do not build a customer refund-request workflow in the MVP.
+**我的订单（T21 CUSTOMER 真实订单中心）**
+- `/account/orders` 从 Mock 改为真实 CUSTOMER API，只读取当前 ACTIVE Session 用户自己的 `hidden=false` 订单；列表、详情、修改、取消复用现有 customer order API。
+- 列表支持订单号/冻结商品名称搜索、服务端分页和状态筛选。默认创建时间倒序；每页 20 条，最大 100 条。
+- 付款状态和履约状态分开存储/展示。UNPAID + NOT_STARTED=待付款；PENDING_VERIFICATION=付款待核实；PAID + PROCESSING 与 NOT_REQUIRED + PROCESSING=处理中；COMPLETED=已完成；CANCELLED + REFUND_PENDING=待退款；CANCELLED + REFUNDED=已退款；其他 CANCELLED=已取消。
+- REFUND_PENDING 只表示订单取消后待退款，不能证明外部退款已经发起，客户文案必须使用“待退款”；只有管理员确认实际退款完成后才显示“已退款”。
+- 详情使用订单冻结的商品、周期、formSchemaSnapshot 和 formData，显示商品原价、最终金额、付款状态、履约状态和 24 小时剩余时间；不得用当前 Product 覆盖历史快照。
+- 订单时间线只由 createdAt、paidAt、paymentConfirmedAt、fulfilledAt、cancelledAt 生成；不读取 OrderEvent/OrderRevision/AdminAuditLog，不伪造退款时间。
+- 客户只能在 T15 允许的未付款/未开始/未过期条件下修改完整 formData；只能按 T16 取消本人未付款或待核实且无已确认付款事实的订单。PENDING_VERIFICATION 取消前必须警告可能存在未核实线下转账。
+- 客户不能取消已付款订单、零元待履约订单或已完成订单；不能修改金额、付款状态或履约状态。
+- 只展示订单级退款状态；不展示付款/退款尝试、流水号、渠道、管理员备注或审计数据，不提供客户退款申请。
+- 正金额 UNPAID + NOT_STARTED 且未过期的订单详情显示全站纯文本线下付款说明；待核实状态提示勿重复转账，其他状态不显示。说明来自安全 CUSTOMER order-guidance API。
+- 不提供客户创建订单/商城结账、在线支付、付款凭证上传、订阅中心改造或邮件通知；客户购买流程仍未开放。
 
 **个人中心**
 - Show login email, notification email, password/security entry, and logout.
@@ -172,15 +180,16 @@ No merchant registration, merchant onboarding, merchant wallet, merchant balance
 
 ## 5. Prototype behavior and current implementation boundary
 
-The original Task 1.1 prototype uses Mock data. T20 supersedes that baseline only for the ADMIN order page:
+The original Task 1.1 prototype uses Mock data. T20 supersedes that baseline for the ADMIN order page; T21 is approved to supersede it for CUSTOMER `/account/orders` only after the T21 implementation is merged:
 - `/admin/orders` uses real API-backed list/detail/create/edit/cancel/payment/refund/fulfillment and safe event history.
 - Mock confirmation/refund actions must not appear in the real ADMIN order workspace.
-- Mock operating overview and CUSTOMER order history remain Mock until separately authorized.
+- Mock operating overview remains Mock. CUSTOMER order history remains Mock until the approved T21 implementation PR is merged.
 - Product filters and product add/edit/listing/archive continue to use the existing local ADMIN APIs.
 - Unlisted/unarchived products remain manageable; archived products are unlisted, cannot be edited/relisted, and retain readable details. Product changes never rewrite historical orders or current entitlement dates. Dynamic form configuration and preview remain available.
 - Customer checkout remains a local mock order only.
 - Mock data and simulated actions outside the T20 ADMIN order page must be clearly labelled.
 - The ADMIN order center never claims that the application itself transferred customer money, initiated a refund, contacted a supplier, or sent email.
+- T21 will replace only the CUSTOMER order-history Mock branch with the existing own-order list/detail/edit/cancel APIs and the safe order-guidance endpoint. It does not enable customer checkout/order creation, online payment, proof upload, refund requests, subscription UI or email. Until T21 merges, the customer order page remains Mock.
 
 ## 6. Implementation acceptance criteria
 
