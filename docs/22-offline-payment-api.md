@@ -8,6 +8,24 @@
 
 T17 implements ADMIN-only offline payment-attempt listing, registration, confirmation and failure. It records money received externally; the application never initiates, transfers or verifies money automatically. It does not implement refunds, fulfillment, subscription entitlement, payment-provider callbacks, customer payment uploads, frontend order/payment UI, or development database deployment.
 
+## Decision conflict reconciliation
+
+D70-D75 are additive clarifications; no existing ACTIVE decision is superseded or revoked. D38 remains SUPERSEDED by D39.
+
+| Existing decision | T17 relationship | Resolution |
+|---|---|---|
+| D19 | ADMIN-only manual confirmation | Retained; no customer/provider confirmation |
+| D20 | A confirmed payment must equal the full order amount | Registration may retain a mismatched actual attempt as PENDING evidence, but confirmation rejects it; no partial/overpayment allocation |
+| D21 | occurredAt is actual external payment occurrence; paidAt copies it; paymentConfirmedAt is server time | Registration's occurredAt is only an unverified claim until confirmation; only confirmation writes Order.paidAt/paymentConfirmedAt |
+| D22 | Existing channel/reference/note fields | Reused without schema expansion |
+| D23 | PAID + PROCESSING after confirmation | Applied atomically with the confirmed PaymentTransaction |
+| D39 | No late confirmation after the original 24-hour deadline | Registration and confirmation both stop at the inclusive deadline; D39 does not prohibit a pre-deadline PENDING_VERIFICATION summary. At expiry T16 closes pending attempts and cancels the order |
+| D59 | Offline/manual receipt verification only | No payment provider, webhook, automated screenshot verification or money movement |
+| D65-D69 | Cancellation and SYSTEM timeout use Order-first row locking | T17 uses the same Order-then-PaymentTransaction lock order; cancelled/expired orders cannot be registered, confirmed or failed through T17 |
+| D34-D36/D40/D54 | Actor-scoped idempotency and immutable order history | Each successful mutation creates one version/revision/event/audit/idempotency response |
+
+D20 governs what may be accepted as a successful full payment, not whether an inaccurate attempted transfer may be retained as evidence. D39's prohibition is against late confirmation/revival after expiry; it does not prevent an administrator from recording a pending attempt while the order is still valid.
+
 ## 1. Endpoints
 
 | Method | Path | Purpose |
