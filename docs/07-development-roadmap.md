@@ -16,7 +16,7 @@
 
 ## Order edit API — merged
 
-**Status: T15 implemented; isolated regression and review delivery recorded in the implementation report. No development database deployment.** [Implementation contract and actual validation](20-order-edit-api.md).
+**Status: T15 merged in PR #14 (`5826593`); isolated regression passed. No development database deployment.** [Implementation contract and actual validation](20-order-edit-api.md).
 
 - PATCH `/customer/orders/:id`: owner-only formData complete replacement.
 - PATCH `/admin/orders/:id`: formData complete replacement and optional amountFen change in one atomic edit.
@@ -28,9 +28,9 @@
 
 T15 reuses all twelve committed migrations unchanged. Actual amount changes require a reason; supplied reasons without a price change are rejected, as are effective no-ops. Database-time eligibility is checked after the row lock and again in the conditional UPDATE. Fault-injection, real concurrent HTTP, exact DTO/replay and desktop/mobile browser coverage accompany the implementation. The read regression suite runs in its own isolated database to retain its complete-dataset assertions without deleting protected order history. No internal-note, cancel, timeout, payment, fulfillment or frontend order-management feature is included.
 
-## Order cancellation and timeout — implemented for review
+## Order cancellation and timeout — merged
 
-**Status: T16 implemented under D65-D69; isolated tests and review delivery recorded in the report. No development database deployment.** [Implementation contract and validation](21-order-cancellation-timeout.md).
+**Status: T16 merged in PR #17 (`56b0ba40`); ADMIN pending-verification correction included; final isolated regression passed. No development database deployment.** [Implementation contract and validation](21-order-cancellation-timeout.md).
 
 - POST `/customer/orders/:id/cancel`: owner-only cancellation of eligible unpaid order; reason optional.
 - POST `/admin/orders/:id/cancel`: ADMIN cancellation of eligible unpaid, paid-before-fulfillment or zero-price order; reason mandatory.
