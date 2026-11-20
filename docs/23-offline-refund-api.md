@@ -1,8 +1,8 @@
 # Offline refund attempts and confirmation — implementation contract
 
 - Document: OFFLINE-REFUND-API
-- Version: 1.1
-- Status: Implemented for PR review; no development database deployment
+- Version: 1.2
+- Status: Merged in PR #23 (`e9cb429f8fa4ce4939ece62786ee8b76886d5428`); no development database deployment
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Offline payment API](22-offline-payment-api.md), [Order cancellation/timeout](21-order-cancellation-timeout.md), [Order revision foundation](18-order-revision-foundation.md)
 
@@ -182,7 +182,7 @@ Every POST requires expectedVersion and Idempotency-Key. Same actor/key/canonica
 - Real MySQL tests cover registration/confirm/fail, channel/amount mismatch, retry, concurrent operations, order-state races, and all T16/T17 regressions.
 - No schema or migration change is expected; if DB constraints block the contract, stop and report the exact constraint before modifying schema.
 - Update API contract, data model, roadmap and implementation report. Use random isolated MySQL/no Seed; never read development .env or touch development DB/volume.
-- Stop at PR review; do not merge or begin fulfillment/subscription work without separate authorization.
+- T18 was merged in PR #23. Do not begin fulfillment/subscription work or deploy to the development database without separate authorization.
 
 ## 13. Implementation report (2026-11-19)
 
@@ -262,3 +262,8 @@ Static verification rerun for this follow-up: `npm run typecheck`, `npm run lint
 The follow-up reran `npm run test:db -w backend -- --refunds-only` successfully: 135/135, no failures or skips (refunds 18, payments 25, cancellation/timeout 25, editing 19, creation 15, reads 14, Revision 9, subscriptions 10). The precise four-JSON history assertion, separate reason fields, sanitized state, concurrency, original-response replay and all 18 rollback-injection scenarios passed. The random isolated historical-upgrade fixture preserved every row/revision in all thirteen business tables; fresh installations, repeat deploy and schema diff also passed. No development database, .env or original data volume was accessed.
 
 The same selected browser command shown above was also rerun for this fix: 22/22 passed (desktop-edge 11/11, mobile-edge 11/11), including the four refund browser executions and payment/cancellation/edit/creation regressions. Both projects passed on the first attempt with no skipped cases, using their own fresh random MySQL databases and no Seed. This is scoped browser regression, not a rerun of unrelated UI specs. Final `git diff --check` passed. The fix requires no database migration, data rewrite or manual configuration change; deployment remains outside this review update.
+
+
+### PR #23 merge record
+
+PR #23 merged into `main` using squash commit `e9cb429f8fa4ce4939ece62786ee8b76886d5428`. Final reviewed implementation commit: `579fa2a9c1c9692e3cf1c55d1b43a492abd7bc0c`. GitHub reported no CI checks for this PR; the isolated MySQL, unit, browser, format, type, lint and build results above are local verification. The development database remains unmigrated; no deployment was performed.
