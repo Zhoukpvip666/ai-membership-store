@@ -96,6 +96,7 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 21. docs/21-order-cancellation-timeout.md — approved manual cancellation and SYSTEM 24-hour timeout worker contract.
 22. docs/22-offline-payment-api.md — approved ADMIN offline payment-attempt registration, verification, failure, concurrency and history contract.
 23. docs/23-offline-refund-api.md — approved ADMIN offline full-refund attempt, confirmation, failure, retry and history contract.
+24. docs/24-manual-fulfillment-api.md — approved ADMIN fulfillment and initial ORDER subscription creation contract, including frozen timezone/period arithmetic and atomic history.
 
 ## Important launch gates
 
@@ -178,3 +179,6 @@ The order read API adds no frontend history integration. The order creation POST
 **T17 offline payment (merged PR #20):** [docs/22-offline-payment-api.md](docs/22-offline-payment-api.md) implements ADMIN-only attempt listing/registration/confirmation/failure, with exact full-payment verification, multiple-attempt closure, 24-hour deadline and atomic order history. No payment gateway or money movement. Use `npm run test:db -w backend -- --payments-only` for no-Seed isolated historical-upgrade/payment/order/subscription regression and `npm run test:e2e -w backend -- --payments-only` after building for fresh desktop/mobile browser checks. All twelve migrations remain unchanged; development deployment is not included. T17 is merged; do not deploy to the development database without separate authorization.
 
 **T18 offline refunds (merged PR #23):** [docs/23-offline-refund-api.md](docs/23-offline-refund-api.md) implements ADMIN-only full-refund attempts for cancelled REFUND_PENDING orders, exact original payment channel/amount matching, two-stage PENDING/CONFIRMED handling, failed-attempt retry and atomic versioned history. No provider API or money movement. Use `npm run test:db -w backend -- --refunds-only` for no-Seed refund/payment/cancellation/order/subscription regression, historical upgrade, repeat deploy and schema comparison. Browser acceptance uses the existing isolated E2E runner. All twelve migrations are unchanged; no development deployment is included. T18 is merged; fulfillment and subscription entitlement remain deferred.
+
+
+**T19 manual fulfillment (approved design, not implemented):** [docs/24-manual-fulfillment-api.md](docs/24-manual-fulfillment-api.md) defines ADMIN-only fulfillment for INITIAL subscription and ONE_TIME orders, exact PAID/NOT_REQUIRED checks, immutable order snapshot copying, fulfillment-time timezone and structured subscription expiry, and atomic order/subscription/history/audit/idempotency. Delivery failure reuses T16/T18. No renewal or development database deployment.
