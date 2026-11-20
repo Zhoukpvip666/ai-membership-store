@@ -124,7 +124,8 @@ The two GET routes, ordinary-order creation POST and core-edit PATCH below are i
 | POST | /admin/orders | Implemented: create ADMIN ordinary order (INITIAL/ONE_TIME) |
 | GET | /admin/orders/:id | Implemented: safe frozen order DTO; transaction/event/linked-subscription expansion deferred |
 | PATCH | /admin/orders/:id | Implemented T15: eligible ordinary-order full form replacement and optional amount edit |
-| GET | /admin/orders/:id/payment-transactions | T17 planned: paginated ADMIN-only payment-attempt evidence |\n| POST | /admin/orders/:id/payment-transactions | T17 planned: record offline PAYMENT attempt as PENDING |
+| GET | /admin/orders/:id/payment-transactions | T17 planned: paginated ADMIN-only payment-attempt evidence |
+| POST | /admin/orders/:id/payment-transactions | T17 planned: record offline PAYMENT attempt as PENDING |
 | POST | /admin/payment-transactions/:id/confirm | T17 planned: confirm exact full payment after checking external account |
 | POST | /admin/orders/:id/refunds | Record a pending full-refund action after private agreement |
 | POST | /admin/payment-transactions/:id/confirm-refund | Confirm only after refund has actually been sent externally |
