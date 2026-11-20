@@ -42,7 +42,7 @@ T15 reuses all twelve committed migrations unchanged. Actual amount changes requ
 
 Reuses all twelve migrations unchanged. Both manual handlers share the locked atomic cancellation service, with normalized original-response idempotency and exact role-safe DTOs. The worker processes at most 100 deterministic candidates per minute, with per-order SKIP LOCKED transactions, SYSTEM NULL actors, per-row rollback/retry and graceful shutdown. Real HTTP/MySQL tests cover payment facts, pending-attempt closure, all-stage fault injection, manual/worker/payment-lock races, repeated scans and existing write/read/subscription regressions. Payment-race tests use a synthetic writer only; no production payment-confirmation API is implemented.
 
-## T17 offline payment attempts and confirmation — implemented for review
+## T17 offline payment attempts and confirmation — merged
 
 **Status: D70-D75 implemented; isolated validation and implementation report accompany the PR. No development deployment.** [Implementation contract and actual results](22-offline-payment-api.md).
 

@@ -1,8 +1,8 @@
 # Offline payment attempts and confirmation — implementation contract
 
 - Document: OFFLINE-PAYMENT-API
-- Version: 1.1
-- Status: Implemented for PR review; no development database deployment
+- Version: 1.2
+- Status: Merged in PR #20 (`faf6aec11542e1cbf7abe7ce818868fd37c10472`); no development database deployment
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order creation](19-order-creation-api.md), [Order edit](20-order-edit-api.md), [Order cancellation/timeout](21-order-cancellation-timeout.md), [Order revision foundation](18-order-revision-foundation.md), [Order read API](16-order-read-api.md)
 
@@ -171,7 +171,7 @@ Every mutation requires expectedVersion. A stale version returns 409 VERSION_CON
 - Existing cancellation, creation, edit, read, revision and subscription suites pass.
 - No migration expected. If current triggers/constraints make the contract impossible, stop and report the exact blocker before adding a migration.
 - Update API contract, data model, roadmap and implementation report. Use random isolated MySQL/no Seed; never read development .env or touch development DB/volume.
-- Stop at one PR for review; do not merge or start refund/fulfillment without separate authorization.
+- T17 was merged in PR #20. Do not start refund/fulfillment or deploy to the development database without separate authorization.
 
 ## 12. Implementation report (2026-11-19)
 
@@ -260,3 +260,5 @@ Actual checks rerun for this correction:
 The historical upgrade again preserved every row/revision in all thirteen business tables. Repeat deploy had no pending migrations and the database matched the Prisma schema. Existing unrelated third-party Zod build warnings remain unchanged.
 
 The initial focused browser command returned nonzero after its successful desktop cases: the existing runner prepends a variadic `--project mobile-edge` option before the positional filename, so Playwright treated that filename as another project name. Explicit `--project=mobile-edge` selected only mobile and passed in a separate fresh random database. No runner, application code or assertion was relaxed for this invocation issue. This correction reran only the four payment browser cases; the full 52-case result in section 12 remains the earlier implementation run, not a new full-suite run.
+
+PR #20 was merged into `main` with squash commit `faf6aec11542e1cbf7abe7ce818868fd37c10472`. Final reviewed implementation commit: `d429a6f6e498c445a82930aea44e1d45fd6b433c`. No GitHub CI checks were configured/reported; local isolated verification is recorded above. The development database remains unmigrated and no deployment was performed.
