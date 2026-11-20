@@ -127,7 +127,8 @@ The order read/create/edit/cancel and T17 offline PAYMENT routes below are imple
 | GET | /admin/orders/:id/payment-transactions | ADMIN-only paginated payment-attempt evidence (merged PR #20) |
 | POST | /admin/orders/:id/payment-transactions | ADMIN-only offline PAYMENT attempt registration (merged PR #20) |
 | POST | /admin/payment-transactions/:id/confirm | ADMIN-only full-payment confirmation (merged PR #20) |
-| GET | /admin/orders/:id/refunds | T18 planned: paginated ADMIN-only REFUND attempt history |\n| POST | /admin/orders/:id/refunds | T18 planned: register externally initiated full REFUND as PENDING |
+| GET | /admin/orders/:id/refunds | T18 planned: paginated ADMIN-only REFUND attempt history |
+| POST | /admin/orders/:id/refunds | T18 planned: register externally initiated full REFUND as PENDING |
 | POST | /admin/payment-transactions/:id/confirm-refund | T18 planned: confirm actual full refund completion |
 | POST | /admin/payment-transactions/:id/fail | ADMIN-only payment-attempt failure (merged PR #20) |
 | POST | /admin/payment-transactions/:id/fail-refund | T18 planned: mark one PENDING REFUND FAILED with reason |
