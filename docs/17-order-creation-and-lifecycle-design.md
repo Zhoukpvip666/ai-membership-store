@@ -117,6 +117,12 @@
 | D67 | 已付款订单取消权限与退款状态 | 只有 ADMIN 可以取消已确认全额付款但尚未完成履约的普通订单，CUSTOMER 不得取消或发起该取消 API。取消必须与订单状态/付款事实在同一事务中校验；成功后 fulfillmentStatus=CANCELLED、cancelledAt 写入，paymentStatus=REFUND_PENDING，保留原始已确认 PAYMENT 交易，不在取消事务中伪造退款成功或删除付款记录。后续线下实际退款完成后，才由独立退款流程登记退款交易并转为 REFUNDED，遵守 D17/D18/D59 | ACTIVE |
 | D68 | 零元订单取消 API 语义 | 对 `NOT_REQUIRED + PROCESSING` 且未完成履约的零元订单，仅 ADMIN 可按 D53 取消；必须填写原因，成功后 fulfillmentStatus=CANCELLED 并记录管理员主体、版本、事件和审计，paymentStatus 保持 NOT_REQUIRED，不创建退款交易、不创建订阅。CUSTOMER 不得取消零元待履约订单；已完成或已取消订单不可再次取消 | ACTIVE |
 | D69 | 每分钟 SYSTEM 超时取消任务 | 后台任务每分钟扫描并取消已达到 `createdAt + 24 hours` 且仍未完成付款确认的到期普通订单；截止时间使用数据库 UTC 时间，编辑不延长。每笔成功取消在一个事务中完成条件状态更新、version+1、OrderRevision、OrderEvent 和待核实付款交易的关闭处理；actorType=SYSTEM、actorUserId/actorAdminId 均为 NULL，不写 AdminAuditLog，不创建退款。任务可多实例运行，依靠行锁/条件更新保证每笔订单只成功一次；重复扫描不得重复事件或版本。到期时仍为 PENDING_VERIFICATION 的未确认 PAYMENT 交易须保留原记录并标记 FAILED（注明 PAYMENT_TIMEOUT），订单汇总 paymentStatus 同步回到 UNPAID，再将 fulfillmentStatus 设为 CANCELLED；禁止事后确认。没有付款交易的 UNPAID 订单保持 UNPAID 直接取消。遵守 D10/D39，超时取消后不得恢复或迟延确认 | ACTIVE |
+| D70 | 线下付款记录与确认接口 | 第一阶段仅 ADMIN 通过三个独立接口管理线下 PAYMENT 尝试：POST `/api/v1/admin/orders/:id/payment-transactions` 登记待核实付款；POST `/api/v1/admin/payment-transactions/:id/confirm` 在核实实际全额到账后确认；POST `/api/v1/admin/payment-transactions/:id/fail` 登记核实失败。CUSTOMER 不得登记或确认付款，系统不接支付网关、支付回调或自动核实；接口必须使用已登录 ADMIN Session，不接受客户端指定操作者或订单付款状态 | ACTIVE |
+| D71 | 付款尝试分阶段登记 | 登记付款只创建 `kind=PAYMENT,status=PENDING` 的 PaymentTransaction，并将订单汇总状态更新为 PENDING_VERIFICATION；登记不代表收款成功。每笔尝试必须记录正整数实际金额、渠道和实际发生时间，流水号及备注可选。金额即使与订单应付金额不一致，也允许先登记保留证据，但不能确认成功，后续必须核实失败。登记只允许在订单仍为正金额、未取消、未确认付款且数据库当前时间早于原始 24 小时截止时进行；零元 NOT_REQUIRED 订单不得登记 PAYMENT。沿用 D21/D22/D39 | ACTIVE |
+| D72 | 线下全额付款确认条件与结果 | 只有 ADMIN 在外部账户实际核实全额到账后才能确认一笔 PAYMENT。目标交易必须仍为 PENDING；其 amountFen 必须等于锁定订单当前 amountFen；occurredAt 必须不早于订单 createdAt、不晚于数据库当前时间，且订单和确认操作均须处于原始 `createdAt + 24 hours` 截止前；订单必须未取消、未履约、未付款，且不存在其他 PENDING PAYMENT 尝试或任何已确认付款事实。确认事务将该交易设为 CONFIRMED，写入 confirmedAt/confirmedByAdminId，并将 Order 置为 PAID + PROCESSING，paidAt 精确等于该交易 occurredAt，paymentConfirmedAt 精确等于服务器数据库 UTC 确认时间。付款记录、订单、版本、Revision、Event、Audit 与幂等响应原子提交；遵守 D19-D23/D39/D74 | ACTIVE |
+| D73 | 付款尝试核实失败 | ADMIN 可将一笔仍为 PENDING 的 PAYMENT 尝试标记为 FAILED，必须填写非空失败原因（最多 500 字符）；不得删除交易或改写原始金额、渠道、流水号、occurredAt、创建者和创建时间。原始 note 保留，失败原因记录在 OrderEvent 和 AdminAuditLog 的 reason/note 字段。若该订单仍有其他 PENDING PAYMENT，paymentStatus 保持 PENDING_VERIFICATION；若已无其他 PENDING 且没有任何确认付款事实，paymentStatus 恢复 UNPAID。已 CONFIRMED/FAILED 的交易不可再次失败或确认。失败操作受 D39 截止和 D65-D69 取消状态约束 | ACTIVE |
+| D74 | 多笔待核实付款的确认门槛 | 一个订单允许保留多笔 PAYMENT 尝试，且可以同时存在多笔 PENDING 以便完整记录核实过程；但确认其中任何一笔前，必须先由 ADMIN 逐笔将同一订单的其他 PENDING PAYMENT 核实并关闭为 FAILED。确认时若存在任何其他 PENDING 尝试，整个请求拒绝且不写入。不得因某一笔到账就自动将其他尝试标记 FAILED；必须逐笔核实，防止隐藏重复到账或多收款事实。已确认一笔后不得再确认第二笔；多收款争议在订单系统外线下处理 | ACTIVE |
+| D75 | 付款操作的订单版本与历史 | 每次成功的付款尝试登记、付款确认或付款尝试失败，均必须在同一数据库事务中使 Order.version 恰好递增 1，并追加一条完整 OrderRevision、一条 OrderEvent、一条 ADMIN AdminAuditLog 和一条 actorUserId-scoped IdempotencyRecord 原始响应。每个独立成功操作只产生一个新版本；失败/拒绝请求不改变订单、付款交易或历史。Revision actorType=ADMIN/actorUserId=当前管理员；Event 使用既有 PAYMENT_RECORDED、PAYMENT_CONFIRMED；付款失败使用既有 NOTE event 并在安全状态 JSON 中标记 operation=PAYMENT_FAILED，避免新增枚举迁移。三个接口均要求 expectedVersion 与 Idempotency-Key，遵守 D34-D36/D40/D54 | ACTIVE |
 ## 2. 关键概念与字段语义
 
 ### 2.1 订单、付款、履约、订阅是不同维度
@@ -381,6 +387,7 @@ npm run build
 | 2026-11-19 | 新增 D60-D63：订单表单编辑采用完整替换；调价原因仅在金额实际变化时必填（澄清 D5/D42/D57）；管理员可在一个原子请求中同时改表单和价格且只递增一个版本；核心编辑接口与内部备注独立接口隔离，内部备注遵循 D48。 |
 | 2026-11-19 | 新增 D64：管理员将符合编辑条件的未付款订单调价为 0 时，同一事务转为 NOT_REQUIRED + PROCESSING；已有付款事实不得转零元，须走取消退款流程。 |
 | 2026-11-19 | 新增 D65-D69：定义客户/管理员取消 API、客户原因可选与管理员原因必填、已付款订单仅管理员取消并进入 REFUND_PENDING、零元订单按 D53 取消，以及每分钟 SYSTEM 超时任务和待核实付款交易关闭规则。均补充 D16-D18/D39/D53/D59，不替代既有规则。 |
+| 2026-11-19 | 新增 D70-D75：明确线下付款尝试登记/确认/失败三个接口；金额不匹配可登记但不可确认；确认必须全额、在 24 小时内且无其他待核实尝试；失败原因必填；每次成功付款操作均递增订单版本并追加完整历史。补充 D19-D23/D39/D59/D65-D69，不覆盖旧决策。 |
 
 后续每次业务决定都必须分配新的 D 编号，并按第 1.3 节维护冲突、替代和撤销关系。
 
