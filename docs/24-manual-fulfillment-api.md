@@ -2,7 +2,7 @@
 
 - Document: MANUAL-FULFILLMENT-API
 - Version: 1.0
-- Status: Approved design baseline; implementation not started
+- Status: Implemented and isolated acceptance passed; awaiting PR review; not deployed
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order revision foundation](18-order-revision-foundation.md), [Order creation](19-order-creation-api.md), [Order cancellation/timeout](21-order-cancellation-timeout.md), [Offline payment](22-offline-payment-api.md), [Offline refund](23-offline-refund-api.md), [Order/subscription foundation](15-order-subscription-foundation.md), [Subscription core compatibility](14-user-subscription-core.md)
 
@@ -104,7 +104,7 @@ For a valid ONE_TIME order, in one transaction:
 
 For a valid `INITIAL + SUBSCRIPTION` order, use the order's frozen snapshots, not mutable current Product fields. In the same transaction:
 
-1. Lock/read the AppSettings singleton row (id=1) after the Order and related PaymentTransaction locks. Read the current `timezone` setting and validate it using the repository's canonical IANA timezone validator/allowlist. Do not silently fall back to UTC or a process-local timezone if invalid; stop with a server configuration error and no writes.
+1. Lock/read the AppSettings singleton row (id=1) with `FOR SHARE` after the Order and related PaymentTransaction locks. This prevents a settings update until commit while allowing independent fulfillments to read the same configuration. Read the current `timezone` setting and validate it using the repository's canonical IANA timezone validator/allowlist. Do not silently fall back to UTC or a process-local timezone if invalid; stop with a server configuration error and no writes.
 2. Obtain the one DB UTC `fulfilledAt` instant after required locks and validation.
 3. Compute `expiresAt` from the order's frozen servicePeriodUnitSnapshot/count and the frozen fulfillment-time timezone according to section 7.
 4. Create exactly one Subscription with:
@@ -152,7 +152,7 @@ Lock order:
 1. Check same-key idempotency replay using the existing helper.
 2. Lock Order row (`FOR UPDATE`).
 3. Lock all order PaymentTransaction rows in deterministic ID order, matching T16/T17/T18's Order-first convention.
-4. For subscription orders, lock AppSettings singleton id=1 after the order/transaction locks.
+4. For subscription orders, read-lock AppSettings singleton id=1 with `FOR SHARE` after the order/transaction locks, before checking the Subscription sourceOrderId claim. Settings writes must wait, but concurrent readers remain compatible.
 5. Re-read all facts and check expectedVersion/eligibility.
 6. Create Subscription if needed; update Order with conditional `WHERE id AND version AND eligibility`.
 
@@ -198,3 +198,108 @@ Every write (Subscription, Order, Revision, OrderEvent, SubscriptionEvent, one/t
 - No migration expected. If current Schema/trigger prevents a required atomic write, stop and report the exact blocker; do not bypass immutable guards or add a migration without approval.
 - Use random isolated MySQL/no Seed; never read development .env or touch development DB/volume/data volume.
 - Update API contract, data model, roadmap and implementation report. Stop at one PR for review; do not merge or start renewal/customer entitlement UI without separate authorization.
+
+## 12. Dependency and D86 preflight — 2026-11-19
+
+This section records the earlier dependency-only increment. After subsequent owner approval, the exact tested resolver/calendar functions were promoted into `backend/src/modules/orders/service-period.ts`; the same unit tests now import that production module. Complete T19 implementation and subsequent validation are recorded in section 13.
+
+### Dependency scope and runtime
+
+- Add the backend runtime dependency `"@js-temporal/polyfill": "0.5.1"` with an exact version, without `^` or `~`.
+- Root `package-lock.json` adds that backend declaration, polyfill 0.5.1 and its new transitive dependency `jsbi` 4.3.2. A structural comparison against the base lockfile confirms all 494 pre-existing package entries are unchanged apart from the new backend dependency declaration. No frontend/root dependency declaration or existing dependency version changes.
+- Installation uses `npm install --workspace backend --save-exact --ignore-scripts --no-audit --no-fund @js-temporal/polyfill@0.5.1`. The complete existing toolchain is then restored from the updated lockfile with `npm ci --ignore-scripts --include=dev --no-audit --no-fund`. Lifecycle scripts are disabled; no environment file, migration or Seed is needed.
+- Actual runtime: Node.js **v24.13.0**, ICU **77.1**, timezone data **2025b**. Use ESM `import { Temporal } from '@js-temporal/polyfill'`; the package does not install `globalThis.Temporal`. A fresh-process test verifies that import leaves any pre-existing global value unchanged.
+- `getTimeZoneTransition` is present in the installed 0.5.1 runtime and TypeScript declarations. No built-in/global Temporal is assumed.
+
+### Resolution tested
+
+For a local calendar target, first resolve with explicit `disambiguation: 'earlier'`. If converting back yields the requested local time, it is an ordinary instant or the first occurrence of a fold. For a gap, the earlier candidate lies before the gap: call its `getTimeZoneTransition('next')` and use that exact boundary. Verify that the local times immediately before and at the boundary bracket the nonexistent target; reject if they do not. No manual offset arithmetic, host-local Date arithmetic, hourly/minute scanning, or silent UTC fallback is used.
+
+Independent tests inspect the exact transition and the preceding nanosecond, their local wall times and UTC offsets for both New York gap/fold transitions. Lord Howe tests verify its 30-minute gap/fold rather than assuming every transition lasts one hour.
+
+| Case | Requested local time | Expected and actual UTC |
+|---|---|---|
+| New York DST gap | 2026-03-08 02:30 | `2026-03-08T07:00:00.000Z` |
+| New York DST fold, first occurrence | 2026-11-01 01:30 | `2026-11-01T05:30:00.000Z` |
+| Lord Howe 30-minute gap | 2026-10-04 02:15:00.123 | `2026-10-03T15:30:00.000Z` |
+| Lord Howe 30-minute fold, first occurrence | 2026-04-05 01:45:00.123 | `2026-04-04T14:45:00.123Z` |
+
+The New York `later` result is explicitly asserted as `07:30Z` and rejected as the D86 gap answer. The correct result is local 03:00, the first valid instant after the transition, not local 03:30. Lord Howe `later` similarly yields 15:45:00.123Z rather than the required 15:30Z boundary. Gap inputs with milliseconds intentionally resolve to the exact `.000` boundary; ordinary and fold inputs preserve their milliseconds.
+
+The 19 independent unit tests also cover ordinary local times and exact transition edges, UTC/Asia-Shanghai without future DST, original January-31 monthly anchors through February/March/April/May, leap-year February 29 and later restoration, MONTH/YEAR targets inside a gap/fold, fixed 24-hour DAY arithmetic across DST, explicit multi-unit counts, millisecond precision, invalid timezones/counts and out-of-range dates. Each calendar target is calculated from the original anchor, never from a previously clamped end. Production integration must still apply the existing canonical IANA timezone policy and freeze AppSettings.timezone inside the future transaction.
+
+### Actual validation
+
+```powershell
+node --test backend/test/manual-fulfillment-timezone.test.ts
+```
+
+Result on Node 24.13.0: **19/19 passed**, no skipped tests. This is a dependency/arithmetic preflight, not an HTTP or database fulfillment acceptance result. No development `.env` is read; no database connection, Seed, migration, original Docker volume operation or running-service change is performed. No PR, push, merge or deployment is included in this increment.
+
+The same 19 tests also pass independently with child-process host timezone `TZ=UTC` and `TZ=Pacific/Honolulu` (19/19 each), without changing the operating-system timezone. Supporting checks actually executed in this increment:
+
+| Command | Actual result |
+|---|---|
+| `npm run db:generate` | Prisma Client 7.10.1 generated offline; no database access |
+| `npm test` | Backend 64/64 (including 19 preflight tests); frontend 9/9 |
+| `npm run typecheck` | Passed frontend, backend and E2E TypeScript checks |
+| `npm run lint` | Passed |
+| `npm run build` | Frontend and backend passed; existing third-party Zod/Rollup annotation warnings |
+| `npm run format:check` | After LF normalization, only unchanged baseline `README.md` fails because of an extra blank line; not altered in this increment |
+| `node node_modules/prettier/bin/prettier.cjs --check backend/package.json backend/test/manual-fulfillment-timezone.test.ts` | Passed both changed backend files |
+
+The initial format check reported Windows Git CRLF checkout endings rather than content changes. Only this newly created worktree's unmodified tracked files were normalized to their exact LF HEAD contents after byte comparisons; the original shopping worktree and its three layout edits were untouched. A separate Prettier check of `git show HEAD:README.md` reproduces the remaining README format failure, and the working README exactly matches HEAD (the formatter would remove one blank line). No tracked content change outside the four intended files is included. Database integration and browser E2E tests were not run in this dependency-only increment.
+
+## 13. T19 implementation report — 2026-11-20
+
+### Delivered behavior
+
+- `fulfill-schemas.ts` and the existing ADMIN router provide the strict POST contract in sections 2/9: expectedVersion, mandatory actor-scoped key, optional normalized fulfillmentNote, no query or managed-field overrides. Existing persisted Session, ADMIN role, CSRF, rate limiting and no-store middleware remain in force. No customer fulfillment route is added.
+- `fulfill.ts` uses the existing serializable mutation helper. It locks Order, every PaymentTransaction in ID order and, for INITIAL, AppSettings id=1. It rechecks version, ordinary source/kind, terminal/cancellation facts, sourceOrderId consumption, exact paid receipt or transaction-free zero-price eligibility. No 24-hour fulfillment cutoff is added. Invalid or missing snapshots/configuration fail before any committed write.
+- The single DB `UTC_TIMESTAMP(3)` becomes fulfilledAt and every new start/anchor/current-period-start and explicit history timestamp. INITIAL uses the approved `service-period.ts` arithmetic and freezes canonical IANA settings at that instant; ONE_TIME does not need billing settings. Aliases are canonicalized against the runtime IANA names plus the existing supported UTC/Etc-GMT names. Invalid zones never fall back silently.
+- INITIAL copies frozen Order product, price, period, form Schema/data and renewal-price snapshots, initializes all ORDER billing/renewal fields and creates one unique sourceOrderId entitlement. Current Product values and account activation status after purchase do not rewrite that history. ONE_TIME creates no entitlement or subscription history. Neither branch inserts/updates payment evidence.
+- Subscription, Order/version, complete V+1 Revision, COMPLETED event, optional CREATED subscription event, separate entity audits and original response commit together. Safe before/after event/audit JSON excludes form values, payment evidence and private internal notes. The separate subscription DTO has an explicit complete field whitelist. Existing Phase 2 ADMIN/SYSTEM subscription code is unchanged.
+
+### Isolation and acceptance coverage
+
+`--fulfillment-only` extends the existing runner without Seed. HTTP regression first runs read/edit/create/revision/subscription/T16/T17/T18 suites in their own fresh random projects, then runs the existing populated migration-twelve upgrade/data-preservation check, repeat deploy/schema comparison and T19 HTTP suite in another random MySQL 8.4 project. An explicit `--focused` skips only the prior suites for targeted T19 debugging; omitting `--fresh` still exercises the populated upgrade. Default full regression remains unchanged. The browser mode gives desktop/mobile Edge separate disposable databases. All environment files and credentials are generated outside the checkout; no development `.env`, database, service or original volume is used.
+
+The HTTP suite covers authorization, strict input, frozen snapshot copying after Product changes/archive, paid and zero INITIAL/ONE_TIME, receipt/refund anomalies, pre-existing sourceOrderId uniqueness, hidden system renewal exclusion, settings failures/aliases, unchanged disabled purchased accounts, original-response replay after API reconstruction, same/different-key races and more simultaneous independent requests than pool connections. A real T16 cancellation competes for the same parent lock; completed orders reject T18 refund registration.
+
+Eight SQL failure triggers independently abort Subscription INSERT, Order UPDATE, Revision INSERT, OrderEvent INSERT, SubscriptionEvent INSERT, Order Audit INSERT, Subscription Audit INSERT and IdempotencyRecord INSERT. Every failed HTTP request compares all business tables and immutable revisions with its pre-request snapshot, then the same key succeeds after removing only that test trigger. Existing CHECK/version/immutable-history triggers are never disabled or loosened.
+
+Calendar HTTP tests use a real MariaDB adapter `initSql: SET timestamp=...` on that test client's own connections. Production code still obtains MySQL `UTC_TIMESTAMP(3)` and persists the result. These cases cover New York gap/fold, original January-31 anchors, leap-day restoration, Lord Howe's 30-minute gap, fixed DAY arithmetic and milliseconds; separate unit tests directly inspect transition boundaries. This is not a mocked Prisma service or injected production clock. Browser tests use actual fetch, Session cookies, CSRF and Vite proxy with real isolated DB assertions, without adding order-management UI.
+
+### Actual validation
+
+All checks use Node **v24.13.0**. A prior format failure caused by the baseline README blank line is corrected while updating that requested README; no original-worktree file is reformatted.
+
+| Executed command/check | Actual result |
+|---|---|
+| `npm run format:check` | Passed for the whole worktree |
+| `npm run typecheck` | Passed frontend, backend and E2E TypeScript |
+| `npm run lint` | Passed; repeated after the final HTTP assertions |
+| `npm test` | Backend **67/67**, frontend **9/9**, no skipped tests |
+| `npm run build` | Frontend Vite and backend TypeScript passed |
+| `npm run db:validate` | Passed offline; no database connection |
+| Production timezone unit suite under `TZ=UTC` and `TZ=Pacific/Honolulu` | **19/19** independently in each environment |
+| `npm run test:e2e -w backend -- --fulfillment-only` | Edge desktop **4/4** and mobile viewport **4/4**, total **8/8**; both use real isolated HTTP/MySQL |
+| `npm run test:db -w backend -- --fulfillment-only --focused` | **21/21** T19 HTTP tests; populated migration-twelve upgrade preserved all business rows/revisions; repeated deploy and Schema comparison passed |
+| `npm run test:db -w backend -- --fulfillment-only` | **156/156**, exit 0: read **14/14**, edit **19/19**, creation **15/15**, revisions **9/9**, subscriptions **10/10**, cancellation **25/25**, payment **25/25**, refunds **18/18**, fulfillment **21/21**; historical upgrade/data retention, repeat deploy and Schema comparison passed |
+
+The build reports existing third-party Zod/Rollup PURE-annotation warnings; builds succeed without changing those dependencies. The two viewport projects are browser emulation, not a physical-device acceptance test.
+
+An initial aggregate run passed all 135 prior regression cases but exposed one intermittent 503 among eight independent fulfillment requests. The targeted suite then passed, including six successive eight-request batches. An additional deterministic shared-settings-reader case exposed the unnecessary exclusive settings lock: waiting readers reached the existing 3000ms socket boundary and a real driver connection closed (45013). The service now uses a transaction-held shared settings lock and checks sourceOrderId after the required locks. It still prevents concurrent settings edits, preserves the Order → PaymentTransaction → AppSettings sequence and leaves all connection timeouts, transaction retry limits, checks and uniqueness constraints unchanged. The final tests retain six batches and the shared-reader case. Temporary diagnostics were removed; tests use the original real Prisma client, no query replacement or Mock.
+
+A subsequent attempt overlapped three isolated MySQL workflows and native checks on this 16-GiB host. It encountered another pool-stress 503, an existing environment-test child-process timeout and the existing nested regression's 600-second aggregate limit. The exact environment suite passed 5/5 on its own. After all browser/database workflows ended, the targeted historical-upgrade/T19 run passed 21/21 (including all 48 independent requests and the held shared-reader case), and the normal `npm test` command passed backend 67/67 and frontend 9/9. Tests and assertions were not weakened, and production connection limits/timeouts were not increased. Parallel overload failures are recorded separately from these successful serial results; the original 503 was not retrospectively assigned an unobserved driver error.
+
+The final complete `--fulfillment-only` aggregate was then run by itself and exited 0 with all 156 tests passing, including the final 21-case fulfillment suite. Its populated upgrade retained all thirteen business tables and immutable revisions, repeated deployment had no pending migrations, and the database matched Prisma Schema. Each disposable project was removed by its own runner. Existing individual-suite and nested regression budgets were retained. This final run supersedes the unsuccessful aggregate attempts; it does not claim unlimited-load or production deployment acceptance.
+
+### Files and remaining boundary
+
+- Backend runtime: `backend/src/modules/orders/fulfill.ts`, `fulfill-schemas.ts`, `service-period.ts`, and `routes.ts`.
+- Test runner/cases: `backend/scripts/test-database.ts`, `backend/test/manual-fulfillment.test.ts`, `backend/test/manual-fulfillment-timezone.test.ts`, `backend/test/integration/manual-fulfillment.test.ts`, `e2e/manual-fulfillment.spec.ts`.
+- Exact dependency/lock: `backend/package.json`, root `package-lock.json`. Only Temporal 0.5.1 and its new transitive jsbi 4.3.2 are added; existing dependency versions are unchanged.
+- Documentation: this report, README, data model, API contract and roadmap (16 changed/new files in total).
+
+No Schema/Migration change: all twelve committed migrations are retained verbatim. No development deployment, frontend page, renewal/SYSTEM_RENEWAL handling, refund behavior change, automatic fulfillment, provider API, email or notification is included. Original shopping Header/Sidebar/layout documentation hashes are unchanged. Database/service deployment and any subsequent task require separate operator authorization after PR review.

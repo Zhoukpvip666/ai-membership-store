@@ -7,6 +7,8 @@ import { orderEditService } from './edit.ts'
 import { orderCancellationService } from './cancel.ts'
 import { offlinePaymentRoutes } from './payment-routes.ts'
 import { offlineRefundRoutes } from './refund-routes.ts'
+import { orderFulfillmentService } from './fulfill.ts'
+import { fulfillOrder } from './fulfill-schemas.ts'
 import { cancelAdminOrder, cancelCustomerOrder } from './cancel-schemas.ts'
 import { editAdminOrder, editCustomerOrder } from './edit-schemas.ts'
 import {
@@ -30,6 +32,19 @@ export function adminOrderRoutes(database: PrismaClient) {
   const cancel = orderCancellationService(database)
   router.use(offlinePaymentRoutes(database))
   router.use(offlineRefundRoutes(database))
+  const fulfill = orderFulfillmentService(database)
+  router.post('/orders/:id/fulfill', async (request, response) => {
+    orderDetailQuery.parse(request.query)
+    response.json(
+      await fulfill(
+        id.parse(request.params.id),
+        fulfillOrder.parse(request.body),
+        response.locals.principal.user.id,
+        creationKey(request.get('Idempotency-Key')),
+        response.locals.requestId,
+      ),
+    )
+  })
   router.post('/orders/:id/cancel', async (request, response) => {
     response.json(
       await cancel(

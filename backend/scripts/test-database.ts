@@ -38,6 +38,7 @@ const revisionsOnly = process.argv.includes('--revisions-only')
 const cancellationOnly = process.argv.includes('--cancellation-only')
 const paymentsOnly = process.argv.includes('--payments-only')
 const refundsOnly = process.argv.includes('--refunds-only')
+const fulfillmentOnly = process.argv.includes('--fulfillment-only')
 const editOnly = process.argv.includes('--edit-only')
 // Editing reuses the committed twelve-migration compatibility path, without Seed.
 const creationOnly =
@@ -45,7 +46,8 @@ const creationOnly =
   editOnly ||
   cancellationOnly ||
   paymentsOnly ||
-  refundsOnly
+  refundsOnly ||
+  fulfillmentOnly
 const creationUpgradeSnapshot = join(directory, 'creation-upgrade.json')
 const revisionUpgradeSnapshot = join(directory, 'revision-upgrade.json')
 // Protected history cannot be deleted to prepare empty-database API/seed tests.
@@ -144,8 +146,13 @@ try {
       ),
     )
   if (
-    (editOnly || cancellationOnly || paymentsOnly || refundsOnly) &&
-    !browserMode
+    (editOnly ||
+      cancellationOnly ||
+      paymentsOnly ||
+      refundsOnly ||
+      fulfillmentOnly) &&
+    !browserMode &&
+    !(fulfillmentOnly && process.argv.includes('--focused'))
   )
     // Read assertions intentionally count every visible order. Keep their
     // pristine fixtures separate from the append-only edit/creation histories.
@@ -154,14 +161,16 @@ try {
         process.execPath,
         [
           'scripts/test-database.ts',
-          refundsOnly
-            ? '--payments-only'
-            : paymentsOnly
-              ? '--cancellation-only'
-              : cancellationOnly
-                ? '--edit-only'
-                : '--orders-only',
-          ...(cancellationOnly || paymentsOnly || refundsOnly
+          fulfillmentOnly
+            ? '--refunds-only'
+            : refundsOnly
+              ? '--payments-only'
+              : paymentsOnly
+                ? '--cancellation-only'
+                : cancellationOnly
+                  ? '--edit-only'
+                  : '--orders-only',
+          ...(cancellationOnly || paymentsOnly || refundsOnly || fulfillmentOnly
             ? ['--fresh']
             : []),
         ],
@@ -170,7 +179,11 @@ try {
         // Payment/refund regression aggregates independent DB projects for
         // existing order/subscription suites. Keep individual suite timeouts;
         // only the nested aggregate gets its larger wall-clock budget.
-        paymentsOnly || refundsOnly ? 1200000 : 600000,
+        fulfillmentOnly
+          ? 1800000
+          : paymentsOnly || refundsOnly
+            ? 1200000
+            : 600000,
       ),
     )
   if (
@@ -614,18 +627,20 @@ try {
   }
   if (creationOnly && !browserMode) {
     for (const suite of [
-      ...(refundsOnly
-        ? ['offline-refunds.test.ts']
-        : paymentsOnly
-          ? ['offline-payments.test.ts']
-          : cancellationOnly
-            ? ['order-cancellation.test.ts']
-            : [
-                ...(editOnly ? ['order-edit.test.ts'] : []),
-                'order-creation.test.ts',
-                'order-revisions.test.ts',
-                'subscriptions.test.ts',
-              ]),
+      ...(fulfillmentOnly
+        ? ['manual-fulfillment.test.ts']
+        : refundsOnly
+          ? ['offline-refunds.test.ts']
+          : paymentsOnly
+            ? ['offline-payments.test.ts']
+            : cancellationOnly
+              ? ['order-cancellation.test.ts']
+              : [
+                  ...(editOnly ? ['order-edit.test.ts'] : []),
+                  'order-creation.test.ts',
+                  'order-revisions.test.ts',
+                  'subscriptions.test.ts',
+                ]),
     ])
       console.info(
         run(process.execPath, ['--test', 'test/integration/' + suite], env),
@@ -749,6 +764,7 @@ try {
           '--config',
           join(cwd, '..', 'playwright.config.ts'),
           ...(splitBrowserProjects ? ['--project=mobile-edge'] : []),
+          ...(fulfillmentOnly ? ['manual-fulfillment.spec.ts'] : []),
           ...process.argv
             .slice(2)
             .filter(
@@ -762,6 +778,8 @@ try {
                   '--cancellation-only',
                   '--payments-only',
                   '--refunds-only',
+                  '--fulfillment-only',
+                  '--focused',
                 ].includes(argument),
             ),
         ],
