@@ -369,7 +369,7 @@ No Prisma Schema, migration, dependency version or lockfile changes. All twelve 
 
 ### Remaining review and operational limits
 
-- PR code review and operator acceptance remain pending. No development deployment, service restart or T21 work is included.
+- PR #29 code review and merge are complete. No development deployment, service restart or T21 implementation was included in T20.
 - Mobile acceptance uses Edge with an iPhone-sized viewport, not a physical phone. The existing product-type mobile case had one whole-suite timeout, then passed unchanged in isolation; no root cause beyond that observed intermittent timeout is claimed.
 - The original checkout still contains exactly its three uncommitted layout edits. All three SHA-256 values match the preflight baseline. The CUSTOMER view is byte-equivalent after line-ending normalization to the prior order view; no CUSTOMER feature was added.
 - The original MySQL container remains running/healthy on its existing volume. Development database content was not queried or changed. All random test containers/volumes were removed by their runner; local logs/screenshots are ignored.
