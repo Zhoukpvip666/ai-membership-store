@@ -66,6 +66,18 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 - Every successful mutation increments Order.version once and writes Revision/Event/AdminAuditLog/idempotency atomically. Lock order remains Order -> PaymentTransaction, matching T16/T17.
 - No partial refunds, provider APIs, money movement, fulfillment or subscription work. All twelve migrations unchanged; stop at PR review and do not deploy to development DB. Use `npm run test:db -w backend -- --refunds-only` for isolated HTTP refund and existing regression; browser checks use the same no-Seed runner.
 
+## T19 manual fulfillment and initial subscription entitlement — approved design, implementation not started
+
+**Status: D83-D88 confirmed and documented; awaiting one implementation PR.** [Full implementation contract](24-manual-fulfillment-api.md).
+
+- ADMIN-only POST `/admin/orders/:id/fulfill`; supports ordinary USER/ADMIN INITIAL subscription and ONE_TIME orders only. RENEWAL and SYSTEM_RENEWAL are excluded.
+- Eligible paid orders require PAID + PROCESSING and exactly one matching confirmed full PAYMENT. Zero-price orders require NOT_REQUIRED + PROCESSING, amount=0, NULL payment times and no transaction rows.
+- ONE_TIME completes without Subscription. INITIAL creates one unique sourceType=ORDER Subscription, copying every frozen Order product/period/form snapshot; no merging or extension of existing subscriptions.
+- startedAt, billingAnchorAt and currentPeriodStartAt equal the same DB UTC fulfilledAt. AppSettings.timezone is read and frozen at fulfillment. DAY is fixed 24-hour duration; MONTH/YEAR use timezone-aware calendar arithmetic with original day anchor, month-end clamp and defined DST behavior.
+- One transaction commits Order COMPLETED/version/Revision/Event, optional Subscription + CREATED SubscriptionEvent, separate Order and Subscription AdminAuditLog rows, and idempotency response. Any failure rolls back all writes.
+- No fulfillment FAILED state; undeliverable orders reuse T16 cancellation and T18 refund. No renewal, system renewal, subscription expiry worker, supplier API, customer subscription UI or notifications.
+- No migration expected. Stop at PR review; no development database deployment.
+
 ## Order revision / generic idempotency foundation
 
 **Status: Merged in PR #9; development database migration remains a separately authorized operation.** [Schema, immutable history and test guide](18-order-revision-foundation.md).
@@ -287,3 +299,6 @@ These remain future work and must not be pulled into Task 1.2:
 ## Current review boundary
 
 Tasks 1.2.1–1.2.2 are merged. The owner separately authorized Task 1.2.3, which stops at its PR for human review. Do not begin Task 1.2.4 or later business work without separate authorization.
+
+
+T19 supersedes the earlier generic Task 1.2.4 fulfillment placeholder below: use the precise D24-D32/D37/D52/D59/D64/D83-D88 contract in [docs/24-manual-fulfillment-api.md](24-manual-fulfillment-api.md). In particular, NOT_REQUIRED zero-price orders are fulfillable, and renewal/SYSTEM_RENEWAL are excluded.
