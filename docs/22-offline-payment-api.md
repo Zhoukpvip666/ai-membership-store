@@ -126,7 +126,7 @@ Every successful mutation (attempt registration, confirmation, or failure) must,
 3. Apply the PaymentTransaction change and Order paymentStatus/timestamps update.
 4. Increment Order.version exactly once using the existing protected version mechanism/conditional update.
 5. Append exactly one complete OrderRevision from the persisted updated Order, snapshotSchemaVersion=1, actorType=ADMIN and actorUserId=authenticated admin ID. Preserve the failure reason in Revision.reason when applicable; for registration/confirmation use NULL unless a documented operational reason exists.
-6. Append exactly one OrderEvent: PAYMENT_RECORDED for registration, PAYMENT_CONFIRMED for confirmation, and existing NOTE with safe `operation: PAYMENT_FAILED` marker for failure (do not add an enum or migration). Include transaction ID, amount, channel and status in sanitized state JSON; do not include externalReference, raw note, credentials or customer formData.
+6. Append exactly one OrderEvent: PAYMENT_RECORDED for registration, PAYMENT_CONFIRMED for confirmation, and existing NOTE with safe `operation: PAYMENT_FAILED` marker for failure (do not add an enum or migration). State JSON describes the transaction at that point in time: registration's before-state has NULL transactionId, amountFen, channel and transactionStatus because the new attempt does not yet exist, even if the order already has other attempts. Its after-state includes the new transaction ID, actual amount/channel and PENDING status. Confirmation/failure before-states reference the existing PENDING transaction; their after-states retain that ID/amount/channel with CONFIRMED/FAILED status. Apply these same states to Event.fromStateJson/toStateJson and Audit.beforeJson/afterJson. Do not include externalReference, raw note, credentials or customer formData.
 7. Append exactly one sanitized AdminAuditLog with action PAYMENT_RECORDED / PAYMENT_CONFIRMED / PAYMENT_FAILED, entityType PaymentTransaction, entityId transaction ID, requestId, before/after state and reason where applicable.
 8. Build and store the original response in IdempotencyRecord scoped to actorUserId + keyHash.
 9. Commit. Any failure rolls back PaymentTransaction, Order, version, Revision, Event, Audit and idempotency response.
@@ -235,3 +235,28 @@ Actual commands executed in this task:
 `npm ci` reported three high-severity audit findings in the existing locked dependencies; dependency versions were not changed. Frontend builds retain existing third-party Zod comment-annotation warnings.
 
 No Schema, Migration, dependency version, frontend application source, authentication, T16 business logic or original layout is changed. All twelve published migrations remain byte-for-byte unchanged. No development database migration/deployment, Seed, refund, payment-provider integration, fulfillment or next-stage work is included. Work started from fetched `origin/main` at `72d24a3`; the original shopping checkout's older local main and three layout edits were deliberately preserved. Their SHA-256 values and original API/frontend PIDs were rechecked unchanged; the development MySQL container remained healthy. Development .env and database data were not read or modified by implementation/testing.
+
+## 13. PR #20 review correction — accurate payment history (2026-11-19)
+
+The registration state serializer previously used the newly saved transaction as a fallback when there was no prior target. This incorrectly put its ID, amount and channel into the before-state. The serializer now uses only the explicitly supplied transaction: registration before-state has NULL transactionId, amountFen, channel and transactionStatus; after-state contains the newly created PENDING attempt. Existing attempts on the same order are not substituted for the not-yet-created attempt. Confirmation and failure still use the original PENDING target for before-state and the updated target for after-state. Event.fromStateJson/toStateJson and Audit.beforeJson/afterJson share these corrected states.
+
+Three added real HTTP/MySQL tests assert all four complete JSON objects independently of the production serializer. Registration covers both the first attempt and another attempt while the order is already PENDING_VERIFICATION, with different amounts/channels. Confirmation/failure cover the existing transaction ID, original amount/channel/PENDING status, and final CONFIRMED/FAILED state. The existing sensitive-value exclusion, all-stage transaction rollback, concurrent/version/idempotency and original-response replay tests remain unchanged.
+
+This follow-up changes only `backend/src/modules/orders/payments.ts`, `backend/test/integration/offline-payments.test.ts` and this report. No existing history is rewritten, and no Schema, Migration, business decision, frontend code, dependency or original-worktree file is changed. Tests use the existing random isolated MySQL 8.4/no-Seed runner; development .env, database and original volume remain outside the test environment.
+
+Actual checks rerun for this correction:
+
+| Command | Result |
+|---|---|
+| `npm run format:check` | Passed |
+| `npm run typecheck` | Passed for frontend, backend and E2E |
+| `npm run lint` | Passed |
+| `npm test` | Backend 41/41; frontend 9/9 |
+| `npm run build` | Frontend Vite and backend TypeScript builds passed |
+| `npm run test:db -w backend -- --payments-only` | Passed, payment HTTP 25/25, cancellation 25/25, read 14/14, edit 19/19, creation 15/15, Revision 9/9, subscription 10/10: 117/117 total, no skipped/cancelled tests |
+| `npm run test:e2e -w backend -- --payments-only e2e/offline-payments.spec.ts` | Desktop payment browser tests passed 2/2; automatic mobile selection failed before running tests, as explained below |
+| `npm run test:e2e -w backend -- --payments-only e2e/offline-payments.spec.ts --project=mobile-edge` | Mobile payment browser tests passed 2/2; four focused browser cases passed across both viewports |
+
+The historical upgrade again preserved every row/revision in all thirteen business tables. Repeat deploy had no pending migrations and the database matched the Prisma schema. Existing unrelated third-party Zod build warnings remain unchanged.
+
+The initial focused browser command returned nonzero after its successful desktop cases: the existing runner prepends a variadic `--project mobile-edge` option before the positional filename, so Playwright treated that filename as another project name. Explicit `--project=mobile-edge` selected only mobile and passed in a separate fresh random database. No runner, application code or assertion was relaxed for this invocation issue. This correction reran only the four payment browser cases; the full 52-case result in section 12 remains the earlier implementation run, not a new full-suite run.

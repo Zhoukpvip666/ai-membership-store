@@ -147,6 +147,34 @@ async function snapshot() {
     OrderRevision: await db.orderRevision.findMany({ orderBy: { id: 'asc' } }),
   }
 }
+async function assertPaymentHistory(
+  orderId: string,
+  transactionId: string,
+  operation: 'PAYMENT_RECORDED' | 'PAYMENT_CONFIRMED' | 'PAYMENT_FAILED',
+  beforeState: Prisma.InputJsonObject,
+  afterState: Prisma.InputJsonObject,
+) {
+  const events = await db.orderEvent.findMany({
+    where: {
+      orderId,
+      eventType: operation === 'PAYMENT_FAILED' ? 'NOTE' : operation,
+      toStateJson: { path: '$.transactionId', equals: transactionId },
+    },
+  })
+  const audits = await db.adminAuditLog.findMany({
+    where: {
+      entityType: 'PaymentTransaction',
+      entityId: transactionId,
+      action: operation,
+    },
+  })
+  assert.equal(events.length, 1)
+  assert.equal(audits.length, 1)
+  assert.deepEqual(events[0]!.fromStateJson, beforeState)
+  assert.deepEqual(events[0]!.toStateJson, afterState)
+  assert.deepEqual(audits[0]!.beforeJson, beforeState)
+  assert.deepEqual(audits[0]!.afterJson, afterState)
+}
 async function rejected(
   action: () => ReturnType<typeof request>,
   status: number,
@@ -408,6 +436,92 @@ test('all five channels register actual amounts including mismatches, without co
     )
   }
 })
+
+test('registration history has no transaction before INSERT and the new PENDING transaction after INSERT', async () => {
+  const order = await fixture()
+  for (const [index, channel] of ['WECHAT', 'BANK_TRANSFER'].entries()) {
+    assert.equal(
+      await db.paymentTransaction.count({ where: { orderId: order.id } }),
+      index,
+    )
+    const amountFen = index === 0 ? 725 : 1000,
+      response = await request(recordPath(order.id), {
+        ...input(order, index + 1),
+        amountFen,
+        channel,
+      })
+    assert.equal(response.status, 201, JSON.stringify(response.body))
+    const payment = await db.paymentTransaction.findUniqueOrThrow({
+      where: { id: response.body.paymentTransaction.id },
+    })
+    assert.equal(payment.orderId, order.id)
+    assert.equal(payment.amountFen, amountFen)
+    assert.equal(payment.channel, channel)
+    assert.equal(payment.status, 'PENDING')
+    const beforeState = {
+      operation: 'PAYMENT_RECORDED',
+      orderId: order.id,
+      transactionId: null,
+      version: index + 1,
+      paymentStatus: index === 0 ? 'UNPAID' : 'PENDING_VERIFICATION',
+      fulfillmentStatus: 'NOT_STARTED',
+      amountFen: null,
+      channel: null,
+      transactionStatus: null,
+    }
+    await assertPaymentHistory(
+      order.id,
+      payment.id,
+      'PAYMENT_RECORDED',
+      beforeState,
+      {
+        ...beforeState,
+        transactionId: payment.id,
+        version: index + 2,
+        paymentStatus: 'PENDING_VERIFICATION',
+        amountFen,
+        channel,
+        transactionStatus: 'PENDING',
+      },
+    )
+  }
+})
+
+for (const operation of ['PAYMENT_CONFIRMED', 'PAYMENT_FAILED'] as const)
+  test(`${operation} history retains the existing PENDING transaction before the change`, async () => {
+    const confirming = operation === 'PAYMENT_CONFIRMED',
+      order = await fixture({ paymentStatus: 'PENDING_VERIFICATION' }),
+      payment = await attempt(order, {
+        amountFen: confirming ? 1000 : 725,
+        channel: 'ALIPAY',
+      }),
+      response = await request(
+        actionPath(payment.id, confirming ? 'confirm' : 'fail'),
+        {
+          expectedVersion: 1,
+          ...(confirming ? {} : { reason: 'No receipt' }),
+        },
+      )
+    assert.equal(response.status, 200, JSON.stringify(response.body))
+    const beforeState = {
+      operation,
+      orderId: order.id,
+      transactionId: payment.id,
+      version: 1,
+      paymentStatus: 'PENDING_VERIFICATION',
+      fulfillmentStatus: 'NOT_STARTED',
+      amountFen: payment.amountFen,
+      channel: payment.channel,
+      transactionStatus: 'PENDING',
+    }
+    await assertPaymentHistory(order.id, payment.id, operation, beforeState, {
+      ...beforeState,
+      version: 2,
+      paymentStatus: confirming ? 'PAID' : 'UNPAID',
+      fulfillmentStatus: confirming ? 'PROCESSING' : 'NOT_STARTED',
+      transactionStatus: confirming ? 'CONFIRMED' : 'FAILED',
+    })
+  })
 
 test('GET is read-only, paginated, stably sorted, PAYMENT-only and uses an exact evidence allowlist', async () => {
   const order = await fixture(),

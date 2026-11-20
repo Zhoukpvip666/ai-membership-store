@@ -256,12 +256,12 @@ export function offlinePaymentService(database: PrismaClient) {
           const state = (row: typeof order, payment?: Payment) => ({
             operation: intent.operation,
             orderId,
-            transactionId: saved.id,
+            transactionId: payment?.id ?? null,
             version: row.version,
             paymentStatus: row.paymentStatus,
             fulfillmentStatus: row.fulfillmentStatus,
-            amountFen: payment?.amountFen ?? saved.amountFen,
-            channel: payment?.channel ?? saved.channel,
+            amountFen: payment?.amountFen ?? null,
+            channel: payment?.channel ?? null,
             transactionStatus: payment?.status ?? null,
           })
           const beforeJson = state(order, target),
