@@ -120,7 +120,7 @@ A task is complete only when:
 
 - T20 is merged: `/admin/orders` is a real ADMIN API-backed order center. Do not restore its old Mock order list/dialog or mock completion/refund actions.
 - T21 implements `/account/orders` as a real CUSTOMER API-backed view of the signed-in customer's existing orders only. Reuse the existing own-order list/detail/edit/cancel APIs. Do not create orders from this page.
-- T21 does not open the storefront checkout. Customer product catalog, purchase/checkout/order creation, customer subscription UI, online payment, proof upload, refund requests, payment/refund evidence, email and notifications remain unavailable/Mock or out of scope until separately approved.
+- T21 does not open the storefront checkout. Customer product catalog and purchase UI remain unavailable on main pending the separately authorized T22 implementation. Customer subscription UI, online payment, proof upload, refund requests, payment/refund evidence, email and notifications remain unavailable/Mock or out of scope.
 - Customer refund status is order-level only. `REFUND_PENDING` means `待退款`, not proof that an external refund transfer has started; `REFUNDED` appears only after ADMIN confirms actual refund completion.
 - Customer order detail must use frozen snapshots, hide internalNote/creator/audit/revision/payment/refund attempt data, and render only non-sensitive form values. Preserve ownership/hidden 404 behavior and existing Session/ACTIVE checks.
 - T21 edits the existing `AppSettings.paymentInstructions` field and expose it only through the strict CUSTOMER order-guidance projection defined in docs/26. No new migration/dependency is expected. The guidance is plain text, never HTML, and does not move/verify money or send notifications.
