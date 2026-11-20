@@ -26,7 +26,7 @@ export const paymentSelect = {
 type Payment = Prisma.PaymentTransactionGetPayload<{
   select: typeof paymentSelect
 }>
-function paymentDto(row: Payment) {
+export function paymentDto(row: Payment) {
   return {
     id: row.id,
     orderId: row.orderId,

@@ -37,13 +37,15 @@ const productsOnly = process.argv.includes('--products-only')
 const revisionsOnly = process.argv.includes('--revisions-only')
 const cancellationOnly = process.argv.includes('--cancellation-only')
 const paymentsOnly = process.argv.includes('--payments-only')
+const refundsOnly = process.argv.includes('--refunds-only')
 const editOnly = process.argv.includes('--edit-only')
 // Editing reuses the committed twelve-migration compatibility path, without Seed.
 const creationOnly =
   process.argv.includes('--creation-only') ||
   editOnly ||
   cancellationOnly ||
-  paymentsOnly
+  paymentsOnly ||
+  refundsOnly
 const creationUpgradeSnapshot = join(directory, 'creation-upgrade.json')
 const revisionUpgradeSnapshot = join(directory, 'revision-upgrade.json')
 // Protected history cannot be deleted to prepare empty-database API/seed tests.
@@ -141,7 +143,10 @@ try {
         600000,
       ),
     )
-  if ((editOnly || cancellationOnly || paymentsOnly) && !browserMode)
+  if (
+    (editOnly || cancellationOnly || paymentsOnly || refundsOnly) &&
+    !browserMode
+  )
     // Read assertions intentionally count every visible order. Keep their
     // pristine fixtures separate from the append-only edit/creation histories.
     console.info(
@@ -149,19 +154,23 @@ try {
         process.execPath,
         [
           'scripts/test-database.ts',
-          paymentsOnly
-            ? '--cancellation-only'
-            : cancellationOnly
-              ? '--edit-only'
-              : '--orders-only',
-          ...(cancellationOnly || paymentsOnly ? ['--fresh'] : []),
+          refundsOnly
+            ? '--payments-only'
+            : paymentsOnly
+              ? '--cancellation-only'
+              : cancellationOnly
+                ? '--edit-only'
+                : '--orders-only',
+          ...(cancellationOnly || paymentsOnly || refundsOnly
+            ? ['--fresh']
+            : []),
         ],
         process.env,
         cwd,
-        // Payment regression aggregates three complete independent DB projects
-        // (read, edit/create/revision/subscription, cancellation). Keep every
-        // individual suite's existing timeout; budget this larger parent batch.
-        paymentsOnly ? 1200000 : 600000,
+        // Payment/refund regression aggregates independent DB projects for
+        // existing order/subscription suites. Keep individual suite timeouts;
+        // only the nested aggregate gets its larger wall-clock budget.
+        paymentsOnly || refundsOnly ? 1200000 : 600000,
       ),
     )
   if (
@@ -605,16 +614,18 @@ try {
   }
   if (creationOnly && !browserMode) {
     for (const suite of [
-      ...(paymentsOnly
-        ? ['offline-payments.test.ts']
-        : cancellationOnly
-          ? ['order-cancellation.test.ts']
-          : [
-              ...(editOnly ? ['order-edit.test.ts'] : []),
-              'order-creation.test.ts',
-              'order-revisions.test.ts',
-              'subscriptions.test.ts',
-            ]),
+      ...(refundsOnly
+        ? ['offline-refunds.test.ts']
+        : paymentsOnly
+          ? ['offline-payments.test.ts']
+          : cancellationOnly
+            ? ['order-cancellation.test.ts']
+            : [
+                ...(editOnly ? ['order-edit.test.ts'] : []),
+                'order-creation.test.ts',
+                'order-revisions.test.ts',
+                'subscriptions.test.ts',
+              ]),
     ])
       console.info(
         run(process.execPath, ['--test', 'test/integration/' + suite], env),
@@ -737,7 +748,7 @@ try {
           'test',
           '--config',
           join(cwd, '..', 'playwright.config.ts'),
-          ...(splitBrowserProjects ? ['--project', 'mobile-edge'] : []),
+          ...(splitBrowserProjects ? ['--project=mobile-edge'] : []),
           ...process.argv
             .slice(2)
             .filter(
@@ -750,6 +761,7 @@ try {
                   '--edit-only',
                   '--cancellation-only',
                   '--payments-only',
+                  '--refunds-only',
                 ].includes(argument),
             ),
         ],
