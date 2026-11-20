@@ -259,7 +259,7 @@ The UI is advisory only. The backend's existing strict DTO, role checks, row loc
 
 ## 10. Frontend architecture and request handling
 
-- Keep the existing Vue 3 + TypeScript + Element Plus + `@lucide/vue` stack and current AdminLayout/navigation.
+- Keep the existing Vue 3 + TypeScript + Element Plus + `@lucide/vue` stack and current AdminLayout/navigation. Update `AdminLayout.vue`'s persistent-page detection so `/admin/orders` is marked LOCAL/API-backed; keep `/admin` overview marked MOCK and change the demo notice copy so it no longer claims the order page is Mock.
 - Replace the Mock data path in `frontend/src/views/account/Orders.vue` only for the ADMIN route; do not change CUSTOMER orders in this task.
 - Add a dedicated typed `frontend/src/api/orders.ts` module for list/detail/events/payment/refund and mutation request/response types. Reuse the existing `api()` client and its same-origin credentials, CSRF and Idempotency-Key behavior.
 - Create focused ADMIN components as needed (list/filter, detail, create/edit, payment/refund/fulfillment actions); reuse `ProductFormInputs.vue`, existing date/time helpers and format utilities.
