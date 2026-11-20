@@ -7,6 +7,7 @@ const state = reactive({
     storeName: 'AI 会员商店',
     ownerEmail: '',
     timezone: 'Asia/Shanghai',
+    paymentInstructions: '',
     updatedAt: '',
   } as AppSettings,
   loaded: false,
@@ -35,12 +36,16 @@ export const settings = {
     return state.value
   },
   async save(
-    input: Pick<AppSettings, 'storeName' | 'ownerEmail' | 'timezone'>,
+    input: Pick<
+      AppSettings,
+      'storeName' | 'ownerEmail' | 'timezone' | 'paymentInstructions'
+    >,
   ) {
     state.value = (
       await api<{ settings: AppSettings }>('/admin/settings', 'PATCH', input)
     ).settings
     state.loaded = true
     state.error = ''
+    return state.value
   },
 }

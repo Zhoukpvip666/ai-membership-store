@@ -12,7 +12,11 @@ test.beforeEach(async ({ page }) => {
             id: '00000000-0000-4000-8000-000000000001',
             username: 'Prototype admin',
             loginEmail: 'owner@example.com',
-            role: 'ADMIN',
+            role: ['/orders', '/account/orders'].includes(
+              new URL(route.request().frame().url()).pathname,
+            )
+              ? 'CUSTOMER'
+              : 'ADMIN',
             status: 'ACTIVE',
           },
         },
@@ -31,6 +35,7 @@ test.beforeEach(async ({ page }) => {
     if (
       [
         '/api/v1/admin/orders',
+        '/api/v1/customer/orders',
         '/api/v1/admin/users',
         '/api/v1/admin/products',
         '/api/v1/admin/subscriptions',
@@ -38,6 +43,14 @@ test.beforeEach(async ({ page }) => {
     )
       return route.fulfill({
         json: { items: [], total: 0, page: 1, pageSize: 20 },
+      })
+    if (path === '/api/v1/customer/order-guidance')
+      return route.fulfill({
+        json: {
+          storeName: 'Prototype store',
+          businessTimezone: 'Asia/Shanghai',
+          paymentInstructions: '',
+        },
       })
     throw new Error(
       'Mock history must not call order/subscription business APIs.',
@@ -50,7 +63,7 @@ test('all ten pages navigate and responsive layouts fit', async ({
   for (const [path, title] of [
     ['/', '商品'],
     ['/subscriptions', '我的订阅'],
-    ['/orders', '我的订单'],
+    ['/account/orders', '我的订单'],
     ['/profile', '个人中心'],
     ['/admin', '经营概览'],
     ['/admin/products', '商品管理'],

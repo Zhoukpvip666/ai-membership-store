@@ -34,9 +34,12 @@ export function orderEditService(database: PrismaClient) {
         if (admin)
           await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`
         else
-          await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND userId = ${actorId} FOR UPDATE`
+          await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND userId = ${actorId} AND hidden = FALSE FOR UPDATE`
         const order = await tx.order.findFirst({
-          where: { id: orderId, ...(admin ? {} : { userId: actorId }) },
+          where: {
+            id: orderId,
+            ...(admin ? {} : { userId: actorId, hidden: false }),
+          },
           select: { ...orderRevisionSelect, user: adminOrderSelect.user },
         })
         if (!order) throw new ApiError(404, 'NOT_FOUND', '订单不存在')

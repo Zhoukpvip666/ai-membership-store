@@ -124,7 +124,17 @@ function canonical(value: unknown): string {
 }
 // Memory only. Serialize once, then reuse the exact body/key after an unknown
 // response. A changed intent has a different fingerprint and receives a new key.
-export class OrderRequest {
+type OrderResult = Pick<
+  AdminOrder,
+  | 'id'
+  | 'orderNo'
+  | 'version'
+  | 'amountFen'
+  | 'paymentStatus'
+  | 'fulfillmentStatus'
+>
+
+export class OrderRequest<T extends OrderResult = AdminOrder> {
   private context?: {
     fingerprint: string
     path: string
@@ -151,7 +161,7 @@ export class OrderRequest {
   async retry() {
     const context = this.context
     if (!context) throw new Error('没有可重试的订单请求')
-    const result = await api<{ order: AdminOrder }>(
+    const result = await api<{ order: T }>(
       context.path,
       context.method,
       context.body,

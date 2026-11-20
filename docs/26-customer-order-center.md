@@ -2,7 +2,7 @@
 
 - Document: CUSTOMER-ORDER-CENTER
 - Version: 1.0
-- Status: Approved design baseline; implementation not started
+- Status: Implemented in codex/customer-order-center; pending PR review
 - Date: 2026-11-20
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [UI specification](08-interface-specification.md), [Order read API](16-order-read-api.md), [Order edit](20-order-edit-api.md), [Cancellation/timeout](21-order-cancellation-timeout.md), [Admin order center](25-admin-order-center.md), [Data model](04-data-model.md)
 
@@ -82,7 +82,7 @@ The 已取消 preset intentionally includes its 待退款 and 已退款 subsets;
 
 ### 3.3 List presentation
 
-Each row/card shows frozen productNameSnapshot, orderNo, createdAt, amountFen, payment status and fulfillment/business status. Show the 24-hour remaining countdown only when the server DTO reports a positive `remainingSeconds` for an eligible UNPAID + NOT_STARTED order. Use server pagination and total count; do not locally filter only the current page.
+Each row/card shows frozen productNameSnapshot, orderNo, createdAt, amountFen, payment status and fulfillment/business status. Show the 24-hour remaining countdown only when the server DTO reports a positive `remainingSeconds` for an eligible UNPAID + NOT_STARTED order. Use server pagination and total count; do not locally filter only the current page. Start the monotonic countdown from receipt of the accepted page response. Stale responses and responses that require a page correction do not reset the countdown.
 
 Desktop: concise table/list with status filters, search and pagination. Mobile: vertically stacked order cards, one-column controls and full-width detail action. Provide loading, empty, retryable error and stale-response handling. Do not show Mock labels/data or read `mock`/`CURRENT_USER` in this route.
 
@@ -130,7 +130,7 @@ Legacy/inconsistent combinations not listed above display `状态待确认`; do 
 
 ### 6.1 Edit
 
-Show 修改订单 only if the latest DTO says `paymentStatus=UNPAID`, `fulfillmentStatus=NOT_STARTED`, `remainingSeconds>0`, `formSchemaSnapshot` is non-NULL, and there is no confirmed payment fact. The client predicate is for UI visibility only; T15 server row lock, expectedVersion, frozen schema validation and database-time deadline are authoritative.
+Show 修改订单 only if the latest DTO says `paymentStatus=UNPAID`, `fulfillmentStatus=NOT_STARTED`, `remainingSeconds>0`, the safe frozen form has at least one field, and there is no confirmed payment fact. The display countdown must also have time left. An empty form remains valid for detail and cancellation. The client predicate is for UI visibility only; T15 server row lock, expectedVersion, frozen schema validation and database-time deadline are authoritative.
 
 Reuse `PATCH /api/v1/customer/orders/:id` with strict `{expectedVersion,formData}` and Idempotency-Key:
 
@@ -228,7 +228,7 @@ The endpoint only returns instructions; it does not create a payment, reserve fu
 - Keep idempotency request body/key in memory for unknown-result retry; never persist full formData/payment instructions in localStorage/sessionStorage.
 - On successful edit/cancel, refresh detail and the server-paginated list/count. Preserve the exact request body/key for replay.
 - On stale version, reload and ask the customer to review; do not automatically overwrite.
-- Use `businessTimezone` for all customer order dates and countdown labels; use server `remainingSeconds` as the countdown authority. Client clock is display-only and never authorizes writes.
+- Use `businessTimezone` for all customer order dates. Display the countdown by subtracting elapsed monotonic browser seconds since receipt of the accepted list or detail response from that response's `remainingSeconds`. The server value is authoritative and the browser clock never authorizes writes.
 
 ## 11. Responsive behavior
 
@@ -296,3 +296,57 @@ Use random isolated MySQL and real HTTP with persisted CUSTOMER/ADMIN sessions. 
 ## 15. Delivery
 
 One T21 implementation PR targeting `main`, using an independent worktree/branch `codex/customer-order-center`. Preserve all existing user changes, original worktree, running services and database volume. Update this document, D98-D105 decision register, docs/08, docs/05, docs/04, docs/07, docs/16, AGENTS and README. Stop after pushing the PR; do not merge, deploy or start T22 without separate authorization.
+
+## 16. Implementation report
+
+- `/account/orders` is the canonical signed-in customer route. Existing `/orders` links use the same route via an alias. The storefront navigation and login return path use the canonical URL.
+- The desktop list and mobile cards use server-side search, filters and pagination. The detail dialog uses frozen snapshots and business-zone timestamps. The countdown starts from the server's remaining seconds and decreases using the browser's monotonic clock. Edit and guidance become unavailable at zero; cancellation eligibility follows T16.
+- Customer reads, edits and cancellations share the safe 404 behavior for hidden, foreign and missing IDs. The customer projection retains its exact keys and suppresses unsafe historical form schemas and values before serialization. Administrator projections and stored history are preserved. The browser validates the safe frozen form independently before rendering service fields.
+- Edit and cancel call the existing T15 and T16 endpoints with the current version and a per-intent idempotency key. An uncertain response retries the original request. Stale versions refresh the detail and list for review.
+- The guidance GET uses the existing ACTIVE CUSTOMER session and role middleware. The settings PATCH normalizes newlines, preserves literal text, rejects recognized credential patterns and accepts an explicit empty string. The audit records the changed field name without duplicating instruction text. The page offers a safe fallback if no guidance is configured.
+- All database verification uses disposable MySQL 8.4 with fictional data and the no-Seed runner. There are no schema, migration or runtime dependency changes.
+
+### Tests executed
+
+Node 24.13.0 and the repository lockfile were used. `npm ci --ignore-scripts --include=dev --no-audit --no-fund` installed existing dependencies and `npm run db:generate` generated Prisma Client.
+
+| Command | Result |
+| --- | --- |
+| `npm test` | Backend 71/71 and frontend 24/24. New unit tests exercise server-seconds countdown, terminal states, timeline and unsafe snapshots. |
+| `npm run typecheck`, `npm run lint`, `npm run format:check` | Passed, including browser test TypeScript. |
+| `npm run db:validate`, `npm run build` | Prisma schema validation and both builds passed. |
+| `npm run test:db -w backend -- --customer-orders-only --fresh` | T21 HTTP 3/3 and auth HTTP 14/14. Includes exact guidance keys and no-store, persisted role/account guards, normalizing and clearing text, audit isolation and legacy snapshot redaction. |
+| `npm run test:db -w backend -- --cancellation-only --fresh` | 92/92. Order read 14, edit 19, creation 15, revision 9, subscriptions 10 and cancellation/timeout 25. |
+| `npm run test:db -w backend -- --products-only` | 11/11. Existing products and settings retain their behavior. |
+| `npm run test:db -w backend -- --admin-orders-only --fresh` | T20 HTTP 14/14. |
+| `npm run test:e2e -w backend -- --customer-orders-only --project desktop-edge` | 5/5. |
+| `npm run test:e2e -w backend -- --customer-orders-only --project mobile-edge` | 5/5. Each case ran against actual HTTP and MySQL. |
+| `npm run test:e2e -w backend -- --admin-orders-only --project desktop-edge` and the corresponding `mobile-edge` command | T20 10/10 in each viewport, including the DST rollback case. |
+| `npm run test:e2e -w backend -- --creation-only auth.spec.ts prototype.spec.ts --project desktop-edge` | 8/8, including the existing order-link alias and unrelated navigation. |
+| `git diff --check` | Passed. |
+
+The initial validation found a Vue template handler that the production compiler could not parse after formatting. It now uses a named handler. Mobile E2E initially checked the dialog class on the ARIA wrapper. The test now checks the actual dialog panel and its viewport width. Both full customer browser suites passed on rerun. The auth suite now creates its own entitlement fixture without Seed and expects 400 for an invalid body on the implemented admin order creation endpoint. The cancellation fixtures distinguish a visible, ineligible order (409) from a hidden customer order (404), and the full lifecycle run passed after that correction.
+
+The original checkout remains on its existing local main. The three pre-existing layout edits match their preflight SHA-256 hashes. Development configuration, data and services were outside the test runs. Mobile verification used Edge with a phone-sized emulated viewport. Unsafe or malformed legacy form snapshots cannot be rendered or edited by the customer. This keeps the stored history intact and leaves those exceptional records for merchant review.
+
+## 17. PR #31 review follow-up
+
+The order list anchors the countdown after checking the response sequence and validating the returned page. The detail dialog records the monotonic timestamp when it receives the same response that supplies the order data. Both retain server `remainingSeconds` minus elapsed browser seconds. The detail dialog offers editing only while the existing eligibility holds and the safe frozen schema contains at least one field. Empty forms retain their detail, payment guidance and cancellation behavior.
+
+Three new browser cases run in both Edge projects. The list and detail cases hold a real HTTP response for 2,750 ms, compare the first displayed time with the unchanged API value, and verify the clock continues to tick. The empty-form case confirms that the API returns a valid empty schema, then checks the rendered details, payment guidance and cancel button. The existing non-empty form edit test remains in the suite.
+
+Before the fix, `npm run test:e2e -w backend -- --customer-orders-only --project desktop-edge --grep 'countdown starts|valid empty dynamic form' --output=test-results/pr31-review-baseline` reproduced all three failures against disposable MySQL 8.4. The list first displayed two seconds below the API value and the detail displayed three seconds below it. The empty-form detail rendered one edit button. The rerun uses the same regression assertions and timeouts.
+
+| Command after the fix | Actual result |
+| --- | --- |
+| `npm run test:e2e -w backend -- --customer-orders-only --project desktop-edge --output=test-results/pr31-review-desktop` | 8/8 passed, including all three new cases and the existing non-empty form edit. |
+| `npm run test:e2e -w backend -- --customer-orders-only --project mobile-edge --output=test-results/pr31-review-mobile` | 8/8 passed against a separate disposable database in Edge's emulated phone viewport. |
+| `npm run test -w frontend` | 24/24 passed. |
+| `npm run typecheck` | Frontend, backend and E2E types passed. |
+| `npm run lint` | Passed. |
+| `npm run format:check` | Passed. |
+| `npm run build` | Frontend and backend builds passed. |
+| `npm run db:validate` | Prisma Schema is valid. |
+| `git diff --check` | Passed. |
+
+The browser runs used separate random MySQL 8.4 projects with no Seed. Their runner verified migration convergence and removed its own test containers and volumes. The development environment and data volume were outside the test runs.

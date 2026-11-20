@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
       throw new Error('Browser tests must not call external services.')
     if (
       url.pathname.startsWith('/api/') &&
-      !/^\/api\/v1\/(?:auth\/(?:login|logout|me|activate)|admin\/(?:settings|products|users(?:\/[^/]+(?:\/(?:invitations|status))?)?|invitations\/[^/]+\/revoke))$/.test(
+      !/^\/api\/v1\/(?:auth\/(?:login|logout|me|activate)|customer\/(?:orders|order-guidance)|admin\/(?:settings|products|users(?:\/[^/]+(?:\/(?:invitations|status))?)?|invitations\/[^/]+\/revoke))$/.test(
         url.pathname,
       )
     )
@@ -299,20 +299,14 @@ test('invitation copying, one-time response, reissue, activation and customer is
     ).toBe(403)
     await customerPage.goto('/admin/users')
     await expect(customerPage).toHaveURL('/profile')
-    for (const path of ['/orders', '/subscriptions']) {
-      await customerPage.goto(path)
-      await expect(
-        customerPage.getByText(
-          '真实' +
-            (path === '/orders' ? '订单' : '订阅') +
-            '历史将在后续任务接入',
-          { exact: false },
-        ),
-      ).toBeVisible()
-      await expect(
-        customerPage.locator('tbody tr,.subscription-card'),
-      ).toHaveCount(0)
-    }
+    await customerPage.goto('/orders')
+    await expect(customerPage.getByText('暂无符合条件的订单')).toBeVisible()
+    await expect(customerPage.locator('.customer-order-card')).toHaveCount(0)
+    await customerPage.goto('/subscriptions')
+    await expect(
+      customerPage.getByText('真实订阅历史将在后续任务接入', { exact: false }),
+    ).toBeVisible()
+    await expect(customerPage.locator('.subscription-card')).toHaveCount(0)
     await customerPage.goto('/profile')
     await customerPage
       .getByRole('button', { name: '退出登录', exact: true })
