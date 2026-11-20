@@ -1,0 +1,281 @@
+# T22 — Customer storefront and offline order placement
+
+- Document: CUSTOMER-STOREFRONT-AND-ORDER-PLACEMENT
+- Version: 1.0
+- Status: Approved design baseline; implementation not started
+- Date: 2026-11-20
+- Related: [Product requirements](01-product-requirements.md), [User and operations flows](02-user-and-operations-flows.md), [API contract](05-api-contract.md), [Interface specification](08-interface-specification.md), [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order creation API](19-order-creation-api.md), [Customer order center](26-customer-order-center.md)
+
+> This document defines the approved T22 behavior and implementation contract. It does not claim that the routes, APIs, or pages described here are already present on main. T22 implementation begins only after this design PR is reviewed/merged and the owner separately authorizes the implementation task.
+
+## 1. Goal and boundary
+
+Turn the existing ADMIN-only product preview into a customer-facing storefront where any visitor can browse available products, while only an ACTIVE CUSTOMER can enter the purchase flow and create an ordinary order.
+
+T22 is a storefront and offline-order-placement task. It reuses the existing product model, dynamic form contract, customer authentication, customer order creation API, order lifecycle, and T21 order detail/payment-guidance experience.
+
+### In scope
+
+- Public, read-only product catalog and product detail pages.
+- Public list filtering, search, and server pagination.
+- Product detail without exposing or loading the dynamic form schema.
+- A customer-only purchase route that loads the current product form after the customer clicks 立即购买.
+- Login continuation: a visitor who clicks 立即购买 is returned automatically to the same purchase route after a successful customer login.
+- Dynamic form rendering and validation using the existing eight-field-type contract and ProductFormInputs component.
+- Customer order creation through the existing POST /api/v1/customer/orders.
+- A stale-product guard so a changed price or form cannot silently produce an order different from the purchase page the customer reviewed.
+- Navigation to the existing T21 order detail after successful creation.
+- Desktop/mobile browser and API regression coverage.
+
+### Explicit non-goals
+
+- Online payment, payment intents, provider SDKs, payment callbacks/webhooks, settlement, or money movement.
+- Payment proof upload or a customer "I have paid" mutation.
+- Cart, multi-product orders, quantity editing, coupon codes, stored value, or discounts.
+- Customer self-registration. Existing invitation activation and customer login remain unchanged.
+- Customer subscription center, customer renewal, or subscription mutations.
+- Customer refund requests or payment/refund evidence reads.
+- Supplier API, supplier email, SMTP, notifications, or automated fulfillment.
+- Administrator order center, dashboard, or product-management redesign.
+- Database migration, new runtime dependency, development database migration, or deployment.
+
+## 2. Approved customer journey
+
+1. A visitor opens / and browses the public catalog without signing in.
+2. The visitor opens /products/:slug and reviews the product description, type, price, service period, and renewal price where applicable.
+3. The product detail page does not request, render, or disclose formSchema.
+4. The visitor clicks 立即购买.
+   - If not authenticated, navigate to /login?redirect=/purchase/:slug.
+   - If an ACTIVE CUSTOMER is already authenticated, navigate directly to /purchase/:slug.
+5. After successful CUSTOMER login, the existing login flow validates the same-origin purchase redirect and automatically returns to /purchase/:slug. The purchase page then loads the authenticated purchase projection and dynamic form.
+6. The customer completes the required non-sensitive fields, reviews the product/price summary, and submits once.
+7. The server validates the current product, submitted form, customer status, and idempotency key, then creates the ordinary order using the existing atomic order-creation service.
+8. On success, navigate to /account/orders?orderId=:id. T21 loads the customer's own order detail and opens it automatically. Positive-price orders show the existing T21 offline payment instructions when eligible; zero-price orders show NOT_REQUIRED and proceed to the existing fulfillment workflow.
+
+No order draft is created before the final POST. Incomplete form values remain in browser memory only and are not persisted by T22.
+
+## 3. Public catalog API
+
+All public catalog endpoints are GET-only and require no Session. They return only products satisfying both:
+
+- listed = true
+- archivedAt IS NULL
+
+Unlisted, archived, and missing products are indistinguishable to public detail requests and return the same 404 product-not-found response. Public query parameters cannot override these eligibility predicates.
+
+### 3.1 GET /api/v1/catalog/products
+
+Strict query allowlist:
+
+| Parameter | Rule |
+|---|---|
+| search | Optional trimmed text, maximum 120 characters; matches product name |
+| type | Optional SUBSCRIPTION or ONE_TIME |
+| page | Integer 1–10000, default 1 |
+| pageSize | Integer 1–100, default 20 |
+
+Unknown query parameters are rejected. Filters are AND-combined. Ordering is deterministic: sortOrder ASC, createdAt ASC, id ASC. The response is server-paginated and has the shape {items,total,page,pageSize}.
+
+### 3.2 GET /api/v1/catalog/products/:slug
+
+Returns one public product projection only when the product is listed and unarchived. An archived, unlisted, or missing slug returns the same 404 response.
+
+### 3.3 Public product projection
+
+Both public list and detail use an explicit allowlist:
+
+| Field | Purpose |
+|---|---|
+| slug | Stable customer-facing route identifier |
+| name | Product title |
+| description | Customer-facing description |
+| type | SUBSCRIPTION or ONE_TIME |
+| priceFen | Initial selling price in integer CNY fen |
+| renewalPriceFen | Renewal price for subscription products; null for ONE_TIME |
+| termLabel | Human-readable service term |
+| servicePeriodUnit | DAY, MONTH, YEAR, or null for ONE_TIME |
+| servicePeriodCount | Positive integer or null for ONE_TIME |
+
+Never return formSchema, form defaults, targetField, listed, archivedAt, sortOrder, createdAt, updatedAt, supplier/internal data, or audit information from public catalog endpoints. The public API does not return an admin Product DTO and does not expose product form fields or options.
+
+## 4. Authenticated purchase-product API
+
+### GET /api/v1/customer/products/:slug
+
+Requires a persisted, valid, ACTIVE CUSTOMER Session. The existing /customer role middleware is authoritative. ADMIN, unauthenticated, expired, revoked, disabled, and pending-activation accounts cannot use this endpoint as a customer purchase route.
+
+The product must still be listed and unarchived. Missing, unlisted, and archived products return 404. The server re-reads the current database product; the frontend never treats a previously cached public product as authoritative purchase data.
+
+The response contains the public product fields plus:
+
+- id: Product ID used by the existing order creation POST.
+- updatedAt: exact UTC ISO-8601 timestamp with millisecond precision, used by the stale-product guard.
+- formSchema: a customer-safe form projection.
+
+### 4.1 Customer-safe form projection
+
+The customer purchase projection contains schema version and ordered fields. Each field may expose only:
+
+- id
+- type
+- label
+- required
+- hint
+- options, only for select, radio, and checkbox fields
+
+Do not return defaultValue. Product defaults are an administrator form-editor/preview convenience, not customer-submission data and not an instruction to prefill customer answers.
+
+All eight existing field types remain supported: text, email, textarea, number, date, select, radio, and checkbox. Preserve field order and stable IDs. The frontend renders labels/hints/options as text; it must not use v-html, eval, dynamic code execution, or HTML supplied by product configuration.
+
+Before returning the schema, the service validates it against the shared product-form contract and applies the shared credential-field policy. If a legacy/malformed schema is invalid or contains a prohibited credential field, do not return the unsafe schema or silently remove a required field; return 409 PRODUCT_FORM_UNAVAILABLE and leave the product unavailable for customer self-purchase until an administrator fixes its configuration. The existing order-creation service remains the final server-side validation authority and rejects prohibited credential values as well as prohibited field definitions.
+
+## 5. Frontend routes and login continuation
+
+| Route | Access | Behavior |
+|---|---|---|
+| / | Public | Catalog list |
+| /products/:slug | Public | Product detail, no dynamic form |
+| /purchase/:slug | ACTIVE CUSTOMER | Fetch purchase projection and render the form |
+| /login?redirect=/purchase/:slug | Public | Customer login, then return to the purchase route |
+
+The route guard protects /purchase/:slug. A direct unauthenticated visit redirects to customer login with the original fullPath. An authenticated non-CUSTOMER (including ADMIN) is redirected away from the customer purchase route; the administrator continues to create orders through /admin/orders.
+
+After login, the client may honor only a validated same-origin internal redirect. Add the purchase route to the CUSTOMER redirect allowlist using a strict path/slug match. Do not accept arbitrary absolute URLs, protocol-relative URLs, backslash variants, or unrecognized paths. Existing safe redirects for /profile, /orders, /account/orders, and /subscriptions remain unchanged.
+
+A visitor who clicks 立即购买 must not be asked to click it a second time after login. The purchase page loads the form only after the successful login redirect reaches the protected purchase route.
+
+## 6. Purchase page behavior
+
+### 6.1 Product summary
+
+Show the current product name, description, type, price, term, and renewal price where applicable. Price is display-only; the customer cannot submit or override amountFen. The summary and form come from the same authenticated purchase-product response.
+
+### 6.2 Dynamic form
+
+Reuse ProductFormInputs.vue and the existing shared form contract. Do not build a second field renderer.
+
+- Render only after the customer has entered the purchase route and the authenticated purchase-product GET has succeeded.
+- Initialize customer input state as empty; do not apply administrator defaultValue values.
+- Validate required values and field-specific constraints in the browser for usability.
+- The server repeats all validation against the current Product.formSchema inside the order-creation transaction.
+- Reject prohibited credential field definitions and recognizable credential values. Do not collect passwords, OTPs, 2FA codes, recovery codes, session cookies, API keys, private keys, payment credentials, or other authentication secrets.
+- Do not persist incomplete drafts or form values to localStorage, sessionStorage, URL query strings, analytics, logs, or audit records.
+- On navigation away before successful order creation, discard the in-memory form state.
+
+### 6.3 Review and submit
+
+The page shows a final product/price summary and a clear confirmation action. There is one product per order; no cart or quantity selector is introduced.
+
+The frontend submits only productId, expectedProductUpdatedAt, and formData, plus the required Idempotency-Key header and existing CSRF headers. It must not submit userId, source, amountFen, payment/fulfillment status, order snapshots, or creator identity.
+
+Disable duplicate clicks while a request is in flight. Reuse the existing OrderRequest idempotency/retry behavior or an equivalent exact-body/key mechanism: an uncertain network/response result must replay the same request body with the same key. A changed form or refreshed product version is a new intent and must use a new key.
+
+## 7. Customer order creation integration
+
+### 7.1 POST /api/v1/customer/orders
+
+T22 reuses the existing customer order creation route and atomic service. The forward customer request contract becomes:
+
+- productId: ID from the authenticated purchase-product response.
+- expectedProductUpdatedAt: the exact updatedAt value returned by that same response.
+- formData: complete normalized form data.
+
+Idempotency-Key remains required. ADMIN POST /api/v1/admin/orders is unchanged.
+
+The service continues to derive the customer ID and source from Session, lock User then Product, verify ACTIVE account status, validate the current listed/unarchived product, validate structured service periods, validate complete formData, derive amountFen from the locked Product.priceFen, freeze all order/product/form snapshots, and commit Order + V1 Revision + Event + idempotency response atomically. USER actions do not create AdminAuditLog rows.
+
+Positive-price products create UNPAID + NOT_STARTED orders. A product whose actual selling price is zero uses the already-implemented NOT_REQUIRED + PROCESSING behavior; no PaymentTransaction, paidAt, or paymentConfirmedAt is fabricated. T19 fulfillment rules remain unchanged.
+
+### 7.2 Stale-product guard
+
+The purchase-product GET returns Product.updatedAt. The POST must include that exact value as expectedProductUpdatedAt.
+
+After the existing idempotency lookup and after acquiring the Product row lock, compare expectedProductUpdatedAt with the locked Product.updatedAt at database precision. Also recheck listed and archivedAt eligibility. If the timestamp differs, or the product is no longer available, reject with 409 PRODUCT_CHANGED or the existing safe product-unavailable error, with no Order, Revision, Event, or idempotency success response written.
+
+Include expectedProductUpdatedAt in the canonical request intent/hash. An exact same-key retry of a previously committed request must replay the original successful response before revalidating a later Product edit, preserving the existing D33-D35 semantics.
+
+When PRODUCT_CHANGED is returned, the frontend must not automatically resubmit. Reload the purchase-product response, discard the old form draft, show that the product information changed, and require the customer to review the latest price and form before submitting a new intent with a new key.
+
+The comparison is protected by the existing Product row lock: a concurrent ADMIN edit/archive waits for the order transaction, or the customer observes the committed newer Product and receives the conflict. No new database column or migration is required; Product.updatedAt already exists and is updated by the current product service.
+
+### 7.3 Response and navigation
+
+The existing creation response remains HTTP 201 {order}, with the complete CUSTOMER-safe order DTO. Same-key retries return the exact original response. Do not change the response into an order ID-only envelope.
+
+On success, navigate to /account/orders?orderId=<created order id>. T22 extends the T21 customer order page to read this optional query parameter and open the existing detail dialog for that ID. The detail must be loaded through GET /api/v1/customer/orders/:id, which remains the authority for ownership and hidden-order 404 behavior. Closing the dialog removes the orderId query parameter. A forged or foreign ID reveals no data and follows the existing 404 behavior.
+
+The T21 detail then displays the existing order status, countdown, and eligible plain-text payment instructions. T22 does not duplicate payment guidance or introduce a new order-detail API.
+
+## 8. Security, privacy, and operational rules
+
+- Public routes are GET-only and expose the public product allowlist.
+- Customer purchase-product GET and order POST require an ACTIVE CUSTOMER Session and existing CSRF/session protections where applicable.
+- Never trust productId alone as proof of current availability; lock and re-read Product in the order transaction.
+- Never trust priceFen or amountFen from the browser. The server derives the customer price.
+- Never accept customer-supplied userId, source, actor, statuses, timestamps, or snapshot fields.
+- Unlisted/archived product state must not be exposed through public DTOs.
+- Customer order data is never included in public catalog responses.
+- Form schemas and submitted values are not logged. Existing audit/event behavior remains minimized and unchanged.
+- No public self-registration or account activation behavior is added.
+- All test databases must be random isolated MySQL 8.4 projects with no Seed unless a task-specific test explicitly requires a synthetic fixture. Never read the development .env, connect to or mutate the development database, or touch the original MySQL volume.
+- No deployment, service restart, or development migration is part of T22.
+
+## 9. Responsive UI
+
+Desktop:
+- Three-column product grid at typical desktop widths, consistent with docs/08.
+- Product detail uses a concise information column and a clear primary purchase action.
+- Purchase form stays in a readable single-column form region with a visible product/price summary.
+
+Mobile:
+- Single-column compact catalog cards.
+- Product detail and purchase form use full-width layout.
+- Primary purchase/submit action remains visible without covering fields or content.
+- Preserve existing mobile navigation and safe-area behavior.
+- Avoid horizontal overflow and retain keyboard-friendly labels/focus behavior.
+
+Use the existing Vue 3, TypeScript, Element Plus, icons, shared form component, and visual tokens. Do not introduce another UI framework or a new form library.
+
+## 10. Testing and acceptance
+
+### Public catalog/API
+
+- Unauthenticated list/detail returns only listed, unarchived products.
+- Unlisted, archived, and missing slugs do not disclose product existence through different public responses.
+- Strict search/type/page/pageSize behavior and deterministic pagination.
+- Public DTOs never include formSchema/defaultValue, targetField, archive/listing flags, admin data, or internal fields.
+- CUSTOMER purchase GET requires ACTIVE CUSTOMER Session and returns the safe schema projection without defaults.
+- ADMIN, unauthenticated, disabled, expired/revoked, and pending sessions cannot read the customer purchase projection.
+
+### Purchase and login flow
+
+- Guest can browse catalog and detail without loading formSchema.
+- Guest clicking 立即购买 is redirected to login with the exact purchase destination.
+- Successful CUSTOMER login returns to the same purchase page and loads the form automatically.
+- Direct purchase-route access is guarded; ADMIN cannot use customer checkout.
+- Product form displays only after the authenticated purchase GET; all eight field types and validation work.
+- Credential field schemas are not returned and cannot be submitted.
+
+### Order creation
+
+- Customer POST uses the authenticated Session, current Product price, complete formData, frozen snapshots, and existing actor-scoped Idempotency-Key.
+- Client-supplied price/user/status/source/snapshot fields are rejected.
+- Stale Product.updatedAt returns 409 with no business writes; concurrent product edit/archive follows the row-lock contract.
+- Exact same-key/same-body retry replays the original order; same key with changed body conflicts; different key may create a new order.
+- Zero-price order uses NOT_REQUIRED + PROCESSING and has no fake payment facts.
+- Success returns the complete CUSTOMER DTO and navigates to the T21 detail through orderId.
+- T21 detail enforces own-order visibility and displays payment guidance only under D105 eligibility.
+
+### Browser and regression
+
+- Desktop Edge and mobile Edge E2E for public catalog, product detail, guest login continuation, purchase form, submit, and order-detail navigation.
+- T20 administrator order center and T21 customer order center regressions remain green.
+- Authentication, product/settings, order creation, order read, edit, cancellation, payment, refund, and fulfillment regression suites pass.
+- Unit tests, typecheck, lint, format check, build, Prisma schema validation, and git diff --check pass.
+- No test may use or mutate the development database or original MySQL volume. Mobile viewport emulation must be described as emulation, not a physical-device test.
+
+## 11. Explicit delivery boundary
+
+This PR is documentation-only. It creates the T22 design baseline and synchronizes existing contracts/roadmap. It must not modify application source, Prisma Schema, migrations, dependencies, environment files, test fixtures, or deployment configuration.
+
+After this design PR is reviewed and merged, stop and wait for separate owner authorization before assigning the T22 implementation to Codex. The implementation should be split into reviewable tasks only after the approved document baseline is on main.

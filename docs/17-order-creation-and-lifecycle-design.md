@@ -153,6 +153,14 @@
 | D103 | 客户退款信息可见范围 | CUSTOMER 只接收订单级 paymentStatus，不提供退款尝试列表、退款 PaymentTransaction ID/流水号/渠道/备注、失败原因、管理员身份、AdminAuditLog 或退款操作接口。CANCELLED + REFUND_PENDING 显示“待退款”；只有管理员通过 T18 确认外部全额退款实际到账后 paymentStatus=REFUNDED，客户才显示“已退款”。不提供客户自助退款申请；客户如有疑问通过既有商家沟通渠道线下联系 | ACTIVE |
 | D104 | 客户订单生命周期时间线 | 不新增 CUSTOMER OrderEvent API。详情时间线仅由本人订单 DTO 的可信时间字段生成：createdAt=订单创建；paidAt=实际付款发生时间（仅在服务器已确认付款事实后存在）；paymentConfirmedAt=商家核实收款时间；fulfilledAt=服务履约完成；cancelledAt=订单取消。各步骤仅在对应字段非 NULL 时展示，按 UTC 时间排序后按 AppSettings.timezone 呈现。PENDING_VERIFICATION 没有已确认付款时间，不伪造付款尝试事件/时间；退款没有订单级退款时间字段，因此“待退款/已退款”只显示在当前状态区，不编造退款时间线节点。禁止读取 OrderEvent/OrderRevision/AdminAuditLog | ACTIVE |
 | D105 | 线下付款说明配置与客户读取 | 复用已存在的 AppSettings.paymentInstructions（纯文本 VarChar(4000)，无 Migration）。扩展 ADMIN PATCH `/api/v1/admin/settings` 允许可选更新 paymentInstructions；最多 4000 字符，保留换行，空字符串用于清空；ADMIN GET 继续返回完整设置。AdminAuditLog 仅记录 changed field 名称，不复制付款说明全文。新增 CUSTOMER-only、ACTIVE Session 保护的 GET `/api/v1/customer/order-guidance`，返回 `{storeName,businessTimezone,paymentInstructions}`；businessTimezone 为 AppSettings.timezone，仅用于客户日期显示；不得返回 ownerEmail、管理员身份或其他内部设置。paymentInstructions 只按纯文本呈现，不支持 HTML/脚本，不得包含密码、OTP、API key、私钥等认证秘密。仅在正金额、UNPAID + NOT_STARTED 且 remainingSeconds>0 的订单详情显示；PENDING_VERIFICATION 显示等待核实且不重复展示转账说明；PAID、NOT_REQUIRED、取消/退款/完成/过期订单不显示。说明为空时提示商家尚未配置付款说明，不泄露 ownerEmail。该功能只提供线下操作指引，不执行支付、不验证到账、不发送通知 | ACTIVE |
+| D106 | 公开商品目录访问范围 | 所有访客和已登录客户均可浏览商品目录及商品详情；仅返回 listed=true 且 archivedAt IS NULL 的商品。新增公开 GET 商品列表/详情 API，搜索、分类和分页由服务端处理。公开 DTO 只包含商品展示字段，不返回 formSchema、默认值、管理员字段、上架/归档内部标志或审计信息 | ACTIVE |
+| D107 | 动态表单展示边界 | 商品详情页不展示、不请求动态表单 Schema。只有客户点击“立即购买”并进入受 ACTIVE CUSTOMER Session 保护的购买页后，才通过客户专用商品接口读取安全表单 Schema。客户 Schema 不包含管理员配置的 defaultValue；凭证字段配置不向客户返回，也不得通过订单创建校验 | ACTIVE |
+| D108 | 游客购买与登录后续流程 | 游客可以浏览但不能进入表单或提交订单。游客点击“立即购买”跳转客户登录，并携带经过同源路径校验的原商品购买路由；客户登录成功后自动返回该购买页并加载动态表单，无需再次点击购买。只有 ACTIVE CUSTOMER 可进入购买流程；ADMIN 继续使用管理员订单中心 | ACTIVE |
+| D109 | 客户购买与订单创建 | 一次购买只创建一个商品订单，不引入购物车或多商品订单。购买页复用现有八种动态表单字段和 POST /api/v1/customer/orders；客户必须提交完整有效 formData，最终金额由服务端读取当前商品价格，商品/价格/周期/表单 Schema 与数据按既有规则冻结快照。订单幂等、零元状态、订单版本/事件和原子事务沿用既有实现 | ACTIVE |
+| D110 | 下单期间商品变更保护 | 客户专用购买商品 GET 返回当前 Product.updatedAt；POST /api/v1/customer/orders 必须携带同一响应的 expectedProductUpdatedAt。服务端完成幂等查找并锁定 Product 后，比较时间戳并重新检查上架/归档状态。若商品价格、表单或其他 Product 字段在客户确认后发生变化，返回 409 PRODUCT_CHANGED，不创建订单或任何业务历史；前端重新加载商品并要求客户重新核对价格/表单，不自动重试。使用现有 updatedAt，不新增 Migration | ACTIVE |
+| D111 | 下单成功后的订单详情导航 | 客户订单创建成功后导航至 /account/orders?orderId=:id，由 T21 客户订单页读取该参数并打开现有订单详情。详情必须通过既有 CUSTOMER 订单详情 API 读取，继续执行 Session 所有权和 hidden=false 检查；关闭详情后清除 orderId 参数。不新增订单详情 API | ACTIVE |
+| D112 | T22 付款方式边界 | T22 创建的是线下付款订单。正金额订单继续由 T21 展示符合 D105 条件的纯文本付款说明，管理员仍在线下核实到账；零元订单沿用 NOT_REQUIRED + PROCESSING。T22 不接入在线支付、支付凭证上传、付款确认请求、支付回调、退款或资金转移 | ACTIVE |
+
 ## 2. 关键概念与字段语义
 
 ### 2.1 订单、付款、履约、订阅是不同维度
@@ -452,4 +460,8 @@ D89-D97 are implemented by the ADMIN workspace and the additive read/note servic
 
 ## T21 实现记录
 
-D98–D105 已在独立分支实现，见 [客户订单中心实现与验证](26-customer-order-center.md)。客户本人订单页面沿用 T14–T16 API。隐藏订单的客户读取、修改和取消统一返回 404。订单状态与退款展示保留独立付款及履约事实，付款说明使用现有 AppSettings 字段。此阶段未新增 Migration 或运行时依赖。
+D98–D105 已在 PR #31 合并，见 [客户订单中心实现与验证](26-customer-order-center.md)。客户本人订单页面沿用 T14–T16 API。隐藏订单的客户读取、修改和取消统一返回 404。订单状态与退款展示保留独立付款及履约事实，付款说明使用现有 AppSettings 字段。此阶段未新增 Migration 或运行时依赖。
+
+## T22 设计记录
+
+D106–D112 已确认，完整客户商品目录与线下下单契约见 [T22 客户商城与线下下单设计](27-customer-storefront-and-order-placement.md)。游客可浏览上架商品和详情，但动态表单只在 ACTIVE CUSTOMER 进入购买流程后加载；登录后自动返回原购买页。订单创建复用现有客户 POST，并通过 Product.updatedAt 防止用户提交已过期的商品价格/表单版本。T22 当前仅完成设计基线，尚未实现；文档 PR 合并后仍须单独授权 Codex 开始实现。
