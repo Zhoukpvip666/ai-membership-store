@@ -66,9 +66,9 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 - Every successful mutation increments Order.version once and writes Revision/Event/AdminAuditLog/idempotency atomically. Lock order remains Order -> PaymentTransaction, matching T16/T17.
 - No partial refunds, provider APIs, money movement, fulfillment or subscription work. All twelve migrations unchanged; stop at PR review and do not deploy to development DB. Use `npm run test:db -w backend -- --refunds-only` for isolated HTTP refund and existing regression; browser checks use the same no-Seed runner.
 
-## T19 manual fulfillment and initial subscription entitlement — implemented, PR review pending
+## T19 manual fulfillment and initial subscription entitlement — merged
 
-**Status: D83-D88 implemented on the feature branch; awaiting human review and separately authorized deployment.** [Implementation contract and actual verification](24-manual-fulfillment-api.md).
+**Status: Merged in PR #26 (`b64d608a`); 156/156 isolated MySQL regression, 8/8 desktop/mobile E2E and all unit/type/lint/format/build/Schema checks passed. No development database deployment.** [Implementation contract and actual verification](24-manual-fulfillment-api.md).
 
 - ADMIN-only POST `/admin/orders/:id/fulfill`; supports ordinary USER/ADMIN INITIAL subscription and ONE_TIME orders only. RENEWAL and SYSTEM_RENEWAL are excluded.
 - Eligible paid orders require PAID + PROCESSING and exactly one matching confirmed full PAYMENT. Zero-price orders require NOT_REQUIRED + PROCESSING, amount=0, NULL payment times and no transaction rows.
@@ -298,10 +298,10 @@ These remain future work and must not be pulled into Task 1.2:
 
 ## Current review boundary
 
-Tasks 1.2.1–1.2.3, Phase 2 and the separately authorized order foundation/read/create/edit/cancel/payment/refund stages are merged. T19 stops at its implementation PR for review; do not begin renewal or frontend order work automatically.
+Tasks 1.2.1–1.2.3, Phase 2 and order foundation/read/create/edit/cancel/payment/refund/fulfillment stages through T19 are merged. Do not begin renewal or frontend order work automatically.
 
 
-T19 supersedes the earlier generic Task 1.2.4 fulfillment placeholder below: use the precise D24-D32/D37/D52/D59/D64/D83-D88 contract in [docs/24-manual-fulfillment-api.md](24-manual-fulfillment-api.md). In particular, NOT_REQUIRED zero-price orders are fulfillable, and renewal/SYSTEM_RENEWAL are excluded.
+T19 supersedes the earlier generic Task 1.2.4 fulfillment placeholder below: use the merged D24-D32/D37/D52/D59/D64/D83-D88 contract in [docs/24-manual-fulfillment-api.md](24-manual-fulfillment-api.md). In particular, NOT_REQUIRED zero-price orders are fulfillable, and renewal/SYSTEM_RENEWAL are excluded.
 
 
 ## T19 — Manual fulfillment and first ORDER entitlement
