@@ -2,7 +2,7 @@
 
 - Document: ADMIN-ORDER-CENTER
 - Version: 1.0
-- Status: Approved design baseline; implementation not started
+- Status: Implemented and validated in codex/admin-order-center; pending PR review
 - Date: 2026-11-20
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [UI specification](08-interface-specification.md), [Order read API](16-order-read-api.md), [Order creation](19-order-creation-api.md), [Order edit](20-order-edit-api.md), [Cancellation/timeout](21-order-cancellation-timeout.md), [Offline payment](22-offline-payment-api.md), [Offline refund](23-offline-refund-api.md), [Manual fulfillment](24-manual-fulfillment-api.md)
 
@@ -212,6 +212,7 @@ Reuse T16/T17 exactly; do not duplicate or weaken their validation.
 - Confirm payment: only after external full receipt is checked. If any other PAYMENT remains PENDING, disable confirmation with a clear explanation and keep the server's 409 as final guard. On confirmation show PAID + PROCESSING.
 - Fail payment: require a nonblank reason max 500; preserve original transaction evidence.
 - Payment registration/confirmation remains constrained by the original 24-hour deadline. Do not extend it or accept late confirmation.
+- Payment and refund registration interpret the entered wall time in the displayed business timezone. A fall-back overlap requires an explicit choice between the two occurrences, each labeled with its UTC offset. Changing the date, time or timezone clears the choice. A nonexistent spring-forward time is rejected. The chosen UTC instant is sent with millisecond precision, and an uncertain-response retry reuses the original request body and key.
 
 Never expose direct state-edit controls for paymentStatus or fulfillmentStatus.
 
@@ -332,3 +333,61 @@ Use random isolated MySQL and real HTTP requests with persisted ADMIN Sessions; 
 ## 15. Delivery
 
 One T20 implementation PR targeting `main`, using an independent worktree/branch. Preserve all existing uncommitted user changes and running services. Update this document with implementation report, `docs/17`, `docs/08`, `docs/05`, `docs/04`, `docs/07` and README. Stop after pushing the PR; do not merge, deploy or start T21 without separate authorization.
+
+## 16. Implementation report (2026-11-20)
+
+### Delivered behavior
+
+- ADMIN list adds frozen productType filtering; detail alone adds the minimal seven-field linkedSubscription expansion. CUSTOMER DTOs and shared mutation/list DTOs keep their existing keys.
+- New ADMIN-only event pagination reconstructs per-operation scalar summaries. Unknown/mismatched markers and malformed fields are omitted; plain-text notes and role-specific actor labels are retained. No raw JSON, Revision or audit endpoint exists.
+- New internal-note mutation reuses actor-scoped idempotency and Order-first row locking. The conditional SQL touches only note/version/updatedAt, then writes one full immutable Revision, exact old/new NOTE Event and Audit, and the original response atomically. Terminal-state lifecycle fields remain unchanged; no-op returns NO_CHANGES.
+- ADMIN orders are split from the unchanged customer view. Focused Vue components provide list/filter/pagination, snapshot details, create/edit, notes, payment/refund evidence and existing lifecycle actions. Existing Element Plus/form/date/money helpers are reused.
+- A memory-only request context freezes the canonical body/key until a confirmed response. Uncertain responses retain the dialog for original-request retry; stale versions refresh without automatic reapplication. No order form/evidence is saved to browser storage.
+- Evidence remains paginated. When one page does not contain all attempts, lifecycle controls stay disabled until explicit full-evidence review. This prevents confirming a payment based on an incomplete pending-attempt list; the backend remains the final guard.
+- Transaction date entry uses the existing Temporal polyfill to resolve business-zone wall time with seconds and milliseconds intact. Each fall-back occurrence can be selected explicitly, and spring-forward gaps are rejected. UI warnings separate external money movement from local registration/confirmation.
+- AdminLayout changes only LOCAL-page detection and Mock notice text. No header/sidebar positioning or original user layout changes are included.
+- The existing credential-field policy is extracted unchanged into a browser-safe shared contract. Create/edit and snapshot rendering reject credential-collecting forms before displaying inputs; server validation remains authoritative.
+
+### Structure and environment
+
+No Prisma Schema, migration, dependency version or lockfile changes. All twelve committed migrations remain intact. The original shopping checkout, three layout edits, development .env, services and original MySQL volume are outside this implementation. All test writes use the existing randomly named disposable MySQL 8.4 runner and fictional fixtures; no Seed or development database connection.
+
+### Verification record
+
+- Node 24.13.0, existing dependencies installed with npm ci (no dependency changes); Prisma Client generated.
+- Final `npm test`: backend 71/71 and frontend 15/15 (serial execution). An earlier concurrent run hit the unchanged 15-second invalid-environment subprocess budget; serial reruns passed without weakening that test. The final counts include shared credential-field policy and unusable-success-response retry coverage.
+- `npm run test:db -w backend -- --admin-orders-only`: 14/14. Historical migration-twelve upgrade preserved all thirteen business tables and immutable revisions exactly, without reclassifying zero orders or fabricating payment facts. Repeat deploy had no pending migrations and schema diff passed.
+- `npm run test:db -w backend -- --admin-orders-only --fresh`: 14/14. Both paths include five actual MySQL fault-injection rollback stages, real same-key/different-key concurrency, terminal notes, privacy/strict DTO assertions, and actual T19 fulfillment creating the linked ORDER subscription.
+- `npm run test:e2e -w backend -- --admin-orders-only --project desktop-edge`: 9/9; the corresponding `mobile-edge` command: 9/9. Real login and HTTP/MySQL lifecycle workflows, version conflict, exact uncertain-response retry, pagination, credential-form blocking and customer isolation pass in both viewports. Screenshots were inspected for the order table and mobile layout.
+- `npm run test:db -w backend -- --fulfillment-only`: 156/156 across the existing isolated T14-T19 chain: read 14, edit 19, create 15, Revision 9, subscriptions 10, cancellation 25, offline payments 25, refunds 18 and fulfillment 21. No Seed was executed. The last suite also passed the populated migration-twelve upgrade/repeat-deploy/schema-diff checks.
+- `npm run test:db -w backend -- --products-only`: 11/11, including persistent dynamic forms/settings, frozen history, structured service periods, archive and authorization regression.
+- `npm run test:e2e -w backend -- --creation-only auth.spec.ts products.spec.ts subscriptions.spec.ts prototype.spec.ts --project desktop-edge`: 16/16. The same mobile regression run passed 15/16; the unchanged product-type transition case exceeded its existing 30-second budget without a failed functional assertion. `npm run test:e2e -w backend -- --creation-only products.spec.ts --project mobile-edge --grep 'changing product types clears'` passed 1/1 in a separate random MySQL environment (17.0-second case). Production code, assertions and timeout were unchanged; the initial whole-suite result remains recorded as 15/16 rather than reported as a fully green run.
+- Initial browser run identified hidden Element Plus checkbox inputs being targeted directly and full-workflow tests exceeding the default 30-second case budget. Tests now click visible checkbox labels and assert the actual checked state; complete workflow cases use 120 seconds. No business timeout, guard or assertion was relaxed.
+- A subsequent browser run exposed two locator mismatches (failure-dialog title versus button label, and the placeholder overlay on non-filterable selects). Tests now use the actual visible title/placeholder controls. Desktop and mobile reruns passed. Initial SQL fault-injection tests also corrected an expected HTTP 500 to the existing sanitized HTTP 503 mapping, retaining complete rollback assertions; a SYSTEM fixture was corrected to have no administrator creator.
+
+- Final serial quality gates passed: `npm run typecheck` (frontend/backend/E2E), `npm run lint`, `npm run format:check`, `npm run db:validate`, `npm run db:generate`, `npm run build` (frontend/backend), and `git diff --check`. Existing upstream Zod/Rollup annotation warnings are non-fatal; dependencies were not changed.
+
+### Remaining review and operational limits
+
+- PR code review and operator acceptance remain pending. No development deployment, service restart or T21 work is included.
+- Mobile acceptance uses Edge with an iPhone-sized viewport, not a physical phone. The existing product-type mobile case had one whole-suite timeout, then passed unchanged in isolation; no root cause beyond that observed intermittent timeout is claimed.
+- The original checkout still contains exactly its three uncommitted layout edits. All three SHA-256 values match the preflight baseline. The CUSTOMER view is byte-equivalent after line-ending normalization to the prior order view; no CUSTOMER feature was added.
+- The original MySQL container remains running/healthy on its existing volume. Development database content was not queried or changed. All random test containers/volumes were removed by their runner; local logs/screenshots are ignored.
+
+### PR #29 DST follow-up
+
+The payment and refund dialogs use the already pinned Temporal polyfill to resolve local transaction times. In Los Angeles, 2026-11-01 01:30 at UTC−07:00 maps to 08:30Z, and the second occurrence at UTC−08:00 maps to 09:30Z. Both choices preserve seconds and milliseconds. The browser rejects a gap or an unresolved overlap before submitting. An uncertain retry sends the saved UTC instant with the original idempotency key.
+
+- `npm test` passed with backend 71/71 and frontend 20/20. New coverage includes the Los Angeles and Lord Howe overlaps, gap rejection, precise UTC conversion, and retry of the original UTC timestamp.
+- `npm run test:e2e -w backend -- --admin-orders-only --project mobile-edge` passed 10/10. The new case used the actual refund API and isolated MySQL to verify no write for a gap or unresolved overlap, cleared selection on input changes, and correct persistence for each offset.
+- `npm run test:e2e -w backend -- --creation-only auth.spec.ts products.spec.ts subscriptions.spec.ts prototype.spec.ts --project mobile-edge` passed all 16/16 cases in one serial run (5.7 minutes). The previous product-type transition timeout did not recur in this run (14.8 seconds). The four existing test files, assertions, timeouts and runner configuration were unchanged.
+- `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm run build` passed.
+
+### Changed files
+
+- Backend: `backend/scripts/test-database.ts`; `backend/src/contracts/credential-fields.ts`; `backend/src/modules/orders/{center-schemas,create-form,events,internal-note,routes,schemas,service}.ts`; `backend/test/order-center.test.ts`; `backend/test/integration/{admin-order-center,orders}.test.ts`.
+- Frontend: `frontend/src/api/orders.ts`, `orders.test.ts`; `frontend/src/layouts/AdminLayout.vue`; `frontend/src/views/account/{Orders,CustomerOrders}.vue`; `frontend/src/views/admin/orders/{OrderAction,OrderCenter,OrderDetail,OrderForm}.vue`, `state.ts`, `state.test.ts`; `frontend/tsconfig.json` (no-emit TypeScript imports for the shared contract).
+- Browser tests: `e2e/admin-order-center.spec.ts`, `e2e/prototype.spec.ts` (the obsolete ADMIN Mock-order workflows are replaced by real API tests; CUSTOMER prototype behavior is retained).
+- Documentation: `README.md`; `docs/{04-data-model,05-api-contract,07-development-roadmap,08-interface-specification,16-order-read-api,17-order-creation-and-lifecycle-design,25-admin-order-center}.md`; `docs/superpowers/plans/2026-11-20-admin-order-center.md`.
+
+The scoped implementation contains 35 files. Generated output, test logs, screenshots, dependencies and local configuration are not committed.

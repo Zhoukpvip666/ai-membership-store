@@ -38,6 +38,7 @@ const revisionsOnly = process.argv.includes('--revisions-only')
 const cancellationOnly = process.argv.includes('--cancellation-only')
 const paymentsOnly = process.argv.includes('--payments-only')
 const refundsOnly = process.argv.includes('--refunds-only')
+const adminCenterOnly = process.argv.includes('--admin-orders-only')
 const fulfillmentOnly = process.argv.includes('--fulfillment-only')
 const editOnly = process.argv.includes('--edit-only')
 // Editing reuses the committed twelve-migration compatibility path, without Seed.
@@ -47,7 +48,8 @@ const creationOnly =
   cancellationOnly ||
   paymentsOnly ||
   refundsOnly ||
-  fulfillmentOnly
+  fulfillmentOnly ||
+  adminCenterOnly
 const creationUpgradeSnapshot = join(directory, 'creation-upgrade.json')
 const revisionUpgradeSnapshot = join(directory, 'revision-upgrade.json')
 // Protected history cannot be deleted to prepare empty-database API/seed tests.
@@ -81,7 +83,7 @@ function run(
   args: string[],
   env: NodeJS.ProcessEnv = process.env,
   commandCwd = cwd,
-  timeout = browserMode ? 600000 : 180000,
+  timeout = browserMode ? (adminCenterOnly ? 1200000 : 600000) : 180000,
 ) {
   try {
     return execFileSync(binary, args, {
@@ -142,7 +144,7 @@ try {
         ],
         process.env,
         cwd,
-        600000,
+        adminCenterOnly ? 1200000 : 600000,
       ),
     )
   if (
@@ -625,7 +627,15 @@ try {
     // Fresh runner-owned database, fictional login/settings fixtures; never Seed.
     run(process.execPath, ['test/integration/product-fixture.ts'], env)
   }
-  if (creationOnly && !browserMode) {
+  if (adminCenterOnly && !browserMode) {
+    console.info(
+      run(
+        process.execPath,
+        ['--test', 'test/integration/admin-order-center.test.ts'],
+        env,
+      ),
+    )
+  } else if (creationOnly && !browserMode) {
     for (const suite of [
       ...(fulfillmentOnly
         ? ['manual-fulfillment.test.ts']
@@ -764,7 +774,11 @@ try {
           '--config',
           join(cwd, '..', 'playwright.config.ts'),
           ...(splitBrowserProjects ? ['--project=mobile-edge'] : []),
-          ...(fulfillmentOnly ? ['manual-fulfillment.spec.ts'] : []),
+          ...(adminCenterOnly
+            ? ['admin-order-center.spec.ts']
+            : fulfillmentOnly
+              ? ['manual-fulfillment.spec.ts']
+              : []),
           ...process.argv
             .slice(2)
             .filter(
@@ -779,6 +793,7 @@ try {
                   '--payments-only',
                   '--refunds-only',
                   '--fulfillment-only',
+                  '--admin-orders-only',
                   '--focused',
                 ].includes(argument),
             ),

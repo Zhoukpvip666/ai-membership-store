@@ -32,6 +32,7 @@ const filters = {
 export const listCustomerOrders = z.strictObject(filters)
 export const listAdminOrders = z.strictObject({
   ...filters,
+  productType: z.enum(['SUBSCRIPTION', 'ONE_TIME']).optional(),
   customer: z.string().trim().max(254).default(''),
 })
 export const orderDetailQuery = z.strictObject({})

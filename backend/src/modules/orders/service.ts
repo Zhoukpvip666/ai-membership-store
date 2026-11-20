@@ -11,6 +11,15 @@ import {
 
 type CustomerFilters = z.output<typeof listCustomerOrders>
 type AdminFilters = z.output<typeof listAdminOrders>
+const linkedSubscriptionSelect = {
+  id: true,
+  sourceType: true,
+  status: true,
+  version: true,
+  productNameSnapshot: true,
+  startedAt: true,
+  expiresAt: true,
+} as const satisfies Prisma.SubscriptionSelect
 const missing = () => new ApiError(404, 'NOT_FOUND', '订单不存在')
 const customerSearch = (search: string): Prisma.UserWhereInput => ({
   OR: [
@@ -48,6 +57,7 @@ export function orderReadService(database: PrismaClient) {
     async listAdmin(input: AdminFilters) {
       const where: Prisma.OrderWhereInput = {
         ...orderWhere(input),
+        productTypeSnapshot: input.productType,
         ...(input.customer
           ? { user: { is: customerSearch(input.customer) } }
           : {}),
@@ -73,10 +83,22 @@ export function orderReadService(database: PrismaClient) {
     async detailAdmin(orderId: string) {
       const order = await database.order.findFirst({
         where: { id: orderId, hidden: false },
-        select: adminOrderSelect,
+        select: {
+          ...adminOrderSelect,
+          sourcedSubscription: { select: linkedSubscriptionSelect },
+          subscription: { select: linkedSubscriptionSelect },
+        },
       })
       if (!order) throw missing()
-      return adminOrderDto(order)
+      return {
+        ...adminOrderDto(order),
+        linkedSubscription:
+          order.kind === 'INITIAL' && order.fulfillmentStatus === 'COMPLETED'
+            ? order.sourcedSubscription
+            : order.kind === 'RENEWAL'
+              ? order.subscription
+              : null,
+      }
     },
     async listCustomer(userId: string, input: CustomerFilters) {
       const where = orderWhere(input, userId)

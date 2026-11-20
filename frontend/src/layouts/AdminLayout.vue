@@ -19,6 +19,7 @@ const router = useRouter()
 const logoutError = ref('')
 const persistentPage = computed(() =>
   [
+    '/admin/orders',
     '/admin/users',
     '/admin/products',
     '/admin/settings',
@@ -82,7 +83,7 @@ const nav = [
         <FlaskConical :size="15" /><span>{{
           persistentPage
             ? '当前页面保存至本地数据库 · 不发送邮件'
-            : '经营概览和订单仍为 Mock 演示'
+            : '经营概览仍为 Mock 演示'
         }}</span
         ><span class="demo-pill">{{ persistentPage ? 'LOCAL' : 'MOCK' }}</span>
       </div>
