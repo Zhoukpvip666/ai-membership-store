@@ -85,3 +85,18 @@ test('unusable successful JSON response retains the original request key for ret
     fetch.mock.calls[1]![1].headers['Idempotency-Key'],
   )
 })
+
+test('explicit retry sends the captured UTC instant and key without recalculating input', async () => {
+  const fetch = vi.fn().mockRejectedValue(new Error('response lost'))
+  vi.stubGlobal('fetch', fetch)
+  const request = new OrderRequest()
+  const body = { expectedVersion: 1, occurredAt: '2026-11-01T09:30:27.123Z' }
+  const path = '/admin/orders/a/refunds'
+  await expect(request.send(path, 'POST', body)).rejects.toThrow()
+  body.occurredAt = '2026-11-01T08:30:27.123Z'
+  await expect(request.retry()).rejects.toThrow()
+  const [first, retry] = fetch.mock.calls
+  expect(retry![0]).toBe(first![0])
+  expect(retry![1]).toEqual(first![1])
+  expect(JSON.parse(retry![1].body).occurredAt).toBe('2026-11-01T09:30:27.123Z')
+})

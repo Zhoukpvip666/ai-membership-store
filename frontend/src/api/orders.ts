@@ -125,7 +125,13 @@ function canonical(value: unknown): string {
 // Memory only. Serialize once, then reuse the exact body/key after an unknown
 // response. A changed intent has a different fingerprint and receives a new key.
 export class OrderRequest {
-  private context?: { fingerprint: string; body: unknown; key: string }
+  private context?: {
+    fingerprint: string
+    path: string
+    method: string
+    body: unknown
+    key: string
+  }
   reset() {
     this.context = undefined
   }
@@ -134,14 +140,22 @@ export class OrderRequest {
     if (this.context?.fingerprint !== fingerprint)
       this.context = {
         fingerprint,
+        path,
+        method,
         body: JSON.parse(canonical(input)),
         key: crypto.randomUUID(),
       }
+    return this.retry()
+  }
+
+  async retry() {
+    const context = this.context
+    if (!context) throw new Error('没有可重试的订单请求')
     const result = await api<{ order: AdminOrder }>(
-      path,
-      method,
-      this.context.body,
-      this.context.key,
+      context.path,
+      context.method,
+      context.body,
+      context.key,
     )
     // A successful HTTP status with an unusable JSON envelope is still an
     // unknown outcome. Keep the original context instead of risking a new key.

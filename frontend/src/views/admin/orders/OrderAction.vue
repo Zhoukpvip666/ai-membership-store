@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ApiError } from '../../../api/client'
 import {
   OrderRequest,
   type AdminOrder,
   type Evidence,
 } from '../../../api/orders'
-import { businessInput, businessUtc } from '../../../stores/business-time'
+import {
+  transactionTimeChoices,
+  transactionTimeInput,
+} from '../../../../../backend/src/contracts/transaction-time'
 import { settings } from '../../../stores/settings'
 import { money, parsePrice } from '../../../stores/format'
 import { channelLabels } from './state'
@@ -44,14 +47,29 @@ const note = ref(
   reason = ref('')
 const amount = ref((props.order.amountFen / 100).toFixed(2)),
   channel = ref<Evidence['channel']>('CASH')
-const currentTime = new Date()
+const timeZone = computed(() => settings.state.value.timezone)
+const isRecording = props.action === 'record' || props.action === 'refund'
 const occurred = ref(
-    businessInput(currentTime.toISOString(), settings.state.value.timezone) +
-      ':' +
-      currentTime.toISOString().slice(17, 23),
+    isRecording
+      ? transactionTimeInput(new Date().toISOString(), timeZone.value)
+      : '',
   ),
+  selectedInstant = ref(''),
   reference = ref(''),
   acknowledged = ref(false)
+const timeOptions = computed(() => {
+  try {
+    return { choices: transactionTimeChoices(occurred.value, timeZone.value) }
+  } catch (error) {
+    return {
+      choices: [],
+      error: error instanceof Error ? error.message : '无法换算交易发生时间',
+    }
+  }
+})
+watch([occurred, timeZone], () => (selectedInstant.value = ''), {
+  flush: 'sync',
+})
 const error = ref(''),
   busy = ref(false),
   uncertain = ref(false),
@@ -61,10 +79,13 @@ async function save() {
   error.value = ''
   busy.value = true
   try {
-    if (
-      ['record', 'refund'].includes(props.action) &&
-      (!settings.state.loaded || settings.state.error)
-    )
+    if (uncertain.value) {
+      await request.retry()
+      uncertain.value = false
+      emit('saved')
+      return
+    }
+    if (isRecording && (!settings.state.loaded || settings.state.error))
       throw new Error('请先成功读取系统时区设置后再登记交易')
     const a = props.action,
       o = props.order
@@ -94,16 +115,14 @@ async function save() {
       if (Number(body.amountFen) <= 0) throw new Error('付款金额必须大于零')
       body.channel =
         a === 'refund' ? props.originalPayment!.channel : channel.value
-      body.occurredAt = new Date(
-        Date.parse(
-          businessUtc(
-            occurred.value.slice(0, 16),
-            settings.state.value.timezone,
-          ),
-        ) +
-          Number(occurred.value.slice(17, 19) || 0) * 1000 +
-          Number((occurred.value.split('.')[1] || '0').padEnd(3, '0')),
-      ).toISOString()
+      const { choices, error } = timeOptions.value
+      if (error) throw new Error(error)
+      const chosen =
+        choices.length === 1
+          ? choices[0]
+          : choices.find(({ utc }) => utc === selectedInstant.value)
+      if (!chosen) throw new Error('请选择回拨时段的实际 UTC 偏移')
+      body.occurredAt = chosen.utc
       if (reference.value.trim())
         body.externalReference = reference.value.trim()
       if (note.value.trim()) body.note = note.value.trim()
@@ -190,14 +209,28 @@ async function save() {
                   :label="label" /></ElSelect
             ></ElFormItem>
           </template>
-          <ElFormItem
-            :label="'实际发生时间（' + settings.state.value.timezone + '）'"
+          <ElFormItem :label="'实际发生时间（' + timeZone + '）'"
             ><input
               v-model="occurred"
               aria-label="实际发生时间"
               type="datetime-local"
               step="0.001"
           /></ElFormItem>
+          <ElFormItem
+            v-if="timeOptions.choices.length > 1"
+            label="回拨时段的 UTC 偏移"
+          >
+            <select v-model="selectedInstant" aria-label="回拨时段的 UTC 偏移">
+              <option value="" disabled>请选择实际发生的那一次</option>
+              <option
+                v-for="(choice, index) in timeOptions.choices"
+                :key="choice.utc"
+                :value="choice.utc"
+              >
+                第 {{ index + 1 }} 次（UTC{{ choice.offset }}）
+              </option>
+            </select>
+          </ElFormItem>
           <ElFormItem label="外部交易参考号"
             ><ElInput
               v-model="reference"

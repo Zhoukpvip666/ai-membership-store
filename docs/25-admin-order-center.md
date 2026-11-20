@@ -212,6 +212,7 @@ Reuse T16/T17 exactly; do not duplicate or weaken their validation.
 - Confirm payment: only after external full receipt is checked. If any other PAYMENT remains PENDING, disable confirmation with a clear explanation and keep the server's 409 as final guard. On confirmation show PAID + PROCESSING.
 - Fail payment: require a nonblank reason max 500; preserve original transaction evidence.
 - Payment registration/confirmation remains constrained by the original 24-hour deadline. Do not extend it or accept late confirmation.
+- Payment and refund registration interpret the entered wall time in the displayed business timezone. A fall-back overlap requires an explicit choice between the two occurrences, each labeled with its UTC offset. Changing the date, time or timezone clears the choice. A nonexistent spring-forward time is rejected. The chosen UTC instant is sent with millisecond precision, and an uncertain-response retry reuses the original request body and key.
 
 Never expose direct state-edit controls for paymentStatus or fulfillmentStatus.
 
@@ -343,7 +344,7 @@ One T20 implementation PR targeting `main`, using an independent worktree/branch
 - ADMIN orders are split from the unchanged customer view. Focused Vue components provide list/filter/pagination, snapshot details, create/edit, notes, payment/refund evidence and existing lifecycle actions. Existing Element Plus/form/date/money helpers are reused.
 - A memory-only request context freezes the canonical body/key until a confirmed response. Uncertain responses retain the dialog for original-request retry; stale versions refresh without automatic reapplication. No order form/evidence is saved to browser storage.
 - Evidence remains paginated. When one page does not contain all attempts, lifecycle controls stay disabled until explicit full-evidence review. This prevents confirming a payment based on an incomplete pending-attempt list; the backend remains the final guard.
-- Date entry retains seconds/milliseconds while converting the chosen business-zone wall time to UTC through the existing business-time helper. UI warnings separate external money movement from local registration/confirmation.
+- Transaction date entry uses the existing Temporal polyfill to resolve business-zone wall time with seconds and milliseconds intact. Each fall-back occurrence can be selected explicitly, and spring-forward gaps are rejected. UI warnings separate external money movement from local registration/confirmation.
 - AdminLayout changes only LOCAL-page detection and Mock notice text. No header/sidebar positioning or original user layout changes are included.
 - The existing credential-field policy is extracted unchanged into a browser-safe shared contract. Create/edit and snapshot rendering reject credential-collecting forms before displaying inputs; server validation remains authoritative.
 
@@ -372,6 +373,15 @@ No Prisma Schema, migration, dependency version or lockfile changes. All twelve 
 - Mobile acceptance uses Edge with an iPhone-sized viewport, not a physical phone. The existing product-type mobile case had one whole-suite timeout, then passed unchanged in isolation; no root cause beyond that observed intermittent timeout is claimed.
 - The original checkout still contains exactly its three uncommitted layout edits. All three SHA-256 values match the preflight baseline. The CUSTOMER view is byte-equivalent after line-ending normalization to the prior order view; no CUSTOMER feature was added.
 - The original MySQL container remains running/healthy on its existing volume. Development database content was not queried or changed. All random test containers/volumes were removed by their runner; local logs/screenshots are ignored.
+
+### PR #29 DST follow-up
+
+The payment and refund dialogs use the already pinned Temporal polyfill to resolve local transaction times. In Los Angeles, 2026-11-01 01:30 at UTC−07:00 maps to 08:30Z, and the second occurrence at UTC−08:00 maps to 09:30Z. Both choices preserve seconds and milliseconds. The browser rejects a gap or an unresolved overlap before submitting. An uncertain retry sends the saved UTC instant with the original idempotency key.
+
+- `npm test` passed with backend 71/71 and frontend 20/20. New coverage includes the Los Angeles and Lord Howe overlaps, gap rejection, precise UTC conversion, and retry of the original UTC timestamp.
+- `npm run test:e2e -w backend -- --admin-orders-only --project mobile-edge` passed 10/10. The new case used the actual refund API and isolated MySQL to verify no write for a gap or unresolved overlap, cleared selection on input changes, and correct persistence for each offset.
+- `npm run test:e2e -w backend -- --creation-only auth.spec.ts products.spec.ts subscriptions.spec.ts prototype.spec.ts --project mobile-edge` passed all 16/16 cases in one serial run (5.7 minutes). The previous product-type transition timeout did not recur in this run (14.8 seconds). The four existing test files, assertions, timeouts and runner configuration were unchanged.
+- `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm run build` passed.
 
 ### Changed files
 

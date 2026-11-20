@@ -624,3 +624,133 @@ test('credential-collecting catalog forms are blocked before entering data or su
     0,
   )
 })
+
+test('refund entry requires an explicit rollback offset and persists each selected instant', async ({
+  page,
+  context,
+}) => {
+  const settings = await db.appSettings.findUniqueOrThrow({ where: { id: 1 } })
+  await db.appSettings.update({
+    where: { id: 1 },
+    data: { timezone: 'America/Los_Angeles' },
+  })
+  try {
+    const { customer, product, admin } = await setup(page, context, false, true)
+    const paidAt = new Date('2025-03-07T12:00:00.000Z')
+    const paymentConfirmedAt = new Date('2025-03-07T12:01:00.000Z')
+    const order = await db.order.create({
+      data: {
+        orderNo: 'DST-' + randomUUID().replaceAll('-', ''),
+        userId: customer.id,
+        productId: product.id,
+        createdByAdminId: admin.id,
+        source: 'ADMIN',
+        kind: 'ONE_TIME',
+        productTypeSnapshot: 'ONE_TIME',
+        productNameSnapshot: product.name,
+        termSnapshot: product.termLabel,
+        amountFen: 1000,
+        contactEmailSnapshot: customer.loginEmail,
+        createdAt: new Date('2025-03-07T11:00:00.000Z'),
+        paymentStatus: 'REFUND_PENDING',
+        fulfillmentStatus: 'CANCELLED',
+        paidAt,
+        paymentConfirmedAt,
+        cancelledAt: new Date('2025-03-07T13:00:00.000Z'),
+        cancellationReason: '验收：服务无法交付',
+      },
+    })
+    await db.paymentTransaction.create({
+      data: {
+        orderId: order.id,
+        kind: 'PAYMENT',
+        channel: 'CASH',
+        status: 'CONFIRMED',
+        amountFen: order.amountFen,
+        occurredAt: paidAt,
+        confirmedAt: paymentConfirmedAt,
+        createdByAdminId: admin.id,
+        confirmedByAdminId: admin.id,
+      },
+    })
+    await page.getByRole('textbox', { name: '搜索订单' }).fill(order.orderNo)
+    await page.getByRole('button', { name: '查询订单', exact: true }).click()
+    await page
+      .locator('tbody tr')
+      .filter({ hasText: order.orderNo })
+      .getByRole('button', { name: '查看详情' })
+      .click()
+
+    const wallTime = '2025-11-02T01:30:12.345'
+    const earlier = '2025-11-02T08:30:12.345Z'
+    const later = '2025-11-02T09:30:12.345Z'
+    const refunds = () =>
+      db.paymentTransaction.findMany({
+        where: { orderId: order.id, kind: 'REFUND' },
+        orderBy: { occurredAt: 'asc' },
+      })
+    async function openRefund() {
+      const form = await action(page, '登记线下退款')
+      await form.getByText('已在外部发起原路全额退款', { exact: true }).click()
+      return form
+    }
+    const form = await openRefund()
+    const time = form.getByLabel('实际发生时间', { exact: true })
+    const offset = form.getByRole('combobox', { name: '回拨时段的 UTC 偏移' })
+    const save = form.getByRole('button', { name: '确认提交', exact: true })
+    await time.fill('2025-03-09T02:30')
+    await save.click()
+    await expect(form.getByRole('alert')).toContainText(
+      '该时区不存在此日期或时间',
+    )
+    await expect(offset).toHaveCount(0)
+    await time.fill(wallTime)
+    await expect(offset.getByRole('option')).toHaveText([
+      '请选择实际发生的那一次',
+      '第 1 次（UTC-07:00）',
+      '第 2 次（UTC-08:00）',
+    ])
+    await offset.selectOption(earlier)
+    await time.fill('2025-11-02T01:31:12.345')
+    await time.fill(wallTime)
+    await expect(offset).toHaveValue('')
+    await save.click()
+    await expect(form.getByRole('alert')).toContainText(
+      '请选择回拨时段的实际 UTC 偏移',
+    )
+    expect(await refunds()).toHaveLength(0)
+
+    await offset.selectOption(earlier)
+    await submit(page, form)
+    expect(
+      (await refunds()).map((row) => row.occurredAt.toISOString()),
+    ).toEqual([earlier])
+
+    const fail = await action(page, '标记退款失败')
+    await fail
+      .getByRole('textbox', { name: '原因（必填）' })
+      .fill('验收：记录下一次尝试')
+    await submit(page, fail)
+
+    const retry = await openRefund()
+    await retry.getByLabel('实际发生时间', { exact: true }).fill(wallTime)
+    await retry
+      .getByRole('combobox', { name: '回拨时段的 UTC 偏移' })
+      .selectOption(later)
+    await submit(page, retry)
+    expect(
+      (await refunds()).map((row) => [
+        row.occurredAt.toISOString(),
+        row.status,
+      ]),
+    ).toEqual([
+      [earlier, 'FAILED'],
+      [later, 'PENDING'],
+    ])
+  } finally {
+    await db.appSettings.update({
+      where: { id: 1 },
+      data: { timezone: settings.timezone, updatedAt: settings.updatedAt },
+    })
+  }
+})
