@@ -1,12 +1,12 @@
 # Offline payment attempts and confirmation — implementation contract
 
 - Document: OFFLINE-PAYMENT-API
-- Version: 1.0
-- Status: Approved design baseline; implementation not started
+- Version: 1.1
+- Status: Implemented for PR review; no development database deployment
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order creation](19-order-creation-api.md), [Order edit](20-order-edit-api.md), [Order cancellation/timeout](21-order-cancellation-timeout.md), [Order revision foundation](18-order-revision-foundation.md), [Order read API](16-order-read-api.md)
 
-T17 is designed to add ADMIN-only offline payment-attempt listing, registration, confirmation and failure. It records money received externally; the application never initiates, transfers or verifies money automatically. It does not implement refunds, fulfillment, subscription entitlement, payment-provider callbacks, customer payment uploads, frontend order/payment UI, or development database deployment.
+T17 implements ADMIN-only offline payment-attempt listing, registration, confirmation and failure. It records money received externally; the application never initiates, transfers or verifies money automatically. It does not implement refunds, fulfillment, subscription entitlement, payment-provider callbacks, customer payment uploads, frontend order/payment UI, or development database deployment.
 
 ## Decision conflict reconciliation
 
@@ -172,3 +172,66 @@ Every mutation requires expectedVersion. A stale version returns 409 VERSION_CON
 - No migration expected. If current triggers/constraints make the contract impossible, stop and report the exact blocker before adding a migration.
 - Update API contract, data model, roadmap and implementation report. Use random isolated MySQL/no Seed; never read development .env or touch development DB/volume.
 - Stop at one PR for review; do not merge or start refund/fulfillment without separate authorization.
+
+## 12. Implementation report (2026-11-19)
+
+### Implementation and compatibility
+
+`payment-schemas.ts` defines strict role-safe DTOs, bounded integer Fen/version, UTC ISO timestamps with exactly three fractional digits, trimmed evidence fields and reason, and bounded pagination. `payments.ts` provides the explicit fourteen-field PAYMENT evidence projection/DTO, read-only paginated listing, and shared register/confirm/fail transaction. `payment-routes.ts` exposes only the four ADMIN endpoints through the existing Session/role/CSRF/rate-limit/no-store stack. Existing customer routes and T16 worker semantics are unchanged.
+
+The three mutations reuse permanent actorUserId-scoped `mutation()`, canonical operation/target/input hashing, original-response replay and database-enforced concurrency. Replay occurs before current state checks. A registration retry with a different key and the original expectedVersion conflicts; an intentional subsequent attempt requires the refreshed version. Multiple actual attempts remain supported without any automatic sibling closure.
+
+Confirmation/failure locate the parent with an autocommit read before opening the Serializable transaction. This locator never authorizes a write: a Serializable read of PaymentTransaction on the transaction connection could acquire an implicit shared lock before Order. Locating first also avoids holding a transaction connection while waiting for a second connection from the same five-connection pool. The idempotency check still precedes all state checks. After Order is exclusively locked, the service locks PAYMENT rows in deterministic ID order and re-reads their current order membership and state. A missing/moved/non-PAYMENT target returns safe 404. The existing T16 Order-first protocol serializes cancellation and timeout with payment changes.
+
+Eligibility uses a fresh `UTC_TIMESTAMP(3)` query after all locks. The conditional Order UPDATE checks the original deadline again after the PaymentTransaction write, so a lock wait or delayed write cannot extend the window. Confirmation freezes paidAt from occurredAt and writes exactly the same database clock value to confirmedAt/paymentConfirmedAt. paymentRecordedAt is untouched, including non-NULL legacy metadata. Registration and failure never invent payment/confirmation times; no operation creates a subscription or completes fulfillment.
+
+Every success updates one Order version, appends one complete protected Revision from the persisted Order, one Event and one sanitized ADMIN Audit, and saves the original response in the same transaction. PAYMENT_FAILED uses NOTE plus its operation marker; it preserves the transaction's original note and all receipt evidence. Event/Audit JSON excludes references, raw payment/order notes, form values and authentication fields; only the explicit failure reason is saved in its designated history fields. GET changes no business/history records.
+
+### Error codes
+
+Alongside existing authentication/input/key/404/VERSION_CONFLICT/IDEMPOTENCY_CONFLICT errors, this implementation uses ORDER_NOT_PAYABLE (409) for ineligible/expired orders or confirmed facts, PAYMENT_NOT_PENDING (409) for a processed attempt, PAYMENT_AMOUNT_MISMATCH (409), OTHER_PENDING_PAYMENTS (409), and PAYMENT_TIME_INVALID (400 for an out-of-range registration claim; 409 for an existing attempt that cannot be confirmed). No private request values are echoed.
+
+### Isolated test procedure
+
+`--payments-only` extends the existing no-Seed runner. Before payment tests it runs the existing cancellation/read/edit/create/Revision/subscription regression on separate random databases, then verifies the migration-twelve historical upgrade and all thirteen business tables/revisions in another random MySQL 8.4 project. `--payments-only --fresh` additionally supports installation from empty. Both verify repeat deploy/status/schema diff. Browser mode installs the same twelve migrations independently for each viewport: the full desktop suite runs first, then the full mobile suite, each with its own API process and random database. Explicit `--project` selection still runs only that project. Only runner-owned resources are cleaned; no development .env, database, original volume or running service is accessed or changed.
+
+The HTTP suite exercises all channels, USER/ADMIN sources and INITIAL/ONE_TIME kinds, mismatched attempts, strict inputs, ADMIN isolation, safe listing/DTO allowlists, every state/deadline branch, original evidence, full immutable snapshots, all six write-stage faults for all three operations, sequential/concurrent idempotency and version races. Eight real simultaneous confirmations exceed the five-connection pool and check that locating does not starve nested connection acquisition. Deadline tests wait on real MySQL locks/time and delay a transaction write. A confirmation transaction is held at an audit barrier while concurrent SYSTEM workers cross the deadline; the reverse race holds the production SYSTEM cancellation core while the actual HTTP confirmation waits. No mock payment service or mock Prisma establishes correctness.
+
+### Failures and corrections during validation
+
+The first HTTP payment run passed 15/21 cases but exhausted the unchanged 120-request ADMIN limit across the suite's single long-lived application. Six later scenarios returned 429 or could not reach their transaction barriers. Each independent scenario now starts a fresh real Express application with its original limiter, while keeping the same isolated database and real Session authentication. This isolates test lifetimes without changing production security limits or weakening any assertions. The complete historical-upgrade/regression/payment command is rerun after the correction.
+
+A parallel rerun completed read/edit/create/Revision/subscription regression, but the new payment mode's parent command terminated the aggregate cancellation regression after its inherited ten-minute wall-clock budget. This budget includes three separate database startups, migrations and complete suites. Only that aggregate parent budget is now twenty minutes; all individual suite budgets/assertions and existing database modes' budgets remain unchanged. Timeout diagnostics now report this distinction without exposing command credentials. Final database and browser runs execute sequentially to avoid resource contention; the interrupted runner's uniquely labelled disposable container/volume was removed separately, leaving the development volume untouched.
+
+The first combined-viewports browser run passed 44/52, including the four new T17 cases; eight later mobile regressions failed. Saved network traces confirmed HTTP 429 on the existing product endpoints after the shared API's production mutation allowance was exhausted. Browser execution now isolates API/database lifetime per viewport instead of weakening limits, adding sleeps, skipping cases or changing assertions. The complete desktop/mobile suite is rerun under the corrected isolation.
+
+Review also corrected the hidden SYSTEM_RENEWAL fixture to use NULL creator IDs as required by the published CHECK, and moved the read-only transaction locator before transaction acquisition to avoid connection-pool starvation. An eight-request real HTTP regression covers the latter. Initial full formatting encountered Windows checkout CRLF; normalizing line endings for verification leaves all unrelated Git file content unchanged.
+
+### Changed files
+
+- `backend/src/modules/orders/payment-schemas.ts` (new), `payments.ts` (new), `payment-routes.ts` (new), and `routes.ts` (ADMIN route mount).
+- `backend/test/offline-payments.test.ts` (new), `backend/test/integration/offline-payments.test.ts` (new), `e2e/offline-payments.spec.ts` (new), and `backend/scripts/test-database.ts` (`--payments-only` mode).
+- `README.md`, `docs/04-data-model.md`, `docs/05-api-contract.md`, `docs/07-development-roadmap.md`, and this report.
+
+### Validation and boundaries
+
+The final `npm run test:db -w backend -- --payments-only` completed successfully: payment HTTP tests **22/22**, cancellation/timeout **25/25**, order read **14/14**, edit **19/19**, creation **15/15**, Revision **9/9**, and subscription **10/10** (**114/114** total; no skipped/cancelled tests). The payment project's historical migration-twelve upgrade preserved every row and revision in all thirteen business tables, with no invented payment or zero-order reclassification. Repeated deploy had no pending migrations; schema diff passed. The other regression databases also verified fresh installation.
+
+Actual commands executed in this task:
+
+| Command | Result |
+|---|---|
+| `npm ci` | Passed; Prisma Client generated by existing postinstall |
+| `npm run db:validate` | Passed |
+| `npm run db:generate` | Passed, Prisma Client 7.10.1 |
+| `npm run format:check` | Passed after final runner/test changes |
+| `npm run typecheck` | Passed for frontend, backend and E2E after final runner/test changes |
+| `npm run lint` | Passed after final runner/test changes |
+| `npm test` | Frontend 9/9; backend 41/41, including four new payment-schema unit tests |
+| `npm run build` | Frontend Vite and backend TypeScript builds passed |
+| `npm run test:db -w backend -- --payments-only` | Passed, 114/114 and historical-upgrade/repeat-deploy/schema checks described above |
+| `npm run test:e2e -w backend -- --payments-only` | Passed, desktop Edge 26/26 and mobile Edge 26/26 (52/52 total; no skipped cases), in separate fresh no-Seed environments |
+
+`npm ci` reported three high-severity audit findings in the existing locked dependencies; dependency versions were not changed. Frontend builds retain existing third-party Zod comment-annotation warnings.
+
+No Schema, Migration, dependency version, frontend application source, authentication, T16 business logic or original layout is changed. All twelve published migrations remain byte-for-byte unchanged. No development database migration/deployment, Seed, refund, payment-provider integration, fulfillment or next-stage work is included. Work started from fetched `origin/main` at `72d24a3`; the original shopping checkout's older local main and three layout edits were deliberately preserved. Their SHA-256 values and original API/frontend PIDs were rechecked unchanged; the development MySQL container remained healthy. Development .env and database data were not read or modified by implementation/testing.

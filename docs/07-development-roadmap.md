@@ -42,9 +42,9 @@ T15 reuses all twelve committed migrations unchanged. Actual amount changes requ
 
 Reuses all twelve migrations unchanged. Both manual handlers share the locked atomic cancellation service, with normalized original-response idempotency and exact role-safe DTOs. The worker processes at most 100 deterministic candidates per minute, with per-order SKIP LOCKED transactions, SYSTEM NULL actors, per-row rollback/retry and graceful shutdown. Real HTTP/MySQL tests cover payment facts, pending-attempt closure, all-stage fault injection, manual/worker/payment-lock races, repeated scans and existing write/read/subscription regressions. Payment-race tests use a synthetic writer only; no production payment-confirmation API is implemented.
 
-## T17 offline payment attempts and confirmation — approved design, implementation not started
+## T17 offline payment attempts and confirmation — implemented for review
 
-**Status: D70-D75 confirmed and documented; awaiting one implementation PR.** [Implementation contract](22-offline-payment-api.md).
+**Status: D70-D75 implemented; isolated validation and implementation report accompany the PR. No development deployment.** [Implementation contract and actual results](22-offline-payment-api.md).
 
 - ADMIN-only GET payment attempts; POST register PENDING; POST confirm full payment; POST mark one attempt FAILED.
 - Registration is separate from confirmation. Amount mismatch may be recorded as PENDING but must fail verification; never rewrite actual amount.
@@ -52,7 +52,7 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 - Failure requires a reason, preserves original payment evidence and recomputes order summary based on remaining PENDING/confirmed attempts.
 - Every successful register/confirm/fail operation increments Order.version once and writes Revision/Event/AdminAuditLog/idempotency atomically.
 - Payment routes lock Order before PaymentTransaction, matching T16 timeout/cancellation. No payment gateway, refunds, fulfillment, subscriptions or frontend UI.
-- No migration expected; stop at PR review and do not deploy to development DB.
+- Reuses all twelve migrations unchanged; stop at PR review and do not deploy to development DB. Use `npm run test:db -w backend -- --payments-only` for historical-upgrade and existing order/subscription regression, and `npm run test:e2e -w backend -- --payments-only` after building for fresh desktop/mobile browser checks. No Seed or development configuration is used.
 
 ## Order revision / generic idempotency foundation
 

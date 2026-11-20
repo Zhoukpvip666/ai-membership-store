@@ -25,16 +25,25 @@ const password = randomBytes(24).toString('hex')
 const rootPassword = randomBytes(24).toString('hex')
 const adminPassword = randomBytes(24).toString('hex')
 const browserMode = process.argv.includes('--e2e')
+const splitBrowserProjects =
+  browserMode &&
+  !process.argv.some(
+    (argument) => argument === '--project' || argument.startsWith('--project='),
+  )
 const requestedFreshInstall = process.argv.includes('--fresh')
 const modelsOnly = process.argv.includes('--models-only')
 const ordersOnly = process.argv.includes('--orders-only')
 const productsOnly = process.argv.includes('--products-only')
 const revisionsOnly = process.argv.includes('--revisions-only')
 const cancellationOnly = process.argv.includes('--cancellation-only')
+const paymentsOnly = process.argv.includes('--payments-only')
 const editOnly = process.argv.includes('--edit-only')
 // Editing reuses the committed twelve-migration compatibility path, without Seed.
 const creationOnly =
-  process.argv.includes('--creation-only') || editOnly || cancellationOnly
+  process.argv.includes('--creation-only') ||
+  editOnly ||
+  cancellationOnly ||
+  paymentsOnly
 const creationUpgradeSnapshot = join(directory, 'creation-upgrade.json')
 const revisionUpgradeSnapshot = join(directory, 'revision-upgrade.json')
 // Protected history cannot be deleted to prepare empty-database API/seed tests.
@@ -79,14 +88,23 @@ function run(
       timeout,
     })
   } catch (error) {
-    const result = error as { stdout?: string; stderr?: string }
+    const result = error as {
+      stdout?: string
+      stderr?: string
+      code?: string
+    }
     const safeOutput = String(result.stdout ?? '') + String(result.stderr ?? '')
+    const timeoutMessage =
+      result.code === 'ETIMEDOUT'
+        ? `Isolated test subprocess exceeded its ${timeout}ms aggregate wall-clock budget.\n`
+        : ''
     // eslint-disable-next-line preserve-caught-error -- Raw process errors may retain credentials.
     throw new Error(
-      safeOutput
-        .replaceAll(password, '[redacted]')
-        .replaceAll(rootPassword, '[redacted]')
-        .replaceAll(adminPassword, '[redacted]') ||
+      timeoutMessage +
+        safeOutput
+          .replaceAll(password, '[redacted]')
+          .replaceAll(rootPassword, '[redacted]')
+          .replaceAll(adminPassword, '[redacted]') ||
         'Database test command failed.',
     )
   }
@@ -105,7 +123,25 @@ function runModelTests(env: NodeJS.ProcessEnv) {
 }
 
 try {
-  if ((editOnly || cancellationOnly) && !browserMode)
+  // Every viewport runs the full suite against a separate fresh application/DB.
+  // A growing cross-viewport mutation suite must not exhaust the unchanged
+  // production 120-request limiter and hide its business assertions with 429s.
+  if (splitBrowserProjects)
+    console.info(
+      run(
+        process.execPath,
+        [
+          'scripts/test-database.ts',
+          ...process.argv.slice(2),
+          '--project',
+          'desktop-edge',
+        ],
+        process.env,
+        cwd,
+        600000,
+      ),
+    )
+  if ((editOnly || cancellationOnly || paymentsOnly) && !browserMode)
     // Read assertions intentionally count every visible order. Keep their
     // pristine fixtures separate from the append-only edit/creation histories.
     console.info(
@@ -113,12 +149,19 @@ try {
         process.execPath,
         [
           'scripts/test-database.ts',
-          cancellationOnly ? '--edit-only' : '--orders-only',
-          ...(cancellationOnly ? ['--fresh'] : []),
+          paymentsOnly
+            ? '--cancellation-only'
+            : cancellationOnly
+              ? '--edit-only'
+              : '--orders-only',
+          ...(cancellationOnly || paymentsOnly ? ['--fresh'] : []),
         ],
         process.env,
         cwd,
-        600000,
+        // Payment regression aggregates three complete independent DB projects
+        // (read, edit/create/revision/subscription, cancellation). Keep every
+        // individual suite's existing timeout; budget this larger parent batch.
+        paymentsOnly ? 1200000 : 600000,
       ),
     )
   if (
@@ -562,14 +605,16 @@ try {
   }
   if (creationOnly && !browserMode) {
     for (const suite of [
-      ...(cancellationOnly
-        ? ['order-cancellation.test.ts']
-        : [
-            ...(editOnly ? ['order-edit.test.ts'] : []),
-            'order-creation.test.ts',
-            'order-revisions.test.ts',
-            'subscriptions.test.ts',
-          ]),
+      ...(paymentsOnly
+        ? ['offline-payments.test.ts']
+        : cancellationOnly
+          ? ['order-cancellation.test.ts']
+          : [
+              ...(editOnly ? ['order-edit.test.ts'] : []),
+              'order-creation.test.ts',
+              'order-revisions.test.ts',
+              'subscriptions.test.ts',
+            ]),
     ])
       console.info(
         run(process.execPath, ['--test', 'test/integration/' + suite], env),
@@ -692,6 +737,7 @@ try {
           'test',
           '--config',
           join(cwd, '..', 'playwright.config.ts'),
+          ...(splitBrowserProjects ? ['--project', 'mobile-edge'] : []),
           ...process.argv
             .slice(2)
             .filter(
@@ -703,6 +749,7 @@ try {
                   '--creation-only',
                   '--edit-only',
                   '--cancellation-only',
+                  '--payments-only',
                 ].includes(argument),
             ),
         ],
