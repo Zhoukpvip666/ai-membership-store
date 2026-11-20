@@ -54,9 +54,9 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 - Payment routes lock Order before PaymentTransaction, matching T16 timeout/cancellation. No payment gateway, refunds, fulfillment, subscriptions or frontend UI.
 - Reuses all twelve migrations unchanged; stop at PR review and do not deploy to development DB. Use `npm run test:db -w backend -- --payments-only` for historical-upgrade and existing order/subscription regression, and `npm run test:e2e -w backend -- --payments-only` after building for fresh desktop/mobile browser checks. No Seed or development configuration is used.
 
-## T18 offline refund management — approved design, implementation not started
+## T18 offline refund management — implemented for review
 
-**Status: D76-D82 confirmed and documented; awaiting one implementation PR.** [Full implementation contract](23-offline-refund-api.md).
+**Status: D76-D82 implemented; actual isolated results accompany the implementation PR. No development deployment.** [Full implementation contract](23-offline-refund-api.md).
 
 - ADMIN-only GET refund attempts; POST register externally initiated full refund as PENDING; POST confirm after verifying actual return; POST fail with mandatory reason.
 - Only CANCELLED + REFUND_PENDING orders with exactly one confirmed full PAYMENT are eligible. No refunds for completed fulfillment or zero-price orders.
@@ -64,7 +64,7 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 - At most one PENDING REFUND and one CONFIRMED full REFUND per order. FAILED attempts remain in history and may be retried with a new attempt.
 - PENDING does not mean money returned. Confirmation changes paymentStatus to REFUNDED while fulfillmentStatus remains CANCELLED.
 - Every successful mutation increments Order.version once and writes Revision/Event/AdminAuditLog/idempotency atomically. Lock order remains Order -> PaymentTransaction, matching T16/T17.
-- No partial refunds, provider APIs, money movement, fulfillment or subscription work. No migration expected; stop at PR review and do not deploy to development DB.
+- No partial refunds, provider APIs, money movement, fulfillment or subscription work. All twelve migrations unchanged; stop at PR review and do not deploy to development DB. Use `npm run test:db -w backend -- --refunds-only` for isolated HTTP refund and existing regression; browser checks use the same no-Seed runner.
 
 ## Order revision / generic idempotency foundation
 

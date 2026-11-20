@@ -1,12 +1,12 @@
 # Offline refund attempts and confirmation — implementation contract
 
 - Document: OFFLINE-REFUND-API
-- Version: 1.0
-- Status: Approved design baseline; implementation not started
+- Version: 1.1
+- Status: Implemented for PR review; no development database deployment
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Offline payment API](22-offline-payment-api.md), [Order cancellation/timeout](21-order-cancellation-timeout.md), [Order revision foundation](18-order-revision-foundation.md)
 
-T18 is designed to add ADMIN-only manual offline refund-attempt listing, registration, confirmation and failure. The application records an external refund transfer; it never sends money or calls a payment provider. A PENDING REFUND is an attempt record after the external refund has actually been initiated, not proof that the customer has received the money. Only confirmation after external completion changes the order to REFUNDED (D76 clarifies D59).
+T18 implements ADMIN-only manual offline refund-attempt listing, registration, confirmation and failure. The application records an external refund transfer; it never sends money or calls a payment provider. A PENDING REFUND is an attempt record after the external refund has actually been initiated, not proof that the customer has received the money. Only confirmation after external completion changes the order to REFUNDED (D76 clarifies D59).
 
 ## 1. Decision reconciliation
 
@@ -183,3 +183,82 @@ Every POST requires expectedVersion and Idempotency-Key. Same actor/key/canonica
 - No schema or migration change is expected; if DB constraints block the contract, stop and report the exact constraint before modifying schema.
 - Update API contract, data model, roadmap and implementation report. Use random isolated MySQL/no Seed; never read development .env or touch development DB/volume.
 - Stop at PR review; do not merge or begin fulfillment/subscription work without separate authorization.
+
+## 13. Implementation report (2026-11-19)
+
+### Implementation and preserved evidence
+
+The four ADMIN routes reuse persisted Session/role, CSRF, mutation limits and no-store headers. Refund request schemas reuse the existing bounded offline evidence format; bodies and queries reject unknown fields. Listing filters only REFUND rows and uses the existing explicit 14-field ADMIN transaction DTO, with matching count/filter and createdAt DESC/id ASC ordering. It never creates history or changes Order.version.
+
+Refund mutations use the existing actorUserId-scoped idempotency helper and serializable transaction/retry wrapper. The non-locking transaction locator runs before acquiring a transaction connection, avoiding a second pool acquisition and reversed Serializable locks. Replay precedes business-state validation. The action locks Order, then every related PaymentTransaction in ID order, re-reads the target and verifies its REFUND kind and membership. Locked eligibility requires a positive cancelled REFUND_PENDING order, complete payment/cancellation facts and exactly one consistent confirmed full PAYMENT. Any transaction with a confirmed status or confirmation timestamp counts as confirmation evidence, including malformed rows whose status disagrees with their timestamp.
+
+Registration rejects any PENDING/CONFIRMED refund evidence. Confirm/fail require exactly the one PENDING target and no confirmed refund. The amount and channel must exactly match the full original payment on every mutation; occurrence must be between actual original payment time and database UTC now, inclusive. There is no createdAt+24h refund restriction. The conditional Order update changes only the payment summary, version and updatedAt; all purchase snapshots, payment times and cancellation fields remain unchanged. Only confirmation sets REFUNDED. Failure changes only refund status/updatedAt; the original note and other external evidence remain intact, and a later registration creates a different transaction ID.
+
+Each success appends a complete persisted-order V1-schema Revision, one event and sanitized ADMIN audit, then saves the original response in the same transaction. Failure reason is stored in Revision.reason, Event.note, the safe after-state JSON only, and Audit.reason. Registration before-state has NULL transactionId/amount/channel/status; after-state identifies the new PENDING refund. Confirm/fail before-state describes the existing PENDING refund without a failure reason; REFUND_FAILED after-state describes FAILED and includes the reason. Event and Audit share the same precise before/after state. Reference, original note, customer form data and credentials are excluded from event/audit state; protected Revision and explicit ADMIN evidence DTO retain their documented purposes.
+
+No Schema or Migration changed. All twelve committed SQL files and version/source/renewal/history triggers remain unchanged. Existing T16/T17 services are reused without changing their rules; T17 only exports its existing DTO helper for reuse. No new business decision, frontend application code, provider SDK, money movement, fulfillment or entitlement operation is included.
+
+### Error contract
+
+Existing authentication, CSRF, INVALID_INPUT, NOT_FOUND, VERSION_CONFLICT and IDEMPOTENCY_CONFLICT errors are retained. Additional 409 codes are ORDER_NOT_REFUNDABLE (state or original payment facts invalid), REFUND_NOT_PENDING (terminal target), OTHER_PENDING_REFUNDS, REFUND_AMOUNT_MISMATCH and REFUND_CHANNEL_MISMATCH. REFUND_TIME_INVALID is 400 for a registration claim outside the permitted time range, and 409 for invalid stored target evidence. Missing, hidden, system-renewal or wrong-kind targets share safe NOT_FOUND responses. No raw private request values are echoed.
+
+### Verification procedure
+
+`--refunds-only` extends the existing random isolated MySQL 8.4/no-Seed runner. Its default path runs T17/T16/read/edit/create/Revision/subscription regressions on independent fresh databases, then uses another random project for the historical migration-twelve upgrade and refund HTTP tests. The upgrade compares every row and revision in all thirteen business tables, checks repeat deploy has no pending migrations and verifies schema diff. Existing row histories are not deleted to reset the suites. `--refunds-only --fresh` installs all twelve from empty; no new migration is introduced.
+
+HTTP cases use real Express routing, persisted Sessions and real MySQL. Tests cover all five channels, USER/ADMIN ordinary sources, INITIAL/ONE_TIME, old orders beyond 24h, precise Event/Audit JSON, safe listing, all eligibility branches, failed-evidence preservation/retry, two ADMIN identities racing, simultaneous replay/version conflicts and eight confirmations exceeding the five-connection pool. Database trigger fault injection covers six write stages for each of the three operations (18 rollback scenarios), compares every business/history row after failure and retries the same key successfully. Browser cases exercise creation -> payment registration/confirmation -> paid cancellation -> refund registration/confirmation/failure/retry through actual cookies/CSRF/Vite proxy, without adding a refund page.
+
+The E2E runner's automatic mobile project option now uses `--project=mobile-edge`: a positional filename after variadic `--project mobile-edge` was previously parsed as another project name. The project still has its own fresh API/database per viewport; no assertion, production rate limit or individual suite budget is relaxed. Refund aggregation receives the existing twenty-minute aggregate allowance used for the larger payment regression; individual database suites keep their original three-minute limit.
+
+The existing checkout remains on its older local main with exactly its three layout edits, while this branch starts from current origin/main `9be1a02`. Neither development .env nor the development database is read by the implementation/tests; no Seed, development migration, development grants/global-variable changes or original-volume operation is performed. Existing API/frontend services are preserved. New development deployment requires separate authorization. Refund uniqueness and cross-table consistency rely on the shared Order-lock transaction protocol; future writers must use that protocol, since this stage does not add a database-level filtered unique index or deferred cross-table assertion.
+
+### Actual verification results and repairs
+
+The first isolated run passed all 117 existing regression tests and 16/18 new refund HTTP tests. Two refund fixture preparation errors prevented the remaining assertions from running: a deliberately missing cancelledAt was reused as the required transaction occurredAt, and an ordinary hidden order violated the existing source CHECK. The fixture now uses a valid fallback transaction time; the visibility test asserts that the database rejects hidden ordinary orders, then exercises every HTTP route with a valid hidden SYSTEM_RENEWAL. No production rule, constraint or assertion was relaxed.
+
+The initial formatting check found CRLF in this fresh Windows worktree. Tracked source/document files were normalized to the repository's LF format; content-identical files are absent from the final diff. Prisma schema and migration files were not changed. npm ci used the committed lockfile and reported three existing high-severity audit findings; dependency versions were not changed in this task. Frontend build also retains existing third-party Zod PURE annotation warnings.
+
+| Command | Actual result |
+| --- | --- |
+| `npm ci` | Passed; Prisma Client 7.10.1 generated by the existing postinstall |
+| `npm run db:validate` | Passed |
+| `npm test` | Passed: backend 45/45, frontend 9/9 |
+| `npm run typecheck` | Passed for frontend, backend and E2E |
+| `npm run lint` | Passed |
+| `npm run format:check` | Passed after LF normalization |
+| `npm run build` | Frontend and backend passed |
+| `git diff --check` | Passed |
+| `npm run test:db -w backend -- --refunds-only` | Full rerun passed 135/135: refunds 18, payments 25, cancellation/timeout 25, editing 19, creation 15, order reads 14, Revision 9, subscriptions 10; no skips |
+| Selected browser command below | Passed 22/22: desktop-edge 11/11 and mobile-edge 11/11, including four new refund executions; no skips or retries |
+
+The successful database rerun also passed historical migration-twelve upgrade/data-preservation checks, complete fresh twelve-migration installations for the regression projects, repeat deploy with no pending migration and Prisma schema diff. All thirteen business tables and historical immutable revisions were preserved in the upgrade fixture. The random isolated containers/volumes were removed by the guarded runner; the development container/volume was not used.
+
+The actual browser command was:
+
+```sh
+npm run test:e2e -w backend -- --refunds-only e2e/offline-refunds.spec.ts e2e/offline-payments.spec.ts e2e/order-cancellation.spec.ts e2e/order-edit.spec.ts e2e/order-creation.spec.ts
+```
+
+These are the selected refund/payment/cancellation/edit/creation browser regressions, not a claim that every unrelated UI spec was rerun. Each viewport installed all twelve migrations into its own fresh random database, verified repeat deploy/schema diff, used no Seed and removed only its own disposable resources. Both browser projects passed on their first execution. Final format/diff checks also passed after the fixture repairs. The original checkout still has only its three pre-existing layout edits (all three SHA-256 values unchanged), API PID 1936 and Vite PID 1720 retain ports 3000/5173, and the original MySQL container remains healthy on ai-membership-store_mysql-data. Development database contents were not inspected or modified.
+
+### Changed files
+
+- Backend implementation: `backend/src/modules/orders/refund-schemas.ts`, `refund-routes.ts`, `refunds.ts`, existing `payments.ts` (DTO export only), and `routes.ts` (ADMIN mount).
+- Tests and runner: `backend/test/offline-refunds.test.ts`, `backend/test/integration/offline-refunds.test.ts`, `e2e/offline-refunds.spec.ts`, `backend/scripts/test-database.ts`.
+- Documentation: `README.md`, `docs/04-data-model.md`, `docs/05-api-contract.md`, `docs/07-development-roadmap.md`, this report.
+
+These are the complete fourteen implementation files. No frontend application, Prisma schema/migration, dependency manifest/lockfile, original layout or development configuration file is included.
+
+### PR #23 review follow-up: failed-refund history
+
+The review found that the shared state builder captured the new failure reason and inserted it into both the before-state and after-state, incorrectly asserting that it already existed on the PENDING attempt. The builder now returns only the transaction/order state; REFUND_FAILED adds reason exclusively while constructing the after-state. OrderEvent.fromStateJson and AdminAuditLog.beforeJson omit the reason entirely, while OrderEvent.toStateJson and AdminAuditLog.afterJson include it with FAILED. Revision.reason, Event.note and Audit.reason continue to preserve the same failure reason.
+
+The real HTTP/MySQL history test corrects its former before-state expectation and compares all four complete JSON objects independently, with field-specific assertion labels. Its recording -> failure -> new recording -> confirmation sequence retains the exact registration and confirmation assertions, complete persisted revision, separate reason fields, sanitized metadata and idempotency checks. Existing rollback and concurrency tests remain unchanged. This follow-up changes only refunds.ts, the refund integration test and this report; no schema, migration or business decision changes are required.
+
+This correction governs subsequent history writes; it does not rewrite existing Event, Audit, Revision or idempotency rows. The original development checkout/configuration and database remain outside the test scope.
+
+Static verification rerun for this follow-up: `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm test` (backend 45/45, frontend 9/9), and `npm run build` all passed. The build retains the existing third-party Zod annotation warnings.
+
+The follow-up reran `npm run test:db -w backend -- --refunds-only` successfully: 135/135, no failures or skips (refunds 18, payments 25, cancellation/timeout 25, editing 19, creation 15, reads 14, Revision 9, subscriptions 10). The precise four-JSON history assertion, separate reason fields, sanitized state, concurrency, original-response replay and all 18 rollback-injection scenarios passed. The random isolated historical-upgrade fixture preserved every row/revision in all thirteen business tables; fresh installations, repeat deploy and schema diff also passed. No development database, .env or original data volume was accessed.
+
+The same selected browser command shown above was also rerun for this fix: 22/22 passed (desktop-edge 11/11, mobile-edge 11/11), including the four refund browser executions and payment/cancellation/edit/creation regressions. Both projects passed on the first attempt with no skipped cases, using their own fresh random MySQL databases and no Seed. This is scoped browser regression, not a rerun of unrelated UI specs. Final `git diff --check` passed. The fix requires no database migration, data rewrite or manual configuration change; deployment remains outside this review update.
