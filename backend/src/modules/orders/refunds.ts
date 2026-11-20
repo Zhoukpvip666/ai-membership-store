@@ -229,10 +229,12 @@ export function offlineRefundService(database: PrismaClient) {
             amountFen: refund?.amountFen ?? null,
             channel: refund?.channel ?? null,
             transactionStatus: refund?.status ?? null,
-            ...(reason === null ? {} : { reason }),
           })
           const beforeJson = state(order, target),
-            afterJson = state(updated, saved)
+            afterJson = {
+              ...state(updated, saved),
+              ...(reason === null ? {} : { reason }),
+            }
           await tx.orderEvent.create({
             data: {
               orderId,

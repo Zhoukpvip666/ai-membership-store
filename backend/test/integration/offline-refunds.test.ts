@@ -915,7 +915,6 @@ test('each success has one complete revision/event/audit/response with precise f
       amountFen: recording ? null : 1000,
       channel: recording ? null : 'WECHAT',
       transactionStatus: recording ? null : 'PENDING',
-      ...(index === 1 ? { reason: 'Bank rejected' } : {}),
     }
     const afterState = {
       ...beforeState,
@@ -929,11 +928,28 @@ test('each success has one complete revision/event/audit/response with precise f
         : index === 1
           ? 'FAILED'
           : 'CONFIRMED',
+      ...(index === 1 ? { reason: 'Bank rejected' } : {}),
     }
-    assert.deepEqual(events[index]!.fromStateJson, beforeState)
-    assert.deepEqual(events[index]!.toStateJson, afterState)
-    assert.deepEqual(audits[index]!.beforeJson, beforeState)
-    assert.deepEqual(audits[index]!.afterJson, afterState)
+    assert.deepEqual(
+      events[index]!.fromStateJson,
+      beforeState,
+      `${operation} OrderEvent.fromStateJson`,
+    )
+    assert.deepEqual(
+      events[index]!.toStateJson,
+      afterState,
+      `${operation} OrderEvent.toStateJson`,
+    )
+    assert.deepEqual(
+      audits[index]!.beforeJson,
+      beforeState,
+      `${operation} AdminAuditLog.beforeJson`,
+    )
+    assert.deepEqual(
+      audits[index]!.afterJson,
+      afterState,
+      `${operation} AdminAuditLog.afterJson`,
+    )
     assert.equal(events[index]!.eventType, index === 1 ? 'NOTE' : operation)
     assert.equal(events[index]!.actorAdminId, admin.id)
     assert.equal(audits[index]!.actorAdminId, admin.id)
