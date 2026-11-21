@@ -502,7 +502,7 @@ test('guest opens the catalog, signs in, reviews, and creates exactly one payabl
   })
   await expect(detail(page)).toContainText('待付款')
   await expect(
-    detail(page).getByRole('heading', { name: '线下付款说明' }),
+    detail(page).getByRole('heading', { name: '微信扫码付款' }),
   ).toBeVisible()
   await expect(detail(page).locator('.customer-countdown')).toBeVisible()
   await expectNoOverflow(page)
@@ -534,7 +534,7 @@ test('a zero-amount order opens its detail without a payment prompt', async ({
   })
   await expect(detail(page)).toContainText('处理中')
   await expect(
-    detail(page).getByRole('heading', { name: '线下付款说明' }),
+    detail(page).getByRole('heading', { name: '微信扫码付款' }),
   ).toHaveCount(0)
   await expect(detail(page).locator('.customer-countdown')).toHaveCount(0)
 })

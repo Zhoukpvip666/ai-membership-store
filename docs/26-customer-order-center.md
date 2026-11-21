@@ -1,5 +1,7 @@
 # Customer order center — implementation contract
 
+T24.2 replaces the T21 payment guidance panel. The original guidance endpoint still supplies the business timezone and plain-text merchant remark. The T24.2 section below governs QR and payment claim behavior.
+
 - Document: CUSTOMER-ORDER-CENTER
 - Version: 1.0
 - Status: Implemented in codex/customer-order-center; pending PR review
@@ -350,3 +352,15 @@ Before the fix, `npm run test:e2e -w backend -- --customer-orders-only --project
 | `git diff --check` | Passed. |
 
 The browser runs used separate random MySQL 8.4 projects with no Seed. Their runner verified migration convergence and removed its own test containers and volumes. The development environment and data volume were outside the test runs.
+
+## T24.2 WeChat QR and customer payment claim
+
+A payable order is an owned, visible ordinary INITIAL or ONE_TIME order with positive amount, UNPAID and NOT_STARTED, no cancellation, fulfillment, or verified payment facts, and a deadline later than the database clock. The original creation time plus 24 hours determines the deadline. A previously failed payment attempt does not prevent a new claim.
+
+- `GET /api/v1/customer/orders/:id/wechat-qr` uses the existing ACTIVE CUSTOMER Session and UUID ownership checks. It looks up the current enabled QR through the private storage service while the order is eligible, and returns `image/png` with `Cache-Control: no-store` and `nosniff`. Missing, foreign, hidden and otherwise ineligible orders return 404. A disabled or unconfigured QR returns 404 and a configured asset that cannot be read returns 503. The route takes no filename, path or query parameters.
+- `POST /api/v1/customer/orders/:id/payment-claim` uses the same Session and role checks plus existing JSON CSRF validation. The strict payload is `{expectedVersion}`, with `Idempotency-Key` required. The transaction locks the owned order and rechecks eligibility at the database clock. Success changes payment status to PENDING_VERIFICATION, keeps fulfillment NOT_STARTED, and increments the version. It creates a USER revision and a NOTE event carrying the `CUSTOMER_PAYMENT_CLAIMED` operation. The response is the customer-safe `{order}` projection. Missing, foreign and hidden orders return 404. Stale versions, ineligible orders and changed same-key input return 409. Replays return the original committed response.
+- The claim remains available when the QR is unavailable. It establishes no actual payment facts, creates no PaymentTransaction, records no paidAt or paymentConfirmedAt, and grants no entitlement. Administrators find these orders in the existing pending-verification filter and record and confirm actual receipts through the existing payment API.
+- Unverified orders still time out at 24 hours. Customers who already transferred funds should contact the merchant for offline handling if the order cancels. The existing deadline and remaining countdown still apply.
+- The customer detail uses the shared order-number formatter and copies the raw value. The QR can be saved via the image download link. The nonempty merchant remark is shown as plain text for all order states. Other status and ownership behavior continues to follow T21.
+
+T24.2 reuses T24.0's order number component and T24.1's private image storage and settings migration. This change adds no database migration.

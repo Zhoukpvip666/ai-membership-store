@@ -9,6 +9,8 @@ import { orderCreationService } from './create.ts'
 import { orderEditService } from './edit.ts'
 import { orderCancellationService } from './cancel.ts'
 import { offlinePaymentRoutes } from './payment-routes.ts'
+import { claimPayment } from './payment-schemas.ts'
+import { customerWechatPayment } from './payment-claim.ts'
 import { offlineRefundRoutes } from './refund-routes.ts'
 import { orderFulfillmentService } from './fulfill.ts'
 import { fulfillOrder } from './fulfill-schemas.ts'
@@ -118,13 +120,37 @@ export function adminOrderRoutes(database: PrismaClient) {
   return router
 }
 
-export function customerOrderRoutes(database: PrismaClient) {
+export function customerOrderRoutes(
+  database: PrismaClient,
+  storageDirectory?: string,
+) {
   const router = Router(),
     service = orderReadService(database)
   const create = orderCreationService(database)
   const edit = orderEditService(database)
   const cancel = orderCancellationService(database)
   const settings = settingsService(database)
+  const wechat = customerWechatPayment(database, storageDirectory)
+  router.get('/orders/:id/wechat-qr', async (request, response) => {
+    orderDetailQuery.parse(request.query)
+    const bytes = await wechat.image(
+      id.parse(request.params.id),
+      response.locals.principal.user.id,
+    )
+    response.type('image/png').send(bytes)
+  })
+  router.post('/orders/:id/payment-claim', async (request, response) => {
+    orderDetailQuery.parse(request.query)
+    const { expectedVersion } = claimPayment.parse(request.body)
+    response.json(
+      await wechat.claim(
+        id.parse(request.params.id),
+        response.locals.principal.user.id,
+        expectedVersion,
+        creationKey(request.get('Idempotency-Key')),
+      ),
+    )
+  })
   router.get('/order-guidance', async (request, response) => {
     orderDetailQuery.parse(request.query)
     response.json(await settings.orderGuidance())

@@ -80,6 +80,12 @@ export function wechatPaymentService(
         )
       return storage.read(settings.wechatQrImageKey)
     },
+    async readEnabledImage(tx: Prisma.TransactionClient) {
+      const settings = await readSettings(tx)
+      if (!settings.wechatPayEnabled || !settings.wechatQrImageKey)
+        throw new ApiError(404, 'WECHAT_QR_UNAVAILABLE', '商家暂未开放扫码收款')
+      return storage.read(settings.wechatQrImageKey)
+    },
     async upload(input: unknown, actor: AuditActor) {
       // Persist an immutable file before publishing its reference. Keep previous
       // and unpublished files so rollback or an uncertain commit cannot break reads.

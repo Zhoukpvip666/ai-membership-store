@@ -1,5 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
+import sharp from 'sharp'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Prisma } from '../backend/src/generated/prisma/client.ts'
 import { createDatabase } from '../backend/src/db/client.ts'
@@ -260,7 +261,7 @@ test('customer login and real paginated, searchable own orders with recoverable 
   await expect(page).toHaveURL('/profile')
 })
 
-test('admin saves and clears plain-text guidance, customer sees it only on eligible order', async ({
+test('admin saves and clears the plain-text merchant remark without rendering markup', async ({
   browser,
   page,
   context,
@@ -295,13 +296,15 @@ test('admin saves and clears plain-text guidance, customer sees it only on eligi
 
     await page.goto(ordersPath)
     const detail = await open(page, order.orderNo)
-    const panel = detail.getByRole('region', { name: '线下付款说明' })
+    const panel = detail.getByRole('region', { name: '商家备注' })
     await expect(panel).toContainText('线下转账请核对订单号')
     await expect(panel).toContainText(
       '<img src=x onerror="document.title=123">',
     )
     await expect(panel.locator('img')).toHaveCount(0)
-    await expect(panel).toContainText(/剩余 \d{2}:\d{2}:\d{2}/)
+    await expect(detail.locator('.customer-countdown')).toHaveText(
+      /\d{2}:\d{2}:\d{2}/,
+    )
     await expect(detail).toContainText('冻结商品说明')
     await expect(detail).toContainText('frozen-contact@example.com')
     await expect(detail).toContainText('原始周期说明')
@@ -337,10 +340,11 @@ test('admin saves and clears plain-text guidance, customer sees it only on eligi
     )
     await expect(detail).toContainText(order.orderNo)
     await expect(
-      detail.getByRole('region', {
-        name: '线下付款说明',
-      }),
-    ).toContainText('商家暂未配置付款说明，请联系商家确认')
+      detail.getByRole('region', { name: '微信扫码付款' }),
+    ).toContainText('商家暂未开放扫码收款，请联系商家')
+    await expect(detail.getByRole('region', { name: '商家备注' })).toHaveCount(
+      0,
+    )
   } finally {
     await adminContext.close()
     await db.appSettings.update({
@@ -348,6 +352,178 @@ test('admin saves and clears plain-text guidance, customer sees it only on eligi
       data: {
         timezone: settings.timezone,
         paymentInstructions: settings.paymentInstructions,
+      },
+    })
+  }
+})
+
+test('customer downloads QR, retries a lost claim, and sees real admin verification', async ({
+  browser,
+  page,
+  context,
+}) => {
+  const { admin, createOrder } = await setup(context)
+  const order = await createOrder({
+    orderNo: '583024919',
+    createdAt: new Date(Date.now() - 60_000),
+  })
+  const saved = await db.appSettings.findUniqueOrThrow({ where: { id: 1 } })
+  const adminContext = await browser.newContext({ baseURL: env.APP_BASE_URL })
+  try {
+    await cookie(adminContext, admin.id)
+    const adminPage = await adminContext.newPage()
+    const image = await sharp({
+      create: { width: 64, height: 64, channels: 3, background: '#007766' },
+    })
+      .png()
+      .toBuffer()
+    expect(
+      (
+        await adminPage.request.put('/api/v1/admin/settings/wechat-qr', {
+          data: image,
+          headers: {
+            ...mutationHeaders(),
+            'Content-Type': 'application/octet-stream',
+          },
+        })
+      ).status(),
+    ).toBe(200)
+    expect(
+      (
+        await adminPage.request.patch('/api/v1/admin/settings/wechat-payment', {
+          data: { enabled: true },
+          headers: mutationHeaders(),
+        })
+      ).status(),
+    ).toBe(200)
+    expect(
+      (
+        await adminPage.request.patch('/api/v1/admin/settings', {
+          data: { paymentInstructions: '客服：测试商家' },
+          headers: mutationHeaders(),
+        })
+      ).status(),
+    ).toBe(200)
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: {
+          async writeText(text: string) {
+            document.body.dataset.copiedOrderNo = text
+          },
+        },
+      })
+    })
+    await page.goto(ordersPath)
+    const detail = await open(page, '583 024 919')
+    const panel = detail.getByRole('region', { name: '微信扫码付款' })
+    await expect(panel).toContainText('¥10.00')
+    await expect(panel).toContainText('583 024 919')
+    await expect(
+      panel.getByRole('img', { name: '微信收款二维码' }),
+    ).toBeVisible()
+    await expect(detail.locator('.customer-countdown')).toBeVisible()
+    await panel.getByRole('button', { name: '复制订单号' }).click()
+    await expect(page.locator('body')).toHaveAttribute(
+      'data-copied-order-no',
+      order.orderNo,
+    )
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      panel.getByRole('link', { name: '保存二维码' }).click(),
+    ])
+    expect(download.suggestedFilename()).toBe('wechat-payment-qr.png')
+    expect(await download.failure()).toBeNull()
+    const claimPath = customerApi + '/' + order.id + '/payment-claim'
+    const posted: { key: string; body: unknown }[] = []
+    await page.route(
+      (url) => url.pathname === claimPath,
+      async (route) => {
+        posted.push({
+          key: route.request().headers()['idempotency-key']!,
+          body: route.request().postDataJSON(),
+        })
+        if (posted.length === 1) {
+          const response = await route.fetch()
+          expect(response.status()).toBe(200)
+          return route.abort('failed')
+        }
+        return route.continue()
+      },
+    )
+    await panel.getByRole('button', { name: '我已付款' }).click()
+    const confirm = page.getByRole('dialog', { name: '确认付款核实' })
+    await expect(confirm).toContainText(
+      '请确认你已在微信完成付款，且付款金额和填写的商城订单号均正确。',
+    )
+    await confirm.getByRole('button', { name: '提交付款核实' }).click()
+    await expect(confirm.getByRole('status')).toContainText('结果尚未确认')
+    await confirm.getByRole('button', { name: '重试原请求' }).click()
+    await expect(detail).toContainText('已提交付款核实，请勿重复转账。')
+    await expect(detail).toContainText('24 小时未核实可能自动取消')
+    await expect(panel).toHaveCount(0)
+    await expect(detail.getByRole('button', { name: '我已付款' })).toHaveCount(
+      0,
+    )
+    expect(posted).toHaveLength(2)
+    expect(posted[0].body).toEqual({ expectedVersion: 1 })
+    expect(posted[0].key).toBeTruthy()
+    expect(posted[1]).toEqual(posted[0])
+    expect(
+      await db.paymentTransaction.count({ where: { orderId: order.id } }),
+    ).toBe(0)
+    expect(await db.orderRevision.count({ where: { orderId: order.id } })).toBe(
+      1,
+    )
+    expect(
+      await db.subscription.count({ where: { sourceOrderId: order.id } }),
+    ).toBe(0)
+
+    await adminPage.goto('/admin/orders')
+    await adminPage
+      .getByRole('button', { name: '待核实付款', exact: true })
+      .click()
+    const adminRow = adminPage
+      .locator('tbody tr')
+      .filter({ hasText: '583 024 919' })
+    await expect(adminRow).toBeVisible()
+    const registered = await adminPage.request.post(
+      '/api/v1/admin/orders/' + order.id + '/payment-transactions',
+      {
+        headers: mutationHeaders(),
+        data: {
+          expectedVersion: 2,
+          amountFen: order.amountFen,
+          channel: 'WECHAT',
+          occurredAt: new Date(Date.now() - 1000).toISOString(),
+        },
+      },
+    )
+    expect(registered.status()).toBe(201)
+    const { paymentTransaction } = await registered.json()
+    const verified = await adminPage.request.post(
+      '/api/v1/admin/payment-transactions/' +
+        paymentTransaction.id +
+        '/confirm',
+      { headers: mutationHeaders(), data: { expectedVersion: 3 } },
+    )
+    expect(verified.status()).toBe(200)
+    await page.reload()
+    await expect(detail).toContainText('付款 · 已付款')
+    await expect(
+      detail.getByRole('region', { name: '商家备注' }),
+    ).toContainText('客服：测试商家')
+    await expect(panel).toHaveCount(0)
+    expect(
+      await db.subscription.count({ where: { sourceOrderId: order.id } }),
+    ).toBe(0)
+  } finally {
+    await adminContext.close()
+    await db.appSettings.update({
+      where: { id: 1 },
+      data: {
+        paymentInstructions: saved.paymentInstructions,
+        wechatPayEnabled: saved.wechatPayEnabled,
+        wechatQrImageKey: saved.wechatQrImageKey,
       },
     })
   }
@@ -425,7 +601,7 @@ test('status presets and lifecycle timestamps show only customer-safe order fact
       0,
     )
     await expect(
-      detail.getByRole('region', { name: '线下付款说明' }),
+      detail.getByRole('region', { name: '微信扫码付款' }),
     ).toHaveCount(0)
     await close()
   }
@@ -441,7 +617,7 @@ test('status presets and lifecycle timestamps show only customer-safe order fact
   await expect(refundDetail).not.toContainText('专用内部取消原因')
   await expect(refundDetail).not.toContainText('退款处理中')
   await expect(
-    refundDetail.getByRole('region', { name: '线下付款说明' }),
+    refundDetail.getByRole('region', { name: '微信扫码付款' }),
   ).toHaveCount(0)
 })
 
@@ -537,10 +713,12 @@ test('customer must confirm pending-verification cancellation and closes only un
   for (const order of [unpaid, pending]) {
     const detail = await open(page, order.orderNo)
     if (order.id === pending.id) {
-      await expect(detail).toContainText('付款待核实，请勿重复转账')
+      await expect(detail).toContainText(
+        '已提交付款核实，请勿重复转账。管理员确认实际到账后才会处理订单。',
+      )
       await expect(detail).not.toContainText(attempt.externalReference!)
       await expect(
-        detail.getByRole('region', { name: '线下付款说明' }),
+        detail.getByRole('region', { name: '微信扫码付款' }),
       ).toHaveCount(0)
     }
     await detail.getByRole('button', { name: '取消订单', exact: true }).click()
@@ -655,7 +833,7 @@ test('valid empty dynamic form keeps order details and cancellation without an e
   await expect(detail).toContainText('冻结商品说明')
   await expect(detail).toContainText('¥10.00')
   await expect(
-    detail.getByRole('region', { name: '线下付款说明' }),
+    detail.getByRole('region', { name: '微信扫码付款' }),
   ).toBeVisible()
   await expect(
     detail.getByRole('button', { name: '修改订单', exact: true }),

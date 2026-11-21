@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, apiBlob } from './client'
 import type { AdminOrder } from './orders'
 import type { PageResult } from './subscriptions'
 
@@ -60,5 +60,7 @@ export const readCustomerOrders = (query: URLSearchParams) =>
   api<PageResult<CustomerOrder>>('/customer/orders?' + query)
 export const readCustomerOrder = (id: string) =>
   api<{ order: CustomerOrder }>(customerOrderPath(id))
+export const readCustomerWechatQr = (id: string, signal: AbortSignal) =>
+  apiBlob(customerOrderPath(id) + '/wechat-qr', signal)
 export const readOrderGuidance = () =>
   api<OrderGuidance>('/customer/order-guidance')

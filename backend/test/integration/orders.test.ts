@@ -418,6 +418,32 @@ test('CUSTOMER list and detail enforce ownership in both directions and conceal 
       const result = await request('/customer/orders/' + id, cookie)
       assert.equal(result.status, 404)
       errors.push([result.body.error.code, result.body.error.message])
+      const qr = await request('/customer/orders/' + id + '/wechat-qr', cookie)
+      assert.equal(qr.status, 404)
+      assert.deepEqual(
+        [qr.body.error.code, qr.body.error.message],
+        errors.at(-1),
+      )
+      const claim = await fetch(
+        base + '/api/v1/customer/orders/' + id + '/payment-claim',
+        {
+          method: 'POST',
+          headers: {
+            Cookie: cookie,
+            Origin: env.APP_BASE_URL,
+            'X-Requested-With': 'MembershipStore',
+            'Content-Type': 'application/json',
+            'Idempotency-Key': randomUUID(),
+          },
+          body: JSON.stringify({ expectedVersion: 1 }),
+        },
+      )
+      assert.equal(claim.status, 404)
+      const claimBody = await claim.json()
+      assert.deepEqual(
+        [claimBody.error.code, claimBody.error.message],
+        errors.at(-1),
+      )
     }
     assert.deepEqual(errors[0], errors[1])
     assert.deepEqual(errors[1], errors[2])
