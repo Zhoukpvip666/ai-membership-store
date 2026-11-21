@@ -1,5 +1,8 @@
 import { api } from './client'
-import type { ProductFormSchema } from '../../../backend/src/contracts/product-form'
+import type {
+  FormField,
+  ProductFormSchema,
+} from '../../../backend/src/contracts/product-form'
 
 export interface PublicProduct {
   slug: string
@@ -20,10 +23,18 @@ interface CatalogPage {
   pageSize: number
 }
 
+type CustomerFormField<T extends FormField = FormField> = T extends FormField
+  ? Omit<T, 'defaultValue'> & { defaultValue?: never }
+  : never
+
+type CustomerFormSchema = Omit<ProductFormSchema, 'fields'> & {
+  fields: CustomerFormField[]
+}
+
 export interface PurchaseProduct extends PublicProduct {
   id: string
   updatedAt: string
-  formSchema: ProductFormSchema
+  formSchema: CustomerFormSchema
 }
 
 export const readCatalog = (query: URLSearchParams) =>

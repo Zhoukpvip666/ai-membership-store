@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import type { Prisma } from '../backend/src/generated/prisma/client.ts'
 import { createDatabase } from '../backend/src/db/client.ts'
 import {
@@ -15,6 +15,7 @@ const env = integrationEnvironment()
 const db = createDatabase(env.DATABASE_URL)
 const fixturePassword = 'FictionalPurchaseFixture456!'
 const purchaseApi = '/api/v1/customer/products/'
+const ordersApi = '/api/v1/customer/orders'
 test.afterAll(() => db.$disconnect())
 
 async function product(overrides: Partial<Prisma.ProductCreateInput> = {}) {
@@ -227,7 +228,10 @@ test('signed-in buyer sees eight empty inputs and checks values locally', async 
   await expect(radio).toBeChecked()
   await expect(checkbox).toBeChecked()
   await check(page).click()
-  await expect(page.getByRole('status')).toContainText('填写信息已通过检查')
+  await expect(page.getByRole('heading', { name: '核对订单' })).toBeVisible()
+  await expect(page.locator('.review-fields')).toContainText('亚洲')
+  await expect(page.locator('.review-fields')).toContainText('邮件')
+  await expect(page.locator('.review-fields')).toContainText('学习')
   expect(requests).toEqual([])
   expect(await db.order.count({ where: { userId: user.id } })).toBe(0)
 })
@@ -352,4 +356,443 @@ test('revocation between the route guard and purchase GET returns to login with 
   await page.goto('/purchase/' + item.slug)
   await expectLogin(page, '/purchase/' + item.slug)
   await expect(check(page)).toHaveCount(0)
+})
+
+const confirmOrder = (page: Page) =>
+  page.getByRole('button', { name: '确认下单', exact: true })
+const detail = (page: Page) =>
+  page.getByRole('dialog', { name: '订单详情', exact: true })
+
+async function review(page: Page, account = 'public-checkout-fixture') {
+  await input(page, '账号标识').fill(account)
+  await check(page).click()
+  await expect(confirmOrder(page)).toBeVisible()
+}
+
+async function expectCreatedDetail(
+  page: Page,
+  order: { id: string; orderNo: string },
+) {
+  await expect(page).toHaveURL(
+    (url) =>
+      url.pathname === '/account/orders' &&
+      url.searchParams.get('orderId') === order.id &&
+      [...url.searchParams.keys()].length === 1,
+  )
+  await expect(detail(page)).toContainText(order.orderNo)
+}
+
+async function expectNoOverflow(page: Page) {
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true)
+}
+
+async function expectPersistedOrder(
+  userId: string,
+  amountFen: number,
+  key: string,
+) {
+  const orders = await db.order.findMany({ where: { userId } })
+  expect(orders).toHaveLength(1)
+  const [order] = orders
+  expect(order).toMatchObject({ amountFen, source: 'USER', version: 1 })
+  const [revisions, events, idempotency, payments, subscriptions, audits] =
+    await Promise.all([
+      db.orderRevision.findMany({ where: { orderId: order!.id } }),
+      db.orderEvent.findMany({ where: { orderId: order!.id } }),
+      db.idempotencyRecord.findMany({ where: { actorUserId: userId } }),
+      db.paymentTransaction.count({ where: { orderId: order!.id } }),
+      db.subscription.count({ where: { userId } }),
+      db.adminAuditLog.count({ where: { entityId: order!.id } }),
+    ])
+  expect(revisions).toHaveLength(1)
+  expect(revisions[0]).toMatchObject({
+    version: 1,
+    actorUserId: userId,
+    actorType: 'USER',
+  })
+  expect(events).toHaveLength(1)
+  expect(events[0]).toMatchObject({
+    eventType: 'ORDER_CREATED',
+    actorUserId: userId,
+  })
+  expect(idempotency).toHaveLength(1)
+  expect(
+    idempotency[0]?.keyHash === createHash('sha256').update(key).digest('hex'),
+  ).toBe(true)
+  expect([payments, subscriptions, audits]).toEqual([0, 0, 0])
+  return order!
+}
+
+test('guest opens the catalog, signs in, reviews, and creates exactly one payable order', async ({
+  page,
+}) => {
+  const [item, user] = await Promise.all([product(), customer(true)])
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let posts = 0
+  let key = ''
+  let postBody: unknown
+  await page.route(
+    (url) => url.pathname === ordersApi,
+    async (route) => {
+      const request = route.request()
+      if (request.method() === 'POST') {
+        posts++
+        key = request.headers()['idempotency-key']!
+        postBody = request.postDataJSON()
+        await gate
+      }
+      await route.continue()
+    },
+  )
+  try {
+    await page.goto('/')
+    await page
+      .getByRole('textbox', { name: '搜索商品', exact: true })
+      .fill(item.name)
+    await page.getByRole('button', { name: '搜索', exact: true }).click()
+    await page
+      .getByRole('link', { name: '查看详情：' + item.name, exact: true })
+      .click()
+    await buy(page).click()
+    await expectLogin(page, '/purchase/' + item.slug)
+    await logIn(page, user.loginEmail)
+    await review(page, 'discarded-review')
+    await page.getByRole('button', { name: '返回修改' }).click()
+    await expect(confirmOrder(page)).toHaveCount(0)
+    await review(page, ' public-checkout-fixture ')
+    await expect(page.locator('.purchase-content')).toContainText('应付金额')
+    await expect(page.locator('.purchase-content')).toContainText('99.00')
+    await expect(page.locator('.review-fields')).toContainText(
+      'public-checkout-fixture',
+    )
+    await expectNoOverflow(page)
+    await confirmOrder(page).evaluate((button: HTMLButtonElement) => {
+      button.click()
+      button.click()
+    })
+    await expect(page.getByText('正在提交订单…')).toBeVisible()
+    await expect(confirmOrder(page)).toBeDisabled()
+    await expect(page.getByRole('button', { name: '返回修改' })).toBeDisabled()
+  } finally {
+    release()
+  }
+  await expect(detail(page)).toContainText(item.name)
+  expect(posts).toBe(1)
+  expect(postBody).toEqual({
+    productId: item.id,
+    expectedProductUpdatedAt: item.updatedAt.toISOString(),
+    formData: { handle: ' public-checkout-fixture ' },
+  })
+  const order = await expectPersistedOrder(user.id, item.priceFen, key)
+  await expectCreatedDetail(page, order)
+  expect(order.formData).toEqual({ handle: ' public-checkout-fixture ' })
+  expect(order).toMatchObject({
+    paymentStatus: 'UNPAID',
+    fulfillmentStatus: 'NOT_STARTED',
+  })
+  await expect(detail(page)).toContainText('待付款')
+  await expect(
+    detail(page).getByRole('heading', { name: '线下付款说明' }),
+  ).toBeVisible()
+  await expect(detail(page).locator('.customer-countdown')).toBeVisible()
+  await expectNoOverflow(page)
+})
+
+test('a zero-amount order opens its detail without a payment prompt', async ({
+  page,
+  context,
+}) => {
+  const [item, user] = await Promise.all([product({ priceFen: 0 }), customer()])
+  await signInSession(context, user.id)
+  await page.goto('/purchase/' + item.slug)
+  await review(page)
+  const posted = page.waitForRequest(
+    (request) =>
+      new URL(request.url()).pathname === ordersApi &&
+      request.method() === 'POST',
+  )
+  await confirmOrder(page).click()
+  const key = (await posted).headers()['idempotency-key']!
+  await expect(detail(page)).toContainText(item.name)
+  const order = await expectPersistedOrder(user.id, 0, key)
+  await expectCreatedDetail(page, order)
+  expect(order).toMatchObject({
+    paymentStatus: 'NOT_REQUIRED',
+    fulfillmentStatus: 'PROCESSING',
+    paidAt: null,
+    paymentConfirmedAt: null,
+  })
+  await expect(detail(page)).toContainText('处理中')
+  await expect(
+    detail(page).getByRole('heading', { name: '线下付款说明' }),
+  ).toHaveCount(0)
+  await expect(detail(page).locator('.customer-countdown')).toHaveCount(0)
+})
+
+test('changed product discards the old draft and requires explicit new confirmation', async ({
+  page,
+  context,
+}) => {
+  const [item, user] = await Promise.all([product(), customer()])
+  await signInSession(context, user.id)
+  const keys: string[] = []
+  page.on('request', (request) => {
+    if (
+      new URL(request.url()).pathname === ordersApi &&
+      request.method() === 'POST'
+    )
+      keys.push(request.headers()['idempotency-key']!)
+  })
+  await page.goto('/purchase/' + item.slug)
+  await review(page)
+  await db.product.update({
+    where: { id: item.id },
+    data: {
+      priceFen: 12300,
+      servicePeriodCount: 2,
+      updatedAt: new Date(item.updatedAt.getTime() + 1),
+    },
+  })
+  await confirmOrder(page).click()
+  await expect(
+    page
+      .getByRole('status')
+      .filter({ hasText: '商品信息已更新，请重新核对价格和服务信息后下单。' }),
+  ).toBeVisible()
+  await expect(input(page, '账号标识')).toHaveValue('')
+  await expect(confirmOrder(page)).toHaveCount(0)
+  await expect(page.locator('.purchase-content')).toContainText('123.00')
+  await expect(page.locator('.purchase-content')).toContainText('2 个月')
+  expect(await db.order.count({ where: { userId: user.id } })).toBe(0)
+  expect(
+    await db.idempotencyRecord.count({ where: { actorUserId: user.id } }),
+  ).toBe(0)
+  expect(keys).toHaveLength(1)
+  await review(page)
+  await confirmOrder(page).click()
+  await expect(detail(page)).toContainText(item.name)
+  expect(keys).toHaveLength(2)
+  expect(keys[0] !== keys[1]).toBe(true)
+  const order = await expectPersistedOrder(user.id, 12300, keys[1]!)
+  expect(order.servicePeriodCountSnapshot).toBe(2)
+  await expectCreatedDetail(page, order)
+})
+
+for (const archive of [false, true]) {
+  test(`product ${archive ? 'archived' : 'unlisted'} during review becomes unavailable`, async ({
+    page,
+    context,
+  }) => {
+    const [item, user] = await Promise.all([product(), customer()])
+    await signInSession(context, user.id)
+    await page.goto('/purchase/' + item.slug)
+    await review(page)
+    await db.product.update({
+      where: { id: item.id },
+      data: {
+        listed: false,
+        archivedAt: archive ? new Date() : null,
+        updatedAt: new Date(item.updatedAt.getTime() + 1),
+      },
+    })
+    await confirmOrder(page).click()
+    await expect(page.getByRole('alert')).toContainText('商品不可购买')
+    await expect(page.getByRole('link', { name: '返回商品目录' })).toBeVisible()
+    await expect(check(page)).toHaveCount(0)
+    await expect(confirmOrder(page)).toHaveCount(0)
+    expect(await db.order.count({ where: { userId: user.id } })).toBe(0)
+    expect(
+      await db.idempotencyRecord.count({ where: { actorUserId: user.id } }),
+    ).toBe(0)
+  })
+}
+
+test('retry after the response is lost replays the same committed order', async ({
+  page,
+  context,
+}) => {
+  const [item, user] = await Promise.all([product(), customer()])
+  await signInSession(context, user.id)
+  const attempts: { body: string | null; key: string }[] = []
+  await page.route(
+    (url) => url.pathname === ordersApi,
+    async (route) => {
+      const request = route.request()
+      if (request.method() !== 'POST') return route.continue()
+      attempts.push({
+        body: request.postData(),
+        key: request.headers()['idempotency-key']!,
+      })
+      if (attempts.length !== 1) return route.continue()
+      const response = await route.fetch()
+      expect(response.status()).toBe(201)
+      await route.abort()
+    },
+  )
+  await page.goto('/purchase/' + item.slug)
+  await review(page)
+  await confirmOrder(page).click()
+  await expect(page.getByRole('alert')).toContainText('订单结果尚未确认')
+  await expect(confirmOrder(page)).toHaveCount(0)
+  await expect(check(page)).toHaveCount(0)
+  const original = await expectPersistedOrder(
+    user.id,
+    item.priceFen,
+    attempts[0]!.key,
+  )
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toContain('可能无法重试原请求')
+    await dialog.dismiss()
+  })
+  await page.getByRole('link', { name: '返回商品详情' }).click()
+  await expect(page).toHaveURL('/purchase/' + item.slug)
+  await page.getByRole('button', { name: '重试原请求' }).click()
+  await expectCreatedDetail(page, original)
+  expect(attempts).toHaveLength(2)
+  expect(attempts[0]?.body === attempts[1]?.body).toBe(true)
+  expect(attempts[0]?.key === attempts[1]?.key).toBe(true)
+  expect(
+    (await expectPersistedOrder(user.id, item.priceFen, attempts[0]!.key)).id,
+  ).toBe(original.id)
+})
+
+async function createHiddenOrder(
+  item: Awaited<ReturnType<typeof product>>,
+  user: Awaited<ReturnType<typeof customer>>,
+) {
+  const admin = await db.user.findFirstOrThrow({ where: { role: 'ADMIN' } })
+  const start = new Date('2026-09-01T00:00:00Z')
+  const renewal = new Date('2026-10-01T00:00:00Z')
+  const subscription = await db.subscription.create({
+    data: {
+      sourceType: 'ADMIN',
+      createdByAdminId: admin.id,
+      userId: user.id,
+      productId: item.id,
+      productNameSnapshot: item.name,
+      productTypeSnapshot: 'SUBSCRIPTION',
+      priceSnapshotFen: item.priceFen,
+      termSnapshot: item.termLabel,
+      startedAt: start,
+      expiresAt: renewal,
+      renewalPriceFen: item.renewalPriceFen!,
+    },
+  })
+  return db.order.create({
+    data: {
+      orderNo: 'HIDDEN-' + randomUUID().slice(0, 8),
+      source: 'SYSTEM_RENEWAL',
+      kind: 'RENEWAL',
+      hidden: true,
+      subscriptionId: subscription.id,
+      userId: user.id,
+      productId: item.id,
+      productNameSnapshot: 'Hidden test renewal name',
+      productTypeSnapshot: 'SUBSCRIPTION',
+      termSnapshot: item.termLabel,
+      servicePeriodUnitSnapshot: 'MONTH',
+      servicePeriodCountSnapshot: 1,
+      amountFen: 8800,
+      contactEmailSnapshot: user.loginEmail,
+      paymentStatus: 'PAID',
+      fulfillmentStatus: 'COMPLETED',
+      paidAt: renewal,
+      paymentConfirmedAt: renewal,
+      fulfilledAt: renewal,
+      renewalForPeriodStartAt: start,
+      renewalPeriodStartAt: renewal,
+      renewalPeriodEndAt: new Date('2026-11-01T00:00:00Z'),
+      billingAnchorSnapshotAt: start,
+      billingTimezoneSnapshot: 'Asia/Shanghai',
+      billingRevisionSnapshot: 1,
+      renewalRequestKeyHash: randomBytes(32).toString('hex'),
+      renewalRequestHash: randomBytes(32).toString('hex'),
+    },
+  })
+}
+
+test('detail links use own-order API authorization and stay in sync with browser history', async ({
+  page,
+  context,
+}) => {
+  const [item, user, outsider] = await Promise.all([
+    product(),
+    customer(),
+    customer(),
+  ])
+  const makeOrder = (owner: typeof user) =>
+    db.order.create({
+      data: {
+        orderNo: 'DIRECT-' + randomUUID().slice(0, 8),
+        userId: owner.id,
+        source: 'USER',
+        createdByUserId: owner.id,
+        productId: item.id,
+        kind: 'INITIAL',
+        productNameSnapshot: 'Detail test ' + owner.id.slice(-8),
+        productTypeSnapshot: 'SUBSCRIPTION',
+        servicePeriodUnitSnapshot: 'MONTH',
+        servicePeriodCountSnapshot: 1,
+        termSnapshot: item.termLabel,
+        amountFen: item.priceFen,
+        contactEmailSnapshot: owner.loginEmail,
+      },
+    })
+  const [own, foreign, hidden] = await Promise.all([
+    makeOrder(user),
+    makeOrder(outsider),
+    createHiddenOrder(item, user),
+  ])
+  await signInSession(context, user.id)
+  const detailRequests: string[] = []
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname
+    if (path.startsWith(ordersApi + '/')) detailRequests.push(path)
+  })
+  for (const query of [
+    'orderId=x',
+    'orderId=',
+    `orderId=${own.id}&orderId=${own.id}`,
+  ]) {
+    const before = detailRequests.length
+    await page.goto('/account/orders?' + query)
+    await expect(
+      page.getByText(own.orderNo + ' · 首次订阅', { exact: true }),
+    ).toBeVisible()
+    await expect(detail(page)).toHaveCount(0)
+    expect(detailRequests).toHaveLength(before)
+  }
+  for (const order of [
+    foreign,
+    hidden,
+    { id: randomUUID(), productNameSnapshot: '' },
+  ]) {
+    await page.goto('/account/orders?orderId=' + order.id)
+    await expect(detail(page)).toContainText('订单不存在。')
+    expect(detailRequests.at(-1)).toBe(ordersApi + '/' + order.id)
+    if (order.productNameSnapshot)
+      await expect(detail(page)).not.toContainText(order.productNameSnapshot)
+    await detail(page)
+      .getByRole('button', { name: 'Close this dialog' })
+      .click()
+    await expect(page).toHaveURL('/account/orders')
+  }
+  await page.goto('/orders?keep=1')
+  await page.getByRole('button', { name: '查看详情' }).click()
+  await expect(page).toHaveURL('/orders?keep=1&orderId=' + own.id)
+  await expect(detail(page)).toContainText(own.orderNo)
+  await page.goBack()
+  await expect(page).toHaveURL('/orders?keep=1')
+  await expect(detail(page)).toHaveCount(0)
+  await page.goForward()
+  await expect(detail(page)).toContainText(own.orderNo)
+  await detail(page).getByRole('button', { name: 'Close this dialog' }).click()
+  await expect(page).toHaveURL('/orders?keep=1')
 })

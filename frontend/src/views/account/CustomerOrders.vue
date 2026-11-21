@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref, shallowRef } from 'vue'
+import { computed, onMounted, ref, shallowRef } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
+  parseOrderId,
   readCustomerOrders,
   readOrderGuidance,
   type CustomerOrder,
@@ -29,7 +31,9 @@ const page = ref(1)
 const total = ref(0)
 const loading = ref(false)
 const error = ref('')
-const selected = ref('')
+const route = useRoute()
+const router = useRouter()
+const selected = computed(() => parseOrderId(route.query.orderId))
 const search = ref('')
 const kind = ref('')
 const preset = ref(0)
@@ -37,6 +41,21 @@ const filters = shallowRef(new URLSearchParams())
 const receivedAt = ref(0)
 const clock = useOrderClock()
 let sequence = 0
+
+function openDetail(id: string) {
+  void router.push({
+    path: route.path,
+    query: { ...route.query, orderId: id },
+    hash: route.hash,
+  })
+}
+
+function closeDetail(id: string) {
+  if (selected.value !== id) return
+  const query = { ...route.query }
+  delete query.orderId
+  void router.replace({ path: route.path, query, hash: route.hash })
+}
 
 async function loadGuidance() {
   guidanceError.value = ''
@@ -180,7 +199,7 @@ onMounted(() => {
                 剩余 {{ countdown(left(order)) }}
               </p>
             </div>
-            <ElButton @click="selected = order.id">查看详情</ElButton>
+            <ElButton @click="openDetail(order.id)">查看详情</ElButton>
           </li>
         </ul>
         <div class="customer-order-pages">
@@ -201,7 +220,7 @@ onMounted(() => {
       :key="selected"
       :id="selected"
       :guidance="guidance"
-      @close="selected = ''"
+      @close="closeDetail"
       @changed="loadOrders"
       @retry-guidance="loadGuidance"
     />

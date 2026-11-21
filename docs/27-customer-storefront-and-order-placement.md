@@ -2,7 +2,7 @@
 
 - Document: CUSTOMER-STOREFRONT-AND-ORDER-PLACEMENT
 - Version: 1.0
-- Status: Design approved in PR #32. T22.1 merged in PR #33. T22.2 merged in PR #34. T22.3A implemented and awaiting review. T22.3B has not started.
+- Status: Design approved in PR #32. T22.1 merged in PR #33. T22.2 merged in PR #34. T22.3A merged in PR #35. T22.3B implemented and awaiting review. T22 is complete after the final PR is merged and verified.
 - Date: 2026-11-20
 - Related: [Product requirements](01-product-requirements.md), [User and operations flows](02-user-and-operations-flows.md), [API contract](05-api-contract.md), [Interface specification](08-interface-specification.md), [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order creation API](19-order-creation-api.md), [Customer order center](26-customer-order-center.md)
 
@@ -354,7 +354,7 @@ On the first desktop run, the Element Plus placeholder intercepted clicks on the
 - The existing transaction checks the persisted idempotency record first. A first request acquires User then Product locks and reads the current product. The customer version must equal the locked row's millisecond timestamp before validation and order writes. The request hash includes the version. A stale version returns 409 PRODUCT_CHANGED and leaves Product, Order and history intact.
 - A successful same-key replay returns the original response before checking whether the product is still current or orderable. A changed version with the same key conflicts. New success, Revision, Event and idempotency response commit together. Only ADMIN creates an administrator audit record.
 - CUSTOMER creation, list and detail apply the T22.2 field allowlist to safe frozen forms. Unsafe-schema and credential checks still inspect the original snapshot and values. Editor defaults are removed from the customer projection. Stored Order and Revision snapshots and the ADMIN DTO retain the full schema.
-- T22.3B has not started. The storefront purchase page still runs local checks only. No online payment, database Migration, dependency change or deployment is included.
+- T22.3A was limited to the backend contract and did not connect the purchase confirmation. T22.3B verification is recorded below.
 
 ### T22.3A verification
 
@@ -379,3 +379,68 @@ The database suites use random isolated MySQL 8.4 projects and synthetic fixture
 Creation regression covers exact millisecond matching, the live purchase GET version, a real ADMIN price update, a competing database writer that holds the Product row lock, and rejection before business writes. It also covers version-only idempotency conflicts, replay after unlisting and archiving, simultaneous duplicates, and rollback at each applicable write stage. The CUSTOMER creation, list and detail DTOs exclude defaults while the ADMIN DTO and stored history preserve them.
 
 All listed T22.3A commands passed on their first run. The browser creation, edit and cancellation fixtures send the required product version only for CUSTOMER creation. Their original business assertions and timeouts were retained.
+
+## 15. T22.3B implementation report
+
+- The purchase page uses the T22.2 protected product read, shared form controls and credential rules. It validates before review and again before confirmation. Review displays the current product quotes and configured option labels. Only confirmation sends the exact three-field POST with the product timestamp from the GET.
+- A single in-memory OrderRequest owns the serialized body and UUID key. Submitting disables duplicate confirmations and form edits. A timeout, network failure, 5xx or unusable success response displays 订单结果尚未确认 and offers 重试原请求. Leaving requires confirmation and can discard the request context. My Orders can be used to verify the outcome after leaving. Session expiry returns to login for the same purchase path without automatic submission.
+- PRODUCT_CHANGED clears the request and draft, reloads current terms and fields, and requires a fresh customer confirmation. A product that is no longer purchasable has no confirm action. A committed order may still be replayed with its original request and key after the product changes.
+- Success replaces the purchase route with /account/orders?orderId=:id. The list and the /orders alias share URL-backed dialog selection, preserve other query parameters, and track browser history. Only one valid UUID is accepted. The detail uses the existing authenticated GET for all IDs, including ones absent from the current filtered page. Foreign, hidden and missing orders show the same 404.
+- Positive orders show 待付款 and the T21 countdown and offline guidance while actionable. Zero-amount orders show 处理中 without that countdown or transfer guidance. Customer order creation generates no payment, subscription or administrator audit.
+- This work is isolated on codex/t22-3b-storefront-order-placement from the PR #35 merge commit. Test fixtures use disposable MySQL 8.4 instances, synthetic accounts, and temporary credentials. The development environment and its data volume were left untouched. No backend business API, database schema, migration, dependency or deployment is included.
+
+### T22.3B verification
+
+All commands below ran on Node 24.13.0 in the independent worktree. The database and browser suites use the checked-in isolated MySQL 8.4 runner. Each browser project uses a separate database.
+
+| Command | Result |
+| --- | --- |
+| npm test | Frontend 42/42 and backend 72/72. The 12 new checkout tests cover review, validation, the exact POST body, duplicate clicks, uncertain responses, replay, product changes and order IDs. |
+| npm run test:e2e -w backend -- --customer-purchase-only | Desktop Edge 14/14 and mobile Edge 14/14. The seven existing purchase scenarios retain their coverage. The seven new scenarios cover checkout, persistence and detail authorization through real HTTP and isolated MySQL. |
+| npm run typecheck | Passed for frontend, backend and E2E. |
+| npm run lint | Passed. |
+| npm run format:check | Passed. |
+| npm run build | Frontend and backend passed. |
+| npm run db:generate | Prisma Client generated. |
+| npm run db:validate | Prisma Schema validated. |
+| git diff --check | Passed. |
+
+The first type checks identified missing required fields in the new test fixtures. The first desktop browser run passed 11/14. The failed cases expected trimmed text even though the shared parser preserves it, matched two simultaneous live-status messages, and omitted the subscription price snapshot from the hidden-order fixture. The next run passed 13/14 and showed that the list renders the order number alongside its kind. The final exact locator uses both parts. Both viewports then passed 14/14 with the existing timeouts.
+
+The initial combined unit test run hit the existing 15-second child-process timeout in the backend invalid-environment test. A fresh run of npm test passed all 114 tests, with no changes to that test or its timeout.
+
+#### Isolated MySQL HTTP/API regression
+
+The modes in this table use `npm run test:db -w backend -- <mode> --fresh`. Results count each distinct suite once even when the runner repeated it in a parent mode.
+
+| Mode or suite | Passed |
+| --- | ---: |
+| --creation-only (creation, revisions, subscriptions) | 19/19, 9/9, 10/10 |
+| --orders-only (order reads) | 14/14 |
+| --edit-only (order edits) | 19/19 |
+| --cancellation-only | 25/25 |
+| --payments-only | 25/25 |
+| --refunds-only (focused rerun) | 18/18 |
+| --fulfillment-only --fresh --focused | 21/21 |
+| --admin-orders-only | 14/14 |
+| --customer-orders-only (customer orders, authentication) | 3/3, 14/14 |
+| --products-only (products and settings) | 11/11 |
+| --catalog-only | 6/6 |
+| --customer-purchase-only | 5/5 |
+
+The initial refund and fulfillment aggregate commands stopped during repeated nested regression runs at the existing 600-second subprocess budget. For the refund rerun, a temporary copy of the checked-in runner enabled the same focused selector already supported for fulfillment. The selector omitted recursive suite launches and retained the original disposable MySQL setup, schema verification, refund test file and per-suite timeout. The temporary copy was removed. The already-passing prerequisite suites are reported separately. The two abandoned disposable projects were identified by their Compose project and mount labels and cleaned up individually.
+
+The first focused fulfillment run passed 20/21. The independent-fulfillment concurrency case received three HTTP 503 responses. After the other test jobs finished, `npm run test:db -w backend -- --fulfillment-only --fresh --focused` passed all 21 cases with the original timeouts and assertions. Across the distinct API suites above, 213 cases passed.
+
+#### Desktop and mobile browser regression
+
+| Command | Desktop Edge | Mobile Edge |
+| --- | ---: | ---: |
+| npm run test:e2e -w backend -- --admin-orders-only | 10/10 | 10/10 |
+| npm run test:e2e -w backend -- --customer-orders-only | 8/8 | 8/8 |
+| npm run test:e2e -w backend -- --creation-only public-catalog.spec.ts auth.spec.ts products.spec.ts prototype.spec.ts | 19/19 | 18/19 initially, plus 1/1 on the focused rerun |
+| npm run test:e2e -w backend -- --creation-only order-creation.spec.ts order-edit.spec.ts order-cancellation.spec.ts offline-payments.spec.ts offline-refunds.spec.ts manual-fulfillment.spec.ts | 15/15 | 15/15 |
+
+The first T21 run showed a stale browser action. Reload now restores the dialog from the URL, so the payment guidance test verifies that the same order is open after reload before checking the cleared instructions. The assertions for plain-text rendering, countdown, visibility, timezone and cleared settings remain in place.
+
+The existing mobile product-type change test hit its 30-second timeout in the grouped run. The same case passed in 16.4 seconds with its original assertions and timeout via `npm run test:e2e -w backend -- --creation-only --project=mobile-edge products.spec.ts --grep "changing product types clears one-time periods and requires new subscription configuration"`.

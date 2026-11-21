@@ -142,6 +142,13 @@ export class OrderRequest<T extends OrderResult = AdminOrder> {
     body: unknown
     key: string
   }
+  constructor(
+    private readonly options: {
+      timeoutMs?: number
+      validateOrder?: (order: T) => boolean
+    } = {},
+  ) {}
+
   reset() {
     this.context = undefined
   }
@@ -166,6 +173,9 @@ export class OrderRequest<T extends OrderResult = AdminOrder> {
       context.method,
       context.body,
       context.key,
+      this.options.timeoutMs === undefined
+        ? undefined
+        : AbortSignal.timeout(this.options.timeoutMs),
     )
     // A successful HTTP status with an unusable JSON envelope is still an
     // unknown outcome. Keep the original context instead of risking a new key.
@@ -193,7 +203,8 @@ export class OrderRequest<T extends OrderResult = AdminOrder> {
         'COMPLETED',
         'FAILED',
         'CANCELLED',
-      ].includes(order.fulfillmentStatus)
+      ].includes(order.fulfillmentStatus) ||
+      (this.options.validateOrder && !this.options.validateOrder(order))
     )
       throw new ApiError(
         0,

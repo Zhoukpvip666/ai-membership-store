@@ -109,16 +109,16 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 
 - T22.1 public catalog API and catalog/detail views are merged in PR #33.
 - T22.2 protected purchase form, login continuation, and client-side checks are merged in PR #34.
-- T22.3A customer creation version guard and safe CUSTOMER order DTOs are implemented and awaiting review.
-- T22.3B storefront order submission and order-center continuation have not started.
+- T22.3A customer creation version guard and safe CUSTOMER order DTOs are merged in PR #35.
+- T22.3B storefront order submission and order-center continuation are implemented and awaiting review. T22 is complete after merge and verification.
 
 - Public GET catalog list/detail exposes only listed, unarchived product display fields. Public DTOs never expose formSchema, defaults, administrator fields, or archive/listing internals.
 - Product detail does not load or display dynamic form fields. T22.2 enables 立即购买 and lets an ACTIVE CUSTOMER enter /purchase/:slug to fetch the customer-safe form projection.
 - Guests are redirected to login with a validated same-origin purchase destination; successful CUSTOMER login automatically returns to the same purchase route and loads the form. ADMIN does not use customer purchase routes.
 - Reuse the existing eight-type form contract and ProductFormInputs. Do not apply administrator defaultValue values or persist incomplete drafts.
 - T22.3A extends POST /customer/orders. Customer price remains server-derived; product/form snapshots, complete validation, zero-price behavior, atomic history and Idempotency-Key remain unchanged.
-- The CUSTOMER API requires expectedProductUpdatedAt. It replays matching committed requests before checking the current version. Under the Product row lock a stale version returns 409 PRODUCT_CHANGED with no writes. In T22.3B the frontend will reload and require explicit review.
-- In T22.3B, a successful storefront submission will open the existing T21 order detail using /account/orders?orderId=:id. T21 payment guidance remains the only offline payment instruction.
+- The CUSTOMER API requires expectedProductUpdatedAt. It replays matching committed requests before checking the current version. Under the Product row lock a stale version returns 409 PRODUCT_CHANGED with no writes. T22.3B reloads the product, discards the old draft, and requires explicit review for the fresh version.
+- A successful storefront submission or idempotent replay opens the existing T21 order detail using /account/orders?orderId=:id. T21 payment guidance remains the only offline payment instruction.
 - No cart, online payment, proof upload, customer subscription/renewal, email, supplier automation, migration, deployment, or runtime dependency is included.
 
 ## Order revision / generic idempotency foundation
@@ -341,7 +341,7 @@ These remain future work and must not be pulled into Task 1.2:
 
 ## Current review boundary
 
-Tasks 1.2.1–1.2.3, Phase 2, order foundation/read/create/edit/cancel/payment/refund/fulfillment, T20 and T21 are merged. T22.1 is merged in PR #33. T22.2 is merged in PR #34. T22.3A is implemented and awaiting review. T22.3B requires separate authorization. Do not begin renewal, payment-provider integration, or deployment automatically.
+Tasks 1.2.1–1.2.3, Phase 2, order foundation/read/create/edit/cancel/payment/refund/fulfillment, T20 and T21 are merged. T22.1 is merged in PR #33. T22.2 is merged in PR #34. T22.3A is merged in PR #35. T22.3B is implemented and awaiting review and post-merge verification. Do not begin renewal, payment-provider integration, or deployment automatically.
 
 T19 supersedes the earlier generic Task 1.2.4 fulfillment placeholder below: use the merged D24-D32/D37/D52/D59/D64/D83-D88 contract in [docs/24-manual-fulfillment-api.md](24-manual-fulfillment-api.md). In particular, NOT_REQUIRED zero-price orders are fulfillable, and renewal/SYSTEM_RENEWAL are excluded.
 
@@ -360,4 +360,4 @@ No Migration, development database operation, renewal, provider integration, ema
 
 T20 supersedes only the ADMIN order-page Mock boundary in the original Task 1.2.3 UI prototype. T21 supersedes the CUSTOMER `/account/orders` Mock boundary for existing-order management. The operating overview remains Mock. See [T20](25-admin-order-center.md) and [T21](26-customer-order-center.md).
 
-T22.1 adds guest-accessible product browsing and detail using the public catalog API. The [T22 design](27-customer-storefront-and-order-placement.md) records the T22.2 purchase form, the T22.3A API guard and the planned T22.3B storefront order submission.
+T22.1 adds guest-accessible product browsing and detail using the public catalog API. The [T22 design](27-customer-storefront-and-order-placement.md) records the T22.2 purchase form, the T22.3A API guard and the T22.3B storefront order submission.

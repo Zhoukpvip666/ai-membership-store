@@ -12,7 +12,7 @@ import type { FormData } from '../../api/subscriptions'
 import ProductFormInputs from '../../components/ProductFormInputs.vue'
 import { parseFormData } from '../../../../backend/src/contracts/form-data'
 import { hasCredentialText } from '../../../../backend/src/contracts/credential-fields'
-import { money } from '../../stores/format'
+import { formValueLabel, money } from '../../stores/format'
 import {
   businessDate,
   fulfillmentLabels,
@@ -31,7 +31,11 @@ import {
 } from './customer-order-state'
 
 const props = defineProps<{ id: string; guidance?: OrderGuidance }>()
-const emit = defineEmits<{ close: []; changed: []; retryGuidance: [] }>()
+const emit = defineEmits<{
+  close: [id: string]
+  changed: []
+  retryGuidance: []
+}>()
 const order = shallowRef<CustomerOrder>()
 const mode = ref<'detail' | 'edit' | 'cancel'>('detail')
 const loading = ref(false)
@@ -148,27 +152,6 @@ async function refresh() {
   await load()
 }
 
-function displayValue(
-  field: NonNullable<typeof snapshot.value>['schema']['fields'][number],
-  data: FormData,
-) {
-  const value = data[field.id]
-  if (value === undefined) return '—'
-  if ('options' in field) {
-    const selected = Array.isArray(value) ? value : [value]
-    return (
-      selected
-        .map(
-          (item) =>
-            field.options.find((option) => option.value === item)?.label,
-        )
-        .filter(Boolean)
-        .join('、') || '—'
-    )
-  }
-  return String(value)
-}
-
 onMounted(load)
 </script>
 <template>
@@ -186,7 +169,7 @@ onMounted(load)
     :show-close="!busy && !uncertain"
     :close-on-press-escape="!busy && !uncertain"
     :close-on-click-modal="false"
-    @close="emit('close')"
+    @close="emit('close', id)"
   >
     <p v-if="notice" role="status">{{ notice }}</p>
     <p v-if="loading" role="status">正在读取订单…</p>
@@ -299,7 +282,9 @@ onMounted(load)
           <dl class="customer-facts">
             <div v-for="field in snapshot.schema.fields" :key="field.id">
               <dt>{{ field.label }}</dt>
-              <dd class="plain">{{ displayValue(field, snapshot.data) }}</dd>
+              <dd class="plain">
+                {{ formValueLabel(field, snapshot.data[field.id]) }}
+              </dd>
             </div>
           </dl>
         </section>

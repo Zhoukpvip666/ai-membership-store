@@ -1,10 +1,30 @@
 import type { Order } from '../types'
+import type { FormField } from '../../../backend/src/contracts/product-form'
+import type { FormData } from '../../../backend/src/contracts/form-data'
 export const money = (fen: number) =>
   new Intl.NumberFormat('zh-CN', {
     style: 'currency',
     currency: 'CNY',
     minimumFractionDigits: 2,
   }).format(fen / 100)
+
+export function formValueLabel(
+  field: FormField,
+  value: FormData[string] | undefined,
+) {
+  if (value === undefined) return '—'
+  if (!('options' in field)) return String(value)
+  const selected = Array.isArray(value) ? value : [value]
+  return (
+    selected
+      .map(
+        (item) => field.options.find((option) => option.value === item)?.label,
+      )
+      .filter(Boolean)
+      .join('、') || '—'
+  )
+}
+
 export function parsePrice(input: string): number {
   if (!/^\d{1,8}(\.\d{1,2})?$/.test(input.trim()))
     throw new Error('价格需为最多两位小数的非负金额')

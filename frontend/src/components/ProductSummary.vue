@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import type { PublicProduct } from '../api/catalog'
 import { money } from '../stores/format'
 
-const props = defineProps<{ product: PublicProduct }>()
+const props = defineProps<{ product: PublicProduct; priceLabel?: string }>()
 const units = { DAY: '天', MONTH: '个月', YEAR: '年' } as const
 const period = computed(() => {
   const { servicePeriodUnit: unit, servicePeriodCount: count } = props.product
@@ -24,7 +24,7 @@ const period = computed(() => {
     </p>
     <dl class="catalog-facts">
       <div>
-        <dt>初始价格</dt>
+        <dt>{{ priceLabel ?? '初始价格' }}</dt>
         <dd>{{ money(product.priceFen) }}</dd>
       </div>
       <div>
