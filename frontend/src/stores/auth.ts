@@ -6,42 +6,71 @@ const state = reactive({
   checked: false,
   error: '',
 })
-let pending: Promise<void> | undefined
+let pending: { controller: AbortController; result: Promise<void> } | undefined
+
+function cancelAccountRead() {
+  pending?.controller.abort()
+  pending = undefined
+}
+
 window.addEventListener('membership:unauthenticated', () => {
+  cancelAccountRead()
   state.user = null
+  state.checked = true
+  state.error = ''
 })
+
+async function readAccount(signal: AbortSignal) {
+  try {
+    const { user } = await api<{ user: Account }>(
+      '/auth/me',
+      'GET',
+      undefined,
+      undefined,
+      signal,
+    )
+    if (signal.aborted) return
+    state.user = user
+    state.error = ''
+  } catch (error) {
+    if (signal.aborted) return
+    state.user = null
+    state.error =
+      error instanceof ApiError && error.status === 401
+        ? ''
+        : '无法连接本地 API，请确认后端已启动'
+  } finally {
+    if (!signal.aborted) {
+      state.checked = true
+      pending = undefined
+    }
+  }
+}
 
 export const auth = {
   state,
   async load(force = false) {
     if (state.checked && !force) return
-    pending ??= (async () => {
-      try {
-        state.user = (await api<{ user: Account }>('/auth/me')).user
-        state.error = ''
-      } catch (error) {
-        state.user = null
-        state.error =
-          error instanceof ApiError && error.status === 401
-            ? ''
-            : '无法连接本地 API，请确认后端已启动'
-      } finally {
-        state.checked = true
-        pending = undefined
-      }
-    })()
-    await pending
+    if (!pending) {
+      const controller = new AbortController()
+      pending = { controller, result: readAccount(controller.signal) }
+    }
+    await pending.result
   },
   async login(email: string, password: string) {
-    state.user = (
-      await api<{ user: Account }>('/auth/login', 'POST', { email, password })
-    ).user
+    const { user } = await api<{ user: Account }>('/auth/login', 'POST', {
+      email,
+      password,
+    })
+    cancelAccountRead()
+    state.user = user
     state.checked = true
     state.error = ''
-    return state.user
+    return user
   },
   async logout() {
     await api('/auth/logout', 'POST', {})
+    cancelAccountRead()
     state.user = null
     state.checked = true
   },

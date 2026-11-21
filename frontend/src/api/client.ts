@@ -37,7 +37,7 @@ export async function api<T>(
   }
   if (!response.ok) {
     const error = await response.json().catch(() => null)
-    if (response.status === 401)
+    if (response.status === 401 && !signal?.aborted)
       window.dispatchEvent(new Event('membership:unauthenticated'))
     throw new ApiError(
       response.status,

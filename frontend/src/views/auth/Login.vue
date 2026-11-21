@@ -73,9 +73,8 @@ async function submit() {
         >
       </ElForm>
       <div class="auth-links">
-        <RouterLink :to="admin ? '/login' : '/admin/login'">{{
-          admin ? '客户登录' : '管理员登录'
-        }}</RouterLink><RouterLink to="/">返回商店</RouterLink>
+        <RouterLink v-if="admin" to="/login">客户登录</RouterLink>
+        <RouterLink to="/">返回商店</RouterLink>
       </div>
       <p v-if="!admin" class="muted">
         客户账户由管理员创建，请先通过邀请链接激活。本站不提供公开注册。

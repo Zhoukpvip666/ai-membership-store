@@ -9,11 +9,27 @@ import {
 } from '@lucide/vue'
 import Brand from '../components/Brand.vue'
 import { auth } from '../stores/auth'
-import { onMounted } from 'vue'
+import { watch } from 'vue'
 import { settings } from '../stores/settings'
-onMounted(() => {
-  if (auth.state.user?.role === 'ADMIN') void settings.load().catch(() => {})
-})
+watch(
+  () => auth.state.user?.role,
+  (role, _previous, onCleanup) => {
+    if (role !== 'ADMIN') return
+    void settings.load().catch(() => {})
+    const refreshSession = () => {
+      if (!document.hidden) void auth.load(true)
+    }
+    const interval = window.setInterval(refreshSession, 30_000)
+    window.addEventListener('focus', refreshSession)
+    document.addEventListener('visibilitychange', refreshSession)
+    onCleanup(() => {
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refreshSession)
+      document.removeEventListener('visibilitychange', refreshSession)
+    })
+  },
+  { immediate: true },
+)
 const nav = [
   { path: '/', text: '商品', short: '商品', icon: Store },
   {
@@ -46,7 +62,10 @@ const nav = [
           >
         </nav>
         <div class="header-actions">
-          <RouterLink class="console-link" to="/admin"
+          <RouterLink
+            v-if="auth.state.user?.role === 'ADMIN'"
+            class="console-link"
+            to="/admin"
             >管理控制台 <ArrowUpRight :size="14" /></RouterLink
           ><RouterLink to="/profile" class="avatar" aria-label="个人中心">{{
             auth.state.user?.username?.slice(0, 1) || '我'
