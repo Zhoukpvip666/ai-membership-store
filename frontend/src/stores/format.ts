@@ -1,6 +1,10 @@
 import type { Order } from '../types'
 import type { FormField } from '../../../backend/src/contracts/product-form'
 import type { FormData } from '../../../backend/src/contracts/form-data'
+
+export const formatOrderNumber = (orderNo: string) =>
+  orderNo.replace(/^([0-9]{3})([0-9]{3})([0-9]{3})$/, '$1 $2 $3')
+
 export const money = (fen: number) =>
   new Intl.NumberFormat('zh-CN', {
     style: 'currency',

@@ -130,6 +130,66 @@ const mutationHeaders = () => ({
   'Idempotency-Key': randomUUID(),
 })
 
+test('numeric order numbers group and copy raw digits while legacy numbers still search and copy', async ({
+  page,
+  context,
+}) => {
+  const { admin, createOrder } = await setup(context)
+  await createOrder({ orderNo: '583024917' })
+  await createOrder({ orderNo: 'T24-LEGACY-12345' })
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        async writeText(text: string) {
+          document.body.dataset.copiedOrderNo = text
+        },
+      },
+    })
+  })
+  for (const [display, raw] of [
+    ['583 024 917', '583024917'],
+    ['T24-LEGACY-12345', 'T24-LEGACY-12345'],
+  ]) {
+    await page.goto(ordersPath)
+    await page.getByLabel('搜索订单').fill(display)
+    await page.getByRole('button', { name: '查询订单', exact: true }).click()
+    await expect(page.locator('.customer-order-card')).toHaveCount(1)
+    await expect(row(page, display)).toBeVisible()
+    const dialog = await open(page, display)
+    await dialog.getByRole('button', { name: '复制订单号' }).click()
+    await expect(page.locator('body')).toHaveAttribute(
+      'data-copied-order-no',
+      raw,
+    )
+  }
+  await cookie(context, admin.id)
+  await page.goto('/admin/orders')
+  await page
+    .getByRole('textbox', { name: '搜索订单', exact: true })
+    .fill('583 024 917')
+  await page.getByRole('button', { name: '查询订单', exact: true }).click()
+  const adminRow = page.locator('tbody tr').filter({ hasText: '583 024 917' })
+  await expect(page.locator('tbody tr')).toHaveCount(1)
+  await adminRow.getByRole('button', { name: '查看详情' }).click()
+  const adminDetail = page.getByRole('dialog', {
+    name: '订单详情',
+    exact: true,
+  })
+  await expect(adminDetail).toContainText('583 024 917')
+  const copy = adminDetail.getByRole('button', { name: '复制订单号' })
+  await copy.click()
+  await expect(page.locator('body')).toHaveAttribute(
+    'data-copied-order-no',
+    '583024917',
+  )
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined })
+  })
+  await copy.click()
+  await expect(adminDetail.getByLabel('原始订单号')).toHaveValue('583024917')
+})
+
 test('customer login and real paginated, searchable own orders with recoverable failure', async ({
   page,
   context,
