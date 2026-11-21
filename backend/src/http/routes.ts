@@ -11,7 +11,10 @@ import { customerService } from '../modules/users/service.ts'
 import * as schemas from '../modules/users/schemas.ts'
 import { ApiError } from './errors.ts'
 import { csrf, rateLimit } from './security.ts'
-import { productSettingsRoutes } from '../modules/products/routes.ts'
+import {
+  productSettingsRoutes,
+  publicCatalogRoutes,
+} from '../modules/products/routes.ts'
 import { subscriptionRoutes } from '../modules/subscriptions/routes.ts'
 import {
   adminOrderRoutes,
@@ -29,6 +32,7 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
     path: '/',
   }
   router.use(csrf(env.APP_BASE_URL))
+  router.use('/catalog', publicCatalogRoutes(database))
   const authenticate: RequestHandler = async (request, response, next) => {
     const principal = await auth.resolve(
       sessionCookie(request.headers.cookie),

@@ -16,15 +16,17 @@ Base path: /api/v1. All payloads are JSON. Timestamps are UTC ISO-8601. Money is
 
 See [the complete T21 contract](26-customer-order-center.md) and decisions D98-D105. T21 replaces only the CUSTOMER /account/orders Mock page with the existing own-order list/detail/edit/cancel APIs. It adds GET /customer/order-guidance requiring an ACTIVE CUSTOMER Session and returning only storeName, businessTimezone and plain-text paymentInstructions. The existing ADMIN PATCH /admin/settings gains optional paymentInstructions (max 4000); the AppSettings column already exists, so no migration was needed. Customer refund visibility remains order-level only; no payment/refund attempts, OrderEvent, Revision, audit or customer refund request is exposed. No online payment, proof upload, subscription page, email or deployment was included. Implementation and actual tests are recorded in docs/26.
 
-## T22 customer storefront and offline order placement — approved design only
+## T22 customer storefront and offline order placement
 
-See [the T22 design baseline](27-customer-storefront-and-order-placement.md) and decisions D106-D112. These routes are approved but not implemented on main:
+See [the T22 design baseline](27-customer-storefront-and-order-placement.md) and decisions D106-D112.
 
-| Method | Path | Access | Purpose |
+| Method | Path | Access | Status and purpose |
 |---|---|---|---|
-| GET | /catalog/products | Public | Listed/unarchived product list; safe display DTO only |
-| GET | /catalog/products/:slug | Public | Listed/unarchived product detail; no formSchema |
-| GET | /customer/products/:slug | ACTIVE CUSTOMER | Purchase projection with safe formSchema and Product.updatedAt |
+| GET | /catalog/products | Public | T22.1, listed and unarchived product list with public display fields |
+| GET | /catalog/products/:slug | Public | T22.1, single public product object, 404 for all unavailable slugs |
+| GET | /customer/products/:slug | ACTIVE CUSTOMER | Planned in T22.2, purchase projection with safe formSchema and Product.updatedAt |
+
+Both public reads expose only slug, name, description, type, priceFen, renewalPriceFen, termLabel, servicePeriodUnit, and servicePeriodCount. The list accepts only search (trimmed, up to 120 characters, literal product-name match), type (SUBSCRIPTION or ONE_TIME), page (1–10000, default 1), and pageSize (1–100, default 20). Filters are AND-combined. Results are ordered by sortOrder, createdAt, then id, all ascending. The list returns `{items,total,page,pageSize}`. Invalid queries return 400 INVALID_INPUT. Missing, unlisted, and archived slugs return 404 NOT_FOUND.
 
 T22 reuses the existing POST /customer/orders. Its approved forward CUSTOMER request adds expectedProductUpdatedAt to the current productId/formData body; the service will compare it after the Product row lock and return 409 PRODUCT_CHANGED without writes when stale. This forward extension is not yet implemented; see the addendum in docs/19. The login flow returns a guest to the same purchase route after successful CUSTOMER login. No online payment, proof upload, cart, subscription UI, renewal, email, migration, or deployment is included.
 
@@ -201,7 +203,7 @@ The customer login/me projection includes username but never adminLabel; adminis
 | GET | /me/subscriptions | Current customer's own subscriptions |
 | GET | /me/subscriptions/:id | Own subscription detail and renewal history |
 
-No customer subscription read or renewal endpoint is implemented. T22 approves public catalog reads, an ACTIVE-CUSTOMER purchase-product read, and integration of the existing customer order-creation POST; those catalog/purchase reads are not yet implemented.
+No customer subscription read or renewal endpoint is implemented. T22.1 provides public catalog reads. The ACTIVE-CUSTOMER purchase-product read and the storefront integration of the existing customer order-creation POST remain planned.
 
 ## 8. Dashboard
 

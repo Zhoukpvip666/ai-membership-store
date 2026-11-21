@@ -4,6 +4,20 @@ import { productService } from './service.ts'
 import * as products from './schemas.ts'
 import { settingsService, editSettings } from '../settings/service.ts'
 import { id, emptyBody } from '../users/schemas.ts'
+import { catalogDetailQuery, catalogQuery, publicCatalog } from './catalog.ts'
+
+export function publicCatalogRoutes(database: PrismaClient) {
+  const router = Router()
+  const catalog = publicCatalog(database)
+  router.get('/products', async (request, response) => {
+    response.json(await catalog.list(catalogQuery.parse(request.query)))
+  })
+  router.get('/products/:slug', async (request, response) => {
+    catalogDetailQuery.parse(request.query)
+    response.json(await catalog.detail(request.params.slug))
+  })
+  return router
+}
 
 // Mounted behind the existing /admin session, role, CSRF and mutation-limit guards.
 export function productSettingsRoutes(database: PrismaClient) {
