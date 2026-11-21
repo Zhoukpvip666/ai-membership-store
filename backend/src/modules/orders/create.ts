@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '../../generated/prisma/client.ts'
 import { ApiError } from '../../http/errors.ts'
 import { completeProduct } from '../products/schemas.ts'
@@ -7,6 +6,7 @@ import { adminOrderDto, adminOrderSelect, customerOrderDto } from './dto.ts'
 import { buildOrderSnapshot, orderRevisionSelect } from './revisions.ts'
 import { creationForm } from './create-form.ts'
 import type { AdminCreation, CustomerCreation } from './create-schemas.ts'
+import { insertWithOrderNumber } from './order-number.ts'
 
 type Intent =
   | { role: 'CUSTOMER'; input: CustomerCreation }
@@ -103,36 +103,38 @@ export function orderCreationService(database: PrismaClient) {
             '调整价格时必须填写原因',
           )
         const actorType = admin ? 'ADMIN' : 'USER'
-        const order = await tx.order.create({
-          data: {
-            orderNo: 'O' + randomUUID().replaceAll('-', ''),
-            version: 1,
-            userId,
-            productId,
-            source: actorType,
-            createdByAdminId: admin ? actorId : null,
-            createdByUserId: admin ? null : actorId,
-            kind: product.type === 'SUBSCRIPTION' ? 'INITIAL' : 'ONE_TIME',
-            hidden: false,
-            productNameSnapshot: product.name,
-            productDescriptionSnapshot: product.description,
-            productTypeSnapshot: product.type,
-            priceSnapshotFen: product.priceFen,
-            renewalPriceSnapshotFen: product.renewalPriceFen,
-            termSnapshot: product.termLabel,
-            servicePeriodUnitSnapshot: product.servicePeriodUnit,
-            servicePeriodCountSnapshot: product.servicePeriodCount,
-            formSchemaSnapshot: product.formSchema as Prisma.InputJsonValue,
-            formData,
-            amountFen,
-            contactEmailSnapshot:
-              customer.notificationEmail ?? customer.loginEmail,
-            internalNote: admin?.internalNote ?? null,
-            paymentStatus: amountFen === 0 ? 'NOT_REQUIRED' : 'UNPAID',
-            fulfillmentStatus: amountFen === 0 ? 'PROCESSING' : 'NOT_STARTED',
-          },
-          select: { ...orderRevisionSelect, user: adminOrderSelect.user },
-        })
+        const order = await insertWithOrderNumber((orderNo) =>
+          tx.order.create({
+            data: {
+              orderNo,
+              version: 1,
+              userId,
+              productId,
+              source: actorType,
+              createdByAdminId: admin ? actorId : null,
+              createdByUserId: admin ? null : actorId,
+              kind: product.type === 'SUBSCRIPTION' ? 'INITIAL' : 'ONE_TIME',
+              hidden: false,
+              productNameSnapshot: product.name,
+              productDescriptionSnapshot: product.description,
+              productTypeSnapshot: product.type,
+              priceSnapshotFen: product.priceFen,
+              renewalPriceSnapshotFen: product.renewalPriceFen,
+              termSnapshot: product.termLabel,
+              servicePeriodUnitSnapshot: product.servicePeriodUnit,
+              servicePeriodCountSnapshot: product.servicePeriodCount,
+              formSchemaSnapshot: product.formSchema as Prisma.InputJsonValue,
+              formData,
+              amountFen,
+              contactEmailSnapshot:
+                customer.notificationEmail ?? customer.loginEmail,
+              internalNote: admin?.internalNote ?? null,
+              paymentStatus: amountFen === 0 ? 'NOT_REQUIRED' : 'UNPAID',
+              fulfillmentStatus: amountFen === 0 ? 'PROCESSING' : 'NOT_STARTED',
+            },
+            select: { ...orderRevisionSelect, user: adminOrderSelect.user },
+          }),
+        )
         await tx.orderRevision.create({
           data: {
             orderId: order.id,

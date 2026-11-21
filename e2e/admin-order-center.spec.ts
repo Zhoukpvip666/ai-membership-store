@@ -251,7 +251,10 @@ test('pending customer + unlisted product: zero subscription appears in PROCESSI
     .getByRole('textbox', { name: '搜索订单', exact: true })
     .fill(data.product.name)
   await page.getByRole('button', { name: '查询订单', exact: true }).click()
-  const row = page.locator('tbody tr').filter({ hasText: order.orderNo })
+  expect(order.orderNo).toMatch(/^[1-9][0-9]{8}$/)
+  const row = page
+    .locator('tbody tr')
+    .filter({ hasText: order.orderNo.match(/.{3}/g)!.join(' ') })
   await expect(row).toContainText('无需付款')
   await row.getByRole('button', { name: '查看详情' }).click()
   await fulfill(page)

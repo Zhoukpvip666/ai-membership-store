@@ -2,6 +2,7 @@ import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { createHash, randomUUID } from 'node:crypto'
+import crypto from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import type { Server } from 'node:http'
 import { isDeepStrictEqual } from 'node:util'
@@ -970,6 +971,85 @@ test('sequential retries, actor namespaces, distinct keys and canonical field or
     (await request('customer', input)).body.order.id,
     first.body.order.id,
   )
+})
+
+test('real order number collisions retry within the transaction, preserve replay, and stop at the limit', async (t) => {
+  const p = await product()
+  const candidates = [583_024_917, 583_024_917, 583_024_918]
+  const draw = t.mock.method(
+    crypto,
+    'randomInt',
+    () => candidates.shift() ?? 583_024_917,
+  )
+  const existing = await request('admin', adminBody(p))
+  assert.equal(existing.status, 201)
+  assert.equal(existing.body.order.orderNo, '583024917')
+
+  const key = randomUUID()
+  const input = body(p)
+  const before = await snapshot()
+  const first = await request('customer', input, key)
+  assert.equal(first.status, 201, JSON.stringify(first.body))
+  assert.equal(first.body.order.orderNo, '583024918')
+  assert.match(first.body.order.id, /^[a-f0-9-]{36}$/)
+  assert.equal(draw.mock.callCount(), 3)
+  const committed = await snapshot()
+  for (const table of [
+    'Order',
+    'OrderRevision',
+    'OrderEvent',
+    'IdempotencyRecord',
+  ])
+    assert.equal(committed[table].length, before[table].length + 1)
+
+  const repeated = await Promise.all(
+    Array.from({ length: 3 }, () => request('customer', input, key)),
+  )
+  for (const replay of repeated) {
+    assert.equal(replay.status, 201)
+    assert.deepEqual(replay.body, first.body)
+  }
+  assert.equal(draw.mock.callCount(), 3)
+  assert.deepEqual(await snapshot(), committed)
+
+  for (const [role, filter] of [
+    ['customer', 'search'],
+    ['admin', 'orderNo'],
+  ] as const) {
+    const query = new URLSearchParams({ [filter]: '583 024 918' })
+    const results = await request(
+      role,
+      undefined,
+      null,
+      cookies[role],
+      'GET',
+      '?' + query,
+    )
+    assert.equal(results.status, 200)
+    assert.deepEqual(
+      results.body.items.map((order: { orderNo: string }) => order.orderNo),
+      ['583024918'],
+    )
+  }
+  assert.equal(
+    (
+      await request(
+        'customer',
+        undefined,
+        null,
+        cookies.customer,
+        'GET',
+        '/583024918',
+      )
+    ).status,
+    400,
+  )
+  await rejected(
+    () => request('customer', input),
+    503,
+    'ORDER_NUMBER_UNAVAILABLE',
+  )
+  assert.equal(draw.mock.callCount(), 8)
 })
 
 test('simultaneous duplicate HTTP requests produce exactly one complete set of records', async () => {

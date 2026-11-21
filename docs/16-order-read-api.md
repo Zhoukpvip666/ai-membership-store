@@ -31,6 +31,8 @@ Single string values only. Unknown properties, repeated values, arrays and neste
 | paymentStatus | UNPAID / PENDING_VERIFICATION / PAID / REFUND_PENDING / REFUNDED |
 | fulfillmentStatus | NOT_STARTED / PROCESSING / COMPLETED / FAILED / CANCELLED |
 | sort | asc / desc by createdAt; default desc, UUID ascending tie-breaker |
+
+A complete number entered in the displayed `583 024 917` format also matches the raw `583024917` value in either `search` or `orderNo`. Existing searches continue to match historical order numbers. Responses return stored values and detail routes continue to use the UUID.
 | page | Positive decimal integer string 1–10000; default1 |
 | pageSize | Positive decimal integer string 1–100; default20 |
 

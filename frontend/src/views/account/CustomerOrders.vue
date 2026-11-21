@@ -8,7 +8,7 @@ import {
   type CustomerOrder,
   type OrderGuidance,
 } from '../../api/customer-orders'
-import { money } from '../../stores/format'
+import { formatOrderNumber, money } from '../../stores/format'
 import {
   businessDate,
   kindLabels,
@@ -180,7 +180,8 @@ onMounted(() => {
             <div>
               <h2>{{ order.productNameSnapshot }}</h2>
               <p class="muted">
-                {{ order.orderNo }} · {{ kindLabels[order.kind] }}
+                {{ formatOrderNumber(order.orderNo) }} ·
+                {{ kindLabels[order.kind] }}
               </p>
             </div>
             <time :datetime="order.createdAt">{{ date(order.createdAt) }}</time>

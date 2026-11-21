@@ -9,6 +9,7 @@ import {
   type OrderGuidance,
 } from '../../api/customer-orders'
 import type { FormData } from '../../api/subscriptions'
+import OrderNumber from '../../components/OrderNumber.vue'
 import ProductFormInputs from '../../components/ProductFormInputs.vue'
 import { parseFormData } from '../../../../backend/src/contracts/form-data'
 import { hasCredentialText } from '../../../../backend/src/contracts/credential-fields'
@@ -178,7 +179,7 @@ onMounted(load)
     </p>
     <div v-else-if="order" class="customer-order-detail">
       <h2>{{ order.productNameSnapshot }}</h2>
-      <p class="muted">{{ order.orderNo }}</p>
+      <p class="muted"><OrderNumber :order-no="order.orderNo" /></p>
       <template v-if="mode === 'detail'">
         <div class="customer-order-summary">
           <strong>{{ orderStatus(order) }}</strong>

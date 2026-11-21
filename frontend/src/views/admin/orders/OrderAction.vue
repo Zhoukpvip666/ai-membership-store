@@ -11,7 +11,7 @@ import {
   transactionTimeInput,
 } from '../../../../../backend/src/contracts/transaction-time'
 import { settings } from '../../../stores/settings'
-import { money, parsePrice } from '../../../stores/format'
+import { formatOrderNumber, money, parsePrice } from '../../../stores/format'
 import { channelLabels } from './state'
 export type Action =
   | 'note'
@@ -172,7 +172,9 @@ async function save() {
     :show-close="!busy && !uncertain"
     @close="emit('close')"
   >
-    <p>订单 {{ order.orderNo }} · 版本 {{ order.version }}</p>
+    <p>
+      订单 {{ formatOrderNumber(order.orderNo) }} · 版本 {{ order.version }}
+    </p>
     <p v-if="error" role="alert" class="form-error">{{ error }}</p>
     <p v-if="uncertain" role="alert">
       响应未确认，请重试原请求；将使用相同请求内容和幂等密钥。

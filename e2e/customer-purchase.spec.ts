@@ -379,7 +379,10 @@ async function expectCreatedDetail(
       url.searchParams.get('orderId') === order.id &&
       [...url.searchParams.keys()].length === 1,
   )
-  await expect(detail(page)).toContainText(order.orderNo)
+  expect(order.orderNo).toMatch(/^[1-9][0-9]{8}$/)
+  await expect(detail(page)).toContainText(
+    order.orderNo.match(/.{3}/g)!.join(' '),
+  )
 }
 
 async function expectNoOverflow(page: Page) {
