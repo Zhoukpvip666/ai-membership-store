@@ -66,8 +66,8 @@ export async function api<T>(
   return response.status === 204 ? (undefined as T) : response.json()
 }
 
-export async function apiBlob(path: string) {
-  return (await request(path)).blob()
+export async function apiBlob(path: string, signal?: AbortSignal) {
+  return (await request(path, 'GET', undefined, undefined, signal)).blob()
 }
 
 export interface Account {

@@ -85,7 +85,7 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
         throw new ApiError(403, 'FORBIDDEN', '仅客户可以访问此接口')
       next()
     },
-    customerOrderRoutes(database),
+    customerOrderRoutes(database, env.WECHAT_QR_STORAGE_DIR),
     customerPurchaseRoutes(database),
   )
   // This guard covers implemented and future admin routes, including unknown paths.

@@ -20,6 +20,7 @@ export const recordPayment = z.strictObject({
   note: z.string().trim().max(500).optional(),
 })
 export const confirmPayment = z.strictObject({ expectedVersion })
+export const claimPayment = z.strictObject({ expectedVersion })
 export const failPayment = z.strictObject({
   expectedVersion,
   reason: z.string().trim().min(1).max(500),

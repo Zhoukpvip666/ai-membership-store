@@ -205,6 +205,8 @@ The customer login/me projection includes username but never adminLabel; adminis
 | GET | /customer/orders | Implemented: current customer's own visible ordinary orders |
 | GET | /customer/orders/:id | Implemented: own ordinary order snapshot; no internal timeline |
 | GET | /customer/order-guidance | Implemented T21: ACTIVE CUSTOMER only; safe `{storeName,businessTimezone,paymentInstructions}` allowlist |
+| GET | /customer/orders/:id/wechat-qr | T24.2: current enabled QR PNG for the customer's own eligible order |
+| POST | /customer/orders/:id/payment-claim | T24.2: submit a manual verification claim with `{expectedVersion}` and `Idempotency-Key` |
 | GET | /customer/products/:slug | T22.2 ACTIVE CUSTOMER purchase projection with safe formSchema and updatedAt |
 
 | PATCH | /customer/orders/:id | Implemented T15: own eligible ordinary-order full form replacement |

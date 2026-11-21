@@ -11,6 +11,7 @@ import {
 import type { FormData } from '../../api/subscriptions'
 import OrderNumber from '../../components/OrderNumber.vue'
 import ProductFormInputs from '../../components/ProductFormInputs.vue'
+import CustomerWechatPayment from './CustomerWechatPayment.vue'
 import { parseFormData } from '../../../../backend/src/contracts/form-data'
 import { hasCredentialText } from '../../../../backend/src/contracts/credential-fields'
 import { formValueLabel, money } from '../../stores/format'
@@ -21,7 +22,6 @@ import {
 } from '../admin/orders/state'
 import {
   canCancel,
-  countdown,
   customerPaymentLabels,
   orderStatus,
   paymentTimeLeft,
@@ -38,7 +38,7 @@ const emit = defineEmits<{
   retryGuidance: []
 }>()
 const order = shallowRef<CustomerOrder>()
-const mode = ref<'detail' | 'edit' | 'cancel'>('detail')
+const mode = ref<'detail' | 'edit' | 'cancel' | 'claim'>('detail')
 const loading = ref(false)
 const busy = ref(false)
 const uncertain = ref(false)
@@ -78,7 +78,7 @@ async function load() {
   }
 }
 
-function begin(action: 'edit' | 'cancel') {
+function begin(action: 'edit' | 'cancel' | 'claim') {
   mode.value = action
   actionError.value = ''
   notice.value = ''
@@ -119,8 +119,18 @@ async function save() {
         expectedVersion: current.version,
         ...(text ? { reason: text } : {}),
       })
+    } else if (mode.value === 'claim') {
+      await request.send(
+        customerOrderPath(current.id) + '/payment-claim',
+        'POST',
+        {
+          expectedVersion: current.version,
+        },
+      )
     } else return
-    notice.value = mode.value === 'cancel' ? '订单已取消。' : '服务信息已更新。'
+    if (mode.value !== 'claim')
+      notice.value =
+        mode.value === 'cancel' ? '订单已取消。' : '服务信息已更新。'
     await refresh()
   } catch (cause) {
     if (
@@ -129,6 +139,7 @@ async function save() {
         'VERSION_CONFLICT',
         'ORDER_NOT_EDITABLE',
         'ORDER_NOT_CANCELLABLE',
+        'ORDER_NOT_PAYABLE',
       ].includes(cause.code)
     ) {
       notice.value = '订单状态或版本已变化，请核对最新详情后再操作。'
@@ -163,7 +174,9 @@ onMounted(load)
         ? '修改订单'
         : mode === 'cancel'
           ? '确认取消订单'
-          : '订单详情'
+          : mode === 'claim'
+            ? '确认付款核实'
+            : '订单详情'
     "
     :width="mobile ? '100%' : 'min(720px, 92vw)'"
     :fullscreen="mobile"
@@ -179,7 +192,9 @@ onMounted(load)
     </p>
     <div v-else-if="order" class="customer-order-detail">
       <h2>{{ order.productNameSnapshot }}</h2>
-      <p class="muted"><OrderNumber :order-no="order.orderNo" /></p>
+      <p v-if="mode !== 'detail' || remaining === 0" class="muted">
+        <OrderNumber :order-no="order.orderNo" />
+      </p>
       <template v-if="mode === 'detail'">
         <div class="customer-order-summary">
           <strong>{{ orderStatus(order) }}</strong>
@@ -250,30 +265,33 @@ onMounted(load)
             </dd>
           </div>
         </dl>
-        <section
+        <CustomerWechatPayment
           v-if="remaining > 0"
-          aria-label="线下付款说明"
-          class="payment-guidance"
+          :order="order"
+          :remaining="remaining"
+          @claim="begin('claim')"
+        />
+        <section
+          v-if="guidance?.paymentInstructions.trim()"
+          aria-label="商家备注"
         >
-          <h3>线下付款说明</h3>
-          <p>
-            请在截止前付款。剩余
-            <strong class="customer-countdown">{{
-              countdown(remaining)
-            }}</strong>
-          </p>
-          <p v-if="!guidance">
-            付款说明暂不可用。<ElButton link @click="emit('retryGuidance')"
-              >重试付款说明</ElButton
-            >
-          </p>
-          <p v-else-if="guidance.paymentInstructions.trim()" class="plain">
-            {{ guidance.paymentInstructions }}
-          </p>
-          <p v-else>商家暂未配置付款说明，请联系商家确认</p>
+          <h3>商家备注</h3>
+          <p class="plain">{{ guidance.paymentInstructions }}</p>
         </section>
+        <p v-else-if="!guidance" class="muted">
+          商家备注暂不可用。<ElButton link @click="emit('retryGuidance')"
+            >重试读取</ElButton
+          >
+        </p>
         <p v-if="orderStatus(order) === '付款待核实'" class="inline-note">
-          付款待核实，请勿重复转账
+          已提交付款核实，请勿重复转账。管理员确认实际到账后才会处理订单。
+          订单创建满 24 小时未核实可能自动取消。如已转账，请联系商家线下处理。
+        </p>
+        <p
+          v-if="order.fulfillmentStatus === 'CANCELLED' && order.amountFen > 0"
+          class="muted"
+        >
+          如已付款，请联系商家线下处理款项。
         </p>
         <section
           v-if="snapshot?.schema.fields.length"
@@ -306,6 +324,9 @@ onMounted(load)
           {{ actionError }}
         </p>
         <p v-if="uncertain" role="status">结果尚未确认，可重试原请求。</p>
+        <p v-if="mode === 'claim'">
+          请确认你已在微信完成付款，且付款金额和填写的商城订单号均正确。
+        </p>
         <ElForm
           v-if="mode === 'edit' && snapshot"
           label-position="top"
@@ -375,7 +396,9 @@ onMounted(load)
                 ? '重试原请求'
                 : mode === 'cancel'
                   ? '确认取消'
-                  : '保存修改'
+                  : mode === 'claim'
+                    ? '提交付款核实'
+                    : '保存修改'
             }}
           </ElButton>
         </template>
@@ -420,16 +443,6 @@ onMounted(load)
 }
 .plain {
   white-space: pre-wrap;
-}
-.payment-guidance {
-  background: #f3f7ff;
-  border: 1px solid #d8e3ff;
-  border-radius: 12px;
-  padding: 0.85rem;
-  margin-block: 1rem;
-}
-.customer-countdown {
-  font-variant-numeric: tabular-nums;
 }
 .customer-timeline {
   padding-inline-start: 1.25rem;

@@ -90,7 +90,9 @@ The same Vue application may serve both surfaces with route-level layouts and au
 - 客户只能在 T15 允许的未付款/未开始/未过期条件下修改完整 formData；只能按 T16 取消本人未付款或待核实且无已确认付款事实的订单。PENDING_VERIFICATION 取消前必须警告可能存在未核实线下转账。
 - 客户不能取消已付款订单、零元待履约订单或已完成订单；不能修改金额、付款状态或履约状态。
 - 只展示订单级退款状态；不展示付款/退款尝试、流水号、渠道、管理员备注或审计数据，不提供客户退款申请。
-- 正金额 UNPAID + NOT_STARTED 且未过期的订单详情显示全站纯文本线下付款说明；待核实状态提示勿重复转账，其他状态不显示。说明来自安全 CUSTOMER order-guidance API。
+- T24.2 的正金额、未过期 UNPAID + NOT_STARTED 订单显示「微信扫码付款」，包括应付金额、订单号、保存二维码入口和倒计时。二维码未启用或不可用时显示联系商家的提示，「我已付款」仍可申报。
+- 「我已付款」打开确认步骤，成功后进入付款待核实并隐藏扫码入口。提醒勿重复转账，满 24 小时仍未核实可能自动取消，已转账的顾客应联系商家线下处理。
+- 「商家备注」来自原 CUSTOMER order-guidance API，所有订单状态都可显示非空纯文本备注。
 - 不提供客户创建订单/商城结账、在线支付、付款凭证上传、订阅中心改造或邮件通知；客户购买流程仍未开放。
 
 **个人中心**
@@ -196,7 +198,7 @@ No merchant registration, merchant onboarding, merchant wallet, merchant balance
 
 **系统设置**
 - 「收款设置」供管理员上传、更换和预览微信经营收款码，并启用或停用微信收款。未配置二维码时禁用启用开关。停用后仍可预览或更换图片。
-- 「商家备注」复用全店统一的纯文本 `paymentInstructions`。留空表示无备注。T24.1 只调整后台标签，客户订单详情继续使用原有内容和展示规则。
+- 「商家备注」复用全店统一的纯文本 `paymentInstructions`。留空表示无备注。T24.2 在客户订单详情显示非空备注。
 - Storefront name.
 - Owner/notification email.
 - Email notification preferences.
