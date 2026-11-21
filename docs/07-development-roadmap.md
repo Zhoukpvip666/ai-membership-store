@@ -105,12 +105,12 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 
 ## T22 customer storefront and offline order placement
 
-**Status: D106-D112 approved in PR #32.** [Design and implementation records](27-customer-storefront-and-order-placement.md).
+**Status: D106-D112 approved in PR #32. T22 implementation merged.** [Design and implementation records](27-customer-storefront-and-order-placement.md).
 
 - T22.1 public catalog API and catalog/detail views are merged in PR #33.
 - T22.2 protected purchase form, login continuation, and client-side checks are merged in PR #34.
 - T22.3A customer creation version guard and safe CUSTOMER order DTOs are merged in PR #35.
-- T22.3B storefront order submission and order-center continuation are implemented and awaiting review. T22 is complete after merge and verification.
+- T22.3B storefront order submission, idempotent retry and order-center continuation are merged in PR #36. Public deployment readiness is tracked separately in T23.
 
 - Public GET catalog list/detail exposes only listed, unarchived product display fields. Public DTOs never expose formSchema, defaults, administrator fields, or archive/listing internals.
 - Product detail does not load or display dynamic form fields. T22.2 enables 立即购买 and lets an ACTIVE CUSTOMER enter /purchase/:slug to fetch the customer-safe form projection.
@@ -120,6 +120,17 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 - The CUSTOMER API requires expectedProductUpdatedAt. It replays matching committed requests before checking the current version. Under the Product row lock a stale version returns 409 PRODUCT_CHANGED with no writes. T22.3B reloads the product, discards the old draft, and requires explicit review for the fresh version.
 - A successful storefront submission or idempotent replay opens the existing T21 order detail using /account/orders?orderId=:id. T21 payment guidance remains the only offline payment instruction.
 - No cart, online payment, proof upload, customer subscription/renewal, email, supplier automation, migration, deployment, or runtime dependency is included.
+
+## T23 — Production deployment readiness
+
+**Status: T23.0 design and read-only Seoul VPS audit, pending owner review.** [Production design and readiness audit](28-production-deployment-design.md). The candidate is the existing shared VPS. Its approved capacity, credentials and release readiness are still to be established.
+
+- T23.1 — Production configuration and security. Validate HTTPS origin, credentials, trusted proxy, sessions, Origin checks, invitations and worker lifecycle.
+- T23.2 — Caddy, systemd and MySQL deployment definitions. Provide site/unit/Compose templates that preserve existing listeners and services.
+- T23.3 — Backup, recovery, logging and monitoring. Demonstrate encrypted backup, isolated restore, log redaction and alerts.
+- T23.4 — Isolated deployment rehearsal and launch checklist. Verify shared-host capacity, prior-site health, application behavior and recovery before requesting production rollout approval.
+
+Each stage requires its own review. Production Migration, data cleanup, service restarts and deployment require separate approval for the specific operation. T23.0 approves no production installation or application changes.
 
 ## Order revision / generic idempotency foundation
 
@@ -341,7 +352,7 @@ These remain future work and must not be pulled into Task 1.2:
 
 ## Current review boundary
 
-Tasks 1.2.1–1.2.3, Phase 2, order foundation/read/create/edit/cancel/payment/refund/fulfillment, T20 and T21 are merged. T22.1 is merged in PR #33. T22.2 is merged in PR #34. T22.3A is merged in PR #35. T22.3B is implemented and awaiting review and post-merge verification. Do not begin renewal, payment-provider integration, or deployment automatically.
+Tasks 1.2.1–1.2.3, Phase 2, order foundation/read/create/edit/cancel/payment/refund/fulfillment, T20 and T21 are merged. T22.1, T22.2, T22.3A and T22.3B are merged in PRs #33, #34, #35 and #36 respectively. The current review boundary is the T23.0 design. T23.1, production rollout, renewal and payment-provider integration require separate authorization.
 
 T19 supersedes the earlier generic Task 1.2.4 fulfillment placeholder below: use the merged D24-D32/D37/D52/D59/D64/D83-D88 contract in [docs/24-manual-fulfillment-api.md](24-manual-fulfillment-api.md). In particular, NOT_REQUIRED zero-price orders are fulfillable, and renewal/SYSTEM_RENEWAL are excluded.
 
