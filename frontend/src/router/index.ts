@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import StoreLayout from '../layouts/StoreLayout.vue'
 import AdminLayout from '../layouts/AdminLayout.vue'
 import { auth } from '../stores/auth'
+import { isPurchasePath } from './customer-redirect'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -32,6 +33,13 @@ export const router = createRouter({
           name: 'catalog-product',
           meta: { publicCatalog: true },
           component: () => import('../views/storefront/ProductDetail.vue'),
+          props: true,
+        },
+        {
+          path: 'purchase/:slug',
+          name: 'customer-purchase',
+          meta: { authenticated: true, customerPurchase: true },
+          component: () => import('../views/storefront/Purchase.vue'),
           props: true,
         },
         {
@@ -82,6 +90,7 @@ export const router = createRouter({
   ],
 })
 router.beforeEach(async (to) => {
+  if (to.meta.customerPurchase && !isPurchasePath(to.path)) return '/'
   await auth.load(Boolean(to.meta.admin || to.meta.authenticated))
   if (to.meta.admin && auth.state.user?.role !== 'ADMIN')
     return {
@@ -90,6 +99,8 @@ router.beforeEach(async (to) => {
     }
   if (to.meta.authenticated && !auth.state.user)
     return { path: '/login', query: { redirect: to.fullPath } }
+  if (to.meta.customerPurchase && auth.state.user?.role !== 'CUSTOMER')
+    return '/admin/orders'
   if (to.meta.customerOrders && auth.state.user?.role !== 'CUSTOMER')
     return '/profile'
 })
@@ -103,6 +114,11 @@ window.addEventListener('membership:unauthenticated', () => {
     void router.replace({
       path: '/login',
       query: { redirect: '/account/orders' },
+    })
+  else if (router.currentRoute.value.meta.customerPurchase)
+    void router.replace({
+      path: '/login',
+      query: { redirect: router.currentRoute.value.fullPath },
     })
 })
 router.afterEach((to) => {

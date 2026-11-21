@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import type { Prisma, PrismaClient } from '../../generated/prisma/client.ts'
 import { ApiError } from '../../http/errors.ts'
+import { hasCredentialFields } from '../../contracts/credential-fields.ts'
+import { productFormSchema } from '../../contracts/product-form.ts'
 
 const pageNumber = (max: number) =>
   z
@@ -31,6 +33,34 @@ const publicProductSelect = {
 
 const publicListing = { listed: true, archivedAt: null } as const
 const missing = () => new ApiError(404, 'NOT_FOUND', '商品不存在')
+
+function purchaseForm(input: unknown) {
+  const schema = productFormSchema.safeParse(input)
+  if (!schema.success || hasCredentialFields(schema.data))
+    throw new ApiError(
+      409,
+      'PRODUCT_FORM_UNAVAILABLE',
+      '此商品的服务表单暂不可用',
+    )
+  return {
+    version: schema.data.version,
+    fields: schema.data.fields.map((field) => ({
+      id: field.id,
+      type: field.type,
+      label: field.label,
+      required: field.required,
+      hint: field.hint,
+      ...('options' in field
+        ? {
+            options: field.options.map(({ label, value }) => ({
+              label,
+              value,
+            })),
+          }
+        : {}),
+    })),
+  }
+}
 
 export function publicCatalog(database: PrismaClient) {
   return {
@@ -67,6 +97,25 @@ export function publicCatalog(database: PrismaClient) {
       })
       if (!product) throw missing()
       return product
+    },
+    async purchase(slug: string) {
+      if (!slug || slug.length > 100) throw missing()
+      const product = await database.product.findUnique({
+        where: { slug, ...publicListing },
+        select: {
+          ...publicProductSelect,
+          id: true,
+          updatedAt: true,
+          formSchema: true,
+        },
+      })
+      if (!product) throw missing()
+      const { formSchema, updatedAt, ...display } = product
+      return {
+        ...display,
+        updatedAt: updatedAt.toISOString(),
+        formSchema: purchaseForm(formSchema),
+      }
     },
   }
 }

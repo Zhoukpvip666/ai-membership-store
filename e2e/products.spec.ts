@@ -502,8 +502,8 @@ test('unlisted products remain manageable; archive unlists irreversibly and reta
     .click()
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
   await expect(
-    page.getByRole('button', { name: '暂未开放线上购买', exact: true }),
-  ).toBeDisabled()
+    page.getByRole('button', { name: '立即购买', exact: true }),
+  ).toBeEnabled()
   await page.goto('/admin/products')
   await findProduct()
   await row.getByRole('button', { name: '归档', exact: true }).click()

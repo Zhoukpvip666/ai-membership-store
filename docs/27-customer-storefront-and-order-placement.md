@@ -2,11 +2,11 @@
 
 - Document: CUSTOMER-STOREFRONT-AND-ORDER-PLACEMENT
 - Version: 1.0
-- Status: Design approved in PR #32. T22.1 implemented and awaiting review. T22.2 and T22.3 have not started.
+- Status: Design approved in PR #32. T22.1 merged in PR #33. T22.2 implemented and awaiting review. T22.3 has not started.
 - Date: 2026-11-20
 - Related: [Product requirements](01-product-requirements.md), [User and operations flows](02-user-and-operations-flows.md), [API contract](05-api-contract.md), [Interface specification](08-interface-specification.md), [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order creation API](19-order-creation-api.md), [Customer order center](26-customer-order-center.md)
 
-> Sections 1–11 record the approved T22 design. Section 12 records the implemented public catalog slice and its verification.
+> Sections 1–11 record the approved T22 design. Sections 12 and 13 record the public catalog and protected purchase form with their verification.
 
 ## 1. Goal and boundary
 
@@ -284,8 +284,8 @@ After this design PR is reviewed and merged, stop and wait for separate owner au
 
 - Guests can call the two public catalog GET endpoints. Both queries apply listed=true and archivedAt=null and select only the nine fields in section 3.3. The detail endpoint returns the single product object and uses one NOT_FOUND response for unavailable slugs.
 - List requests validate the strict query allowlist, trim search, and treat percent, underscore, and backslash as literal search characters. Search, type, and visibility predicates are AND-combined. Count and page items use the same filter and the approved stable ordering.
-- The storefront uses the public endpoints for browsing, search, type filters, pagination, and detail. The detail displays prices and the structured period when present, with termLabel as the display fallback for unknown legacy periods. The purchase action is disabled.
-- T22.1 includes no purchase route, purchase-form projection, login continuation, or order submission. T22.2 and T22.3 have not started. Prisma Schema, migrations, and dependencies are unchanged.
+- The storefront uses the public endpoints for browsing, search, type filters, pagination, and detail. The detail displays prices and the structured period when present, with termLabel as the display fallback for unknown legacy periods. In T22.1 the purchase action was disabled.
+- T22.1 covered public browsing and detail. Prisma Schema, migrations, and dependencies are unchanged.
 
 ### Local verification
 
@@ -317,3 +317,33 @@ The first order lifecycle aggregate reached the existing 600-second nested runne
 - `npm run test:db -w backend -- --catalog-only --fresh` passed 6/6. The unlisted fixture has no archive timestamp, and the archived fixture is listed. The test verifies each fixture is absent from the list and its detail returns 404 NOT_FOUND.
 - `npm run test:e2e -w backend -- --catalog-only` passed 4/4 on desktop Edge and 4/4 on mobile Edge emulation. The new test holds the catalog GET until it sees the loading message and releases the request in `finally`. It then verifies product cards render and the loading message clears.
 - `npm run format:check`, `npm run typecheck`, and `npm run lint` passed.
+
+## 13. T22.2 implementation report
+
+- `GET /api/v1/customer/products/:slug` uses the existing Session and CUSTOMER role middleware. It reads a current listed, unarchived product and adds id, updatedAt, and the customer-safe form projection to the public display fields.
+- The service validates the full database schema and checks for prohibited credential fields before projecting the response. The allowlist preserves the ordered field IDs, labels, hints, required flags, and applicable options. It excludes all editor defaults. Invalid forms return a sanitized 409 PRODUCT_FORM_UNAVAILABLE.
+- The 立即购买 button opens the protected purchase route. Guests and expired Sessions are redirected to login with the current purchase destination. Login accepts strict internal purchase paths and the existing customer destinations. An authenticated administrator is sent to order management.
+- The responsive purchase page reuses the product summary and ProductFormInputs. The shared form contract and credential detection validate answers in the browser. Answers stay in component memory and are cleared on product changes and navigation. 检查填写信息 makes no business request.
+- T22.3 order submission and order-center continuation have not started. This slice needs no new Migration, database column, or dependency.
+
+### T22.2 verification
+
+The MySQL runner used disposable MySQL 8.4 projects with synthetic fixtures and random loopback database ports. The browser projects used desktop Edge and an iPhone 13 viewport emulated in Edge.
+
+| Command | Result |
+|---|---|
+| `npm test` | Frontend 30/30, backend 71/71 |
+| `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run build`, `npm run db:validate` | Passed |
+| `npm run test:db -w backend -- --customer-purchase-only --fresh` | 5/5 including permissions, visibility, fresh reads, exact projections and sanitized failures |
+| `npm run test:e2e -w backend -- --customer-purchase-only` | Rerun passed desktop Edge 7/7 and mobile Edge emulation 7/7 |
+| `npm run test:db -w backend -- --catalog-only --fresh` | 6/6 public catalog |
+| `npm run test:db -w backend -- --products-only --fresh` | 11/11 products and settings |
+| `npm run test:db -w backend -- --admin-orders-only --fresh` | 14/14 T20 |
+| `npm run test:db -w backend -- --customer-orders-only --fresh` | 3/3 T21 and 14/14 authentication |
+| `npm run test:db -w backend -- --fulfillment-only --fresh` | 156/156 across read (14), edit (19), create (15), revision (9), subscription (10), cancellation (25), payment (25), refund (18), and fulfillment (21) |
+| `npm run test:e2e -w backend -- --admin-orders-only` | T20 desktop Edge 10/10, mobile Edge emulation 10/10 |
+| `npm run test:e2e -w backend -- --customer-orders-only` | T21 desktop Edge 8/8, mobile Edge emulation 8/8 |
+| `npm run test:e2e -w backend -- --creation-only auth.spec.ts products.spec.ts prototype.spec.ts public-catalog.spec.ts` | Catalog, products, settings, authentication and navigation. Desktop Edge 19/19, mobile Edge emulation 19/19 |
+| `git diff --check` | Passed |
+
+On the first desktop run, the Element Plus placeholder intercepted clicks on the readonly select input. Six scenarios passed and the form scenario hit the existing 30-second test limit. The rerun opens the select with ArrowDown, following the existing browser test pattern. It verifies the selected options and the same validation outcomes with the original timeout.

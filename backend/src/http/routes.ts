@@ -12,6 +12,7 @@ import * as schemas from '../modules/users/schemas.ts'
 import { ApiError } from './errors.ts'
 import { csrf, rateLimit } from './security.ts'
 import {
+  customerPurchaseRoutes,
   productSettingsRoutes,
   publicCatalogRoutes,
 } from '../modules/products/routes.ts'
@@ -84,6 +85,7 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
       next()
     },
     customerOrderRoutes(database),
+    customerPurchaseRoutes(database),
   )
   // This guard covers implemented and future admin routes, including unknown paths.
   router.use(
