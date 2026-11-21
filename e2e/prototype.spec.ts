@@ -38,6 +38,7 @@ test.beforeEach(async ({ page }) => {
         '/api/v1/customer/orders',
         '/api/v1/admin/users',
         '/api/v1/admin/products',
+        '/api/v1/catalog/products',
         '/api/v1/admin/subscriptions',
       ].includes(path)
     )

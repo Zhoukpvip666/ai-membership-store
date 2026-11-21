@@ -103,12 +103,16 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 - The existing AppSettings.paymentInstructions plain-text field and CUSTOMER GET /customer/order-guidance provide eligible offline payment instructions. No migration was added.
 - T21 includes no online payment, proof upload, refund request, checkout/order creation, subscription UI or email. Its final review follow-up covers response-anchored countdowns and empty-form edit visibility.
 
-## T22 customer storefront and offline order placement — approved design, implementation not started
+## T22 customer storefront and offline order placement
 
-**Status: D106-D112 approved.** [Complete T22 design baseline](27-customer-storefront-and-order-placement.md). This is a documentation milestone only; implementation requires a separate owner authorization after the design PR is merged.
+**Status: D106-D112 approved in PR #32.** [Design and implementation records](27-customer-storefront-and-order-placement.md).
+
+- T22.1 public catalog API and catalog/detail views are implemented and awaiting review.
+- T22.2 protected purchase form and login continuation have not started.
+- T22.3 offline order placement and order-center continuation have not started.
 
 - Public GET catalog list/detail exposes only listed, unarchived product display fields. Public DTOs never expose formSchema, defaults, administrator fields, or archive/listing internals.
-- Product detail does not load or display dynamic form fields. Only after clicking 立即购买 does an ACTIVE CUSTOMER enter /purchase/:slug and fetch the customer-safe form projection.
+- Product detail does not load or display dynamic form fields. T22.1 displays a disabled purchase action. T22.2 will enable 立即购买 and let an ACTIVE CUSTOMER enter /purchase/:slug to fetch the customer-safe form projection.
 - Guests are redirected to login with a validated same-origin purchase destination; successful CUSTOMER login automatically returns to the same purchase route and loads the form. ADMIN does not use customer purchase routes.
 - Reuse the existing eight-type form contract and ProductFormInputs. Do not apply administrator defaultValue values or persist incomplete drafts.
 - Reuse POST /customer/orders. Customer price remains server-derived; product/form snapshots, complete validation, zero-price behavior, atomic history and Idempotency-Key remain unchanged.
@@ -336,7 +340,7 @@ These remain future work and must not be pulled into Task 1.2:
 
 ## Current review boundary
 
-Tasks 1.2.1–1.2.3, Phase 2, order foundation/read/create/edit/cancel/payment/refund/fulfillment, T20 and T21 are merged. T22 design is approved and documented in docs/27; implementation has not started and requires separate owner authorization after the design PR is merged. Do not begin renewal, payment-provider integration, or deployment automatically.
+Tasks 1.2.1–1.2.3, Phase 2, order foundation/read/create/edit/cancel/payment/refund/fulfillment, T20 and T21 are merged. T22.1 is implemented and awaiting review. T22.2 and T22.3 require separate authorization. Do not begin renewal, payment-provider integration, or deployment automatically.
 
 T19 supersedes the earlier generic Task 1.2.4 fulfillment placeholder below: use the merged D24-D32/D37/D52/D59/D64/D83-D88 contract in [docs/24-manual-fulfillment-api.md](24-manual-fulfillment-api.md). In particular, NOT_REQUIRED zero-price orders are fulfillable, and renewal/SYSTEM_RENEWAL are excluded.
 
@@ -355,4 +359,4 @@ No Migration, development database operation, renewal, provider integration, ema
 
 T20 supersedes only the ADMIN order-page Mock boundary in the original Task 1.2.3 UI prototype. T21 supersedes the CUSTOMER `/account/orders` Mock boundary for existing-order management. The operating overview remains Mock. See [T20](25-admin-order-center.md) and [T21](26-customer-order-center.md).
 
-T22 now defines the approved future CUSTOMER catalog and offline order-placement behavior in [docs/27](27-customer-storefront-and-order-placement.md). Until its implementation is separately authorized and merged, the current main runtime still exposes the catalog only as an ADMIN preview and does not provide customer purchase UI.
+T22.1 adds guest-accessible product browsing and detail using the public catalog API. The [T22 design](27-customer-storefront-and-order-placement.md) separately defines the planned customer purchase form and offline order placement.

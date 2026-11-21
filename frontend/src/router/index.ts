@@ -24,7 +24,15 @@ export const router = createRouter({
         {
           path: '',
           name: 'catalog',
+          meta: { publicCatalog: true },
           component: () => import('../views/storefront/Catalog.vue'),
+        },
+        {
+          path: 'products/:slug',
+          name: 'catalog-product',
+          meta: { publicCatalog: true },
+          component: () => import('../views/storefront/ProductDetail.vue'),
+          props: true,
         },
         {
           path: 'subscriptions',

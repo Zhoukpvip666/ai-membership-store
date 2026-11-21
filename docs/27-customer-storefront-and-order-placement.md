@@ -2,11 +2,11 @@
 
 - Document: CUSTOMER-STOREFRONT-AND-ORDER-PLACEMENT
 - Version: 1.0
-- Status: Approved design baseline; implementation not started
+- Status: Design approved in PR #32. T22.1 implemented and awaiting review. T22.2 and T22.3 have not started.
 - Date: 2026-11-20
 - Related: [Product requirements](01-product-requirements.md), [User and operations flows](02-user-and-operations-flows.md), [API contract](05-api-contract.md), [Interface specification](08-interface-specification.md), [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order creation API](19-order-creation-api.md), [Customer order center](26-customer-order-center.md)
 
-> This document defines the approved T22 behavior and implementation contract. It does not claim that the routes, APIs, or pages described here are already present on main. T22 implementation begins only after this design PR is reviewed/merged and the owner separately authorizes the implementation task.
+> Sections 1–11 record the approved T22 design. Section 12 records the implemented public catalog slice and its verification.
 
 ## 1. Goal and boundary
 
@@ -274,8 +274,40 @@ Use the existing Vue 3, TypeScript, Element Plus, icons, shared form component, 
 - Unit tests, typecheck, lint, format check, build, Prisma schema validation, and git diff --check pass.
 - No test may use or mutate the development database or original MySQL volume. Mobile viewport emulation must be described as emulation, not a physical-device test.
 
-## 11. Explicit delivery boundary
+## 11. PR #32 design delivery boundary
 
 This PR is documentation-only. It creates the T22 design baseline and synchronizes existing contracts/roadmap. It must not modify application source, Prisma Schema, migrations, dependencies, environment files, test fixtures, or deployment configuration.
 
 After this design PR is reviewed and merged, stop and wait for separate owner authorization before assigning the T22 implementation to Codex. The implementation should be split into reviewable tasks only after the approved document baseline is on main.
+
+## 12. T22.1 implementation report
+
+- Guests can call the two public catalog GET endpoints. Both queries apply listed=true and archivedAt=null and select only the nine fields in section 3.3. The detail endpoint returns the single product object and uses one NOT_FOUND response for unavailable slugs.
+- List requests validate the strict query allowlist, trim search, and treat percent, underscore, and backslash as literal search characters. Search, type, and visibility predicates are AND-combined. Count and page items use the same filter and the approved stable ordering.
+- The storefront uses the public endpoints for browsing, search, type filters, pagination, and detail. The detail displays prices and the structured period when present, with termLabel as the display fallback for unknown legacy periods. The purchase action is disabled.
+- T22.1 includes no purchase route, purchase-form projection, login continuation, or order submission. T22.2 and T22.3 have not started. Prisma Schema, migrations, and dependencies are unchanged.
+
+### Local verification
+
+MySQL tests use the existing runner with unique projects, test credentials, and loopback ports. The focused modes use disposable fixtures. They do not run Seed or read the development environment. Browser results cover desktop Edge and the iPhone 13 viewport emulated in Edge.
+
+| Command | Result |
+|---|---|
+| `npm test` | Frontend 24/24, backend 71/71 |
+| `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run build`, `npm run db:validate`, `git diff --check` | Passed |
+| `npm run test:db -w backend -- --catalog-only --fresh` | 6/6 real HTTP cases on MySQL 8.4 |
+| `npm run test:db -w backend -- --products-only --fresh` | 11/11 product and settings cases |
+| `npm run test:db -w backend -- --admin-orders-only --fresh` | 14/14 administrator order center cases |
+| `npm run test:db -w backend -- --customer-orders-only --fresh` | Customer order center 3/3, authentication 14/14 |
+| `npm run test:db -w backend -- --fulfillment-only --fresh` | On the aggregate rerun, read 14/14, edit 19/19, creation 15/15, revision 9/9, subscription 10/10, cancellation 25/25, payment 25/25, refund 18/18, fulfillment 20/21 |
+| `npm run test:db -w backend -- --fulfillment-only --focused --fresh` | Fulfillment 21/21 in the subsequent standalone rerun, including the concurrency regression |
+| `npm run test:e2e -w backend -- --catalog-only` | Desktop Edge 3/3, mobile Edge emulation 3/3 |
+| `npm run test:e2e -w backend -- --admin-orders-only` | Serial rerun, desktop Edge 10/10 and mobile Edge emulation 10/10 |
+| `npm run test:e2e -w backend -- --customer-orders-only` | Desktop Edge 8/8, mobile Edge emulation 8/8 |
+| `npm run test:e2e -w backend -- --creation-only products.spec.ts auth.spec.ts prototype.spec.ts` | Product management, settings, authentication and navigation, desktop Edge 15/15 and mobile Edge emulation 15/15 |
+
+The first public HTTP run was 5/6 because the new test used the wrong validation error code. The test now checks the existing 400 INVALID_INPUT contract. The rerun passed all six cases.
+
+The first T20 browser run reached the existing 120-second Vite preview startup limit before running any scenario. The serial rerun passed both viewports with the same browser config, assertions, and timeouts.
+
+The first order lifecycle aggregate reached the existing 600-second nested runner budget after the read, edit, creation, revision, and subscription suites passed. On rerun those suites and cancellation, offline payment, and offline refund passed 135/135 combined. Fulfillment was 20/21 because one parallel request in the existing pool regression returned HTTP 409 CONFLICT. A subsequent standalone fulfillment run passed 21/21. Its production code, assertions, and timeouts are unchanged from main.

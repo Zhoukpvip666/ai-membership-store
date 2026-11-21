@@ -22,8 +22,12 @@ function guardRequests(page: Page) {
     const url = new URL(request.url())
     if (url.protocol.startsWith('http') && url.origin !== env.APP_BASE_URL)
       throw new Error('External services are forbidden in isolated E2E.')
+    const catalogRead =
+      request.method() === 'GET' &&
+      /^\/api\/v1\/catalog\/products(?:\/[^/]+)?$/.test(url.pathname)
     if (
       url.pathname.startsWith('/api/') &&
+      !catalogRead &&
       !/^\/api\/v1\/(auth\/(login|me|logout)|admin\/(users|settings|products(?:\/[^/]+(?:\/archive)?)?))$/.test(
         url.pathname,
       )
@@ -466,8 +470,16 @@ test('unlisted products remain manageable; archive unlists irreversibly and reta
   const editor = page.getByRole('dialog', { name: '编辑商品', exact: true })
   await expect(editor).toBeVisible()
   await editor.getByRole('button', { name: '取消', exact: true }).click()
-  await page.goto('/')
+  const searchCatalog = async () => {
+    await page.goto('/')
+    await page
+      .getByRole('textbox', { name: '搜索商品', exact: true })
+      .fill(name)
+    await page.getByRole('button', { name: '搜索', exact: true }).click()
+  }
+  await searchCatalog()
   const card = page.locator('.product-card').filter({ hasText: name })
+  await expect(page.getByText('暂无符合条件的商品')).toBeVisible()
   await expect(card).toHaveCount(0)
   await page.goto('/admin/products')
   await findProduct()
@@ -482,11 +494,15 @@ test('unlisted products remain manageable; archive unlists irreversibly and reta
   await page.reload()
   await findProduct()
   await expect(listing).toBeChecked()
-  await page.goto('/')
+  await searchCatalog()
   await page.getByRole('button', { name: '订阅服务', exact: true }).click()
   await expect(card).toBeVisible()
+  await card
+    .getByRole('link', { name: '查看详情：' + name, exact: true })
+    .click()
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
   await expect(
-    card.getByRole('button', { name: '暂未开放线上购买', exact: true }),
+    page.getByRole('button', { name: '暂未开放线上购买', exact: true }),
   ).toBeDisabled()
   await page.goto('/admin/products')
   await findProduct()
@@ -537,7 +553,8 @@ test('unlisted products remain manageable; archive unlists irreversibly and reta
   await expect(detail).toContainText(name)
   await expect(detail).toContainText('未上架')
   await expect(detail).toContainText('已归档')
-  await page.goto('/')
+  await searchCatalog()
+  await expect(page.getByText('暂无符合条件的商品')).toBeVisible()
   await expect(card).toHaveCount(0)
 })
 test('settings save to database, reload with brand and reject invalid timezone', async ({
@@ -563,11 +580,14 @@ test('settings save to database, reload with brand and reject invalid timezone',
   await page.getByRole('button', { name: '保存设置', exact: true }).click()
   const savedResponse = await saved
   expect(savedResponse.status()).toBe(200)
-  expect(Object.keys(savedResponse.request().postDataJSON()).sort()).toEqual([
+  const payload = savedResponse.request().postDataJSON()
+  expect(Object.keys(payload).sort()).toEqual([
     'ownerEmail',
+    'paymentInstructions',
     'storeName',
     'timezone',
   ])
+  expect(payload.paymentInstructions).toBe('')
   await expect(page.locator('.brand')).toHaveText('持久化测试商城')
   await page.reload()
   await expect(
