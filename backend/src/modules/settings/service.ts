@@ -4,6 +4,15 @@ import { transaction } from '../../db/transaction.ts'
 import { ApiError } from '../../http/errors.ts'
 import { hasCredentialText } from '../../contracts/credential-fields.ts'
 
+const adminSettingsSelect = {
+  id: true,
+  storeName: true,
+  ownerEmail: true,
+  timezone: true,
+  paymentInstructions: true,
+  updatedAt: true,
+} as const
+
 const timezone = z
   .string()
   .min(1)
@@ -60,6 +69,7 @@ export function settingsService(database: PrismaClient) {
     async get() {
       const settings = await database.appSettings.findUnique({
         where: { id: 1 },
+        select: adminSettingsSelect,
       })
       if (!settings)
         throw new ApiError(503, 'SETTINGS_UNAVAILABLE', '系统设置尚未初始化')
@@ -77,6 +87,7 @@ export function settingsService(database: PrismaClient) {
         const settings = await tx.appSettings.update({
           where: { id: 1 },
           data: input,
+          select: adminSettingsSelect,
         })
         await tx.adminAuditLog.create({
           data: {

@@ -9,6 +9,7 @@ import {
 } from '../modules/auth/security.ts'
 import { customerService } from '../modules/users/service.ts'
 import * as schemas from '../modules/users/schemas.ts'
+import { wechatPaymentRoutes } from '../modules/settings/wechat-routes.ts'
 import { ApiError } from './errors.ts'
 import { csrf, rateLimit } from './security.ts'
 import {
@@ -103,6 +104,7 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
   )
   const adminMutations = rateLimit(120)
   router.use('/admin', productSettingsRoutes(database))
+  router.use('/admin', wechatPaymentRoutes(database, env.WECHAT_QR_STORAGE_DIR))
   router.use('/admin', subscriptionRoutes(database))
   router.use('/admin', adminOrderRoutes(database))
   router.get('/admin/users', async (request, response) => {

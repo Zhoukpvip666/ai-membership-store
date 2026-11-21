@@ -21,9 +21,18 @@ export async function businessSnapshot(db: Reader) {
     'IdempotencyRecord',
   ]) {
     // Identifiers come only from this fixed whitelist. Never print row contents.
-    result[table] = await db.$queryRawUnsafe<Record<string, unknown>[]>(
+    const rows = await db.$queryRawUnsafe<Record<string, unknown>[]>(
       `SELECT * FROM \`${table}\` ORDER BY id`,
     )
+    result[table] =
+      table === 'AppSettings'
+        ? rows.map((row) => ({
+            // Older migration fixtures have no WeChat columns yet.
+            wechatQrImageKey: null,
+            ...row,
+            wechatPayEnabled: Number(row.wechatPayEnabled ?? 0),
+          }))
+        : rows
   }
   return result
 }

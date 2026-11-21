@@ -195,6 +195,8 @@ No merchant registration, merchant onboarding, merchant wallet, merchant balance
 - Do not expose passwords or authentication tokens.
 
 **系统设置**
+- 「收款设置」供管理员上传、更换和预览微信经营收款码，并启用或停用微信收款。未配置二维码时禁用启用开关。停用后仍可预览或更换图片。
+- 「商家备注」复用全店统一的纯文本 `paymentInstructions`。留空表示无备注。T24.1 只调整后台标签，客户订单详情继续使用原有内容和展示规则。
 - Storefront name.
 - Owner/notification email.
 - Email notification preferences.

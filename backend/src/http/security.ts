@@ -5,10 +5,12 @@ export function csrf(appBaseUrl: string): RequestHandler {
   const origin = new URL(appBaseUrl).origin
   return (request, _response, next) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return next()
+    const upload =
+      request.method === 'PUT' && request.path === '/admin/settings/wechat-qr'
     if (
       request.get('origin') !== origin ||
       request.get('x-requested-with') !== 'MembershipStore' ||
-      !request.is('application/json')
+      !request.is(upload ? 'application/octet-stream' : 'application/json')
     )
       return next(
         new ApiError(

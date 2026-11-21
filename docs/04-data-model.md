@@ -248,9 +248,13 @@ Singleton row, initialized with id = 1.
 | ownerEmail | VarChar(254) | Owner/notification address |
 | timezone | VarChar(64) | Default Asia/Shanghai |
 | paymentInstructions | VarChar(4000), default empty string | Site-wide plain text only; no secrets, HTML rendering or payment execution |
+| wechatPayEnabled | Boolean, default false | Administrator-controlled WeChat collection setting |
+| wechatQrImageKey | Nullable VarChar(40) | Current server-generated PNG filename in private storage |
 | updatedAt | DateTime(3) | Last update |
 
 No SMTP or payment credentials belong in AppSettings.
+
+T24.1 adds the two WeChat fields with an incremental migration. Existing settings keep their merchant remarks and start with collection disabled. A database check requires an image reference when enabled. The service also verifies the image file before enabling collection. The database stores only the current reference and state. Audit records include only the status and whether an image is configured.
 
 **T21 payment guidance (implemented for review):** `paymentInstructions` remains the existing singleton plain-text field, maximum 4000 characters, with no new column or migration. The ADMIN settings PATCH may update/clear it; AdminAuditLog records only the changed field name, not the text itself. The CUSTOMER `GET /customer/order-guidance` projection exposes only storeName, businessTimezone (AppSettings.timezone) and paymentInstructions to an ACTIVE CUSTOMER Session. It never exposes ownerEmail or other settings. The customer UI shows the text only for positive UNPAID + NOT_STARTED orders with remainingSeconds > 0. Markup-like characters are preserved and rendered as literal plain text. Authentication secrets (passwords, OTPs, API keys, private keys) do not belong in this field.
 
