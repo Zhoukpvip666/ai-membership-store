@@ -82,6 +82,7 @@ The same Vue application may serve both surfaces with route-level layouts and au
 **我的订单（T21 CUSTOMER 真实订单中心）**
 - `/account/orders` 从 Mock 改为真实 CUSTOMER API，只读取当前 ACTIVE Session 用户自己的 `hidden=false` 订单；列表、详情、修改、取消复用现有 customer order API。
 - 列表支持订单号/冻结商品名称搜索、服务端分页和状态筛选。默认创建时间倒序；每页 20 条，最大 100 条。
+- 客户和管理员订单列表及详情将 9 位纯数字订单号显示为三组，例如 `583 024 917`。详情中的「复制订单号」复制原始值 `583024917`。剪贴板不可用时，提供只读原始号码供手动复制。历史订单号按原格式显示和复制。
 - 付款状态和履约状态分开存储/展示。UNPAID + NOT_STARTED=待付款；PENDING_VERIFICATION=付款待核实；PAID + PROCESSING 与 NOT_REQUIRED + PROCESSING=处理中；COMPLETED=已完成；CANCELLED + REFUND_PENDING=待退款；CANCELLED + REFUNDED=已退款；其他 CANCELLED=已取消。
 - REFUND_PENDING 只表示订单取消后待退款，不能证明外部退款已经发起，客户文案必须使用“待退款”；只有管理员确认实际退款完成后才显示“已退款”。
 - 详情使用订单冻结的商品、周期、formSchemaSnapshot 和 formData，显示商品原价、最终金额、付款状态、履约状态和 24 小时剩余时间；不得用当前 Product 覆盖历史快照。

@@ -2,7 +2,7 @@
 import { ElTag } from 'element-plus'
 import { onMounted, ref } from 'vue'
 import { readOrders, type AdminOrder } from '../../../api/orders'
-import { money, mask } from '../../../stores/format'
+import { formatOrderNumber, money, mask } from '../../../stores/format'
 import { settings } from '../../../stores/settings'
 import {
   paymentLabels,
@@ -195,7 +195,8 @@ onMounted(() => {
             <tr v-for="row in rows" :key="row.id">
               <td>
                 <strong>{{ row.productNameSnapshot }}</strong><small
-                  >{{ row.orderNo }} · {{ kindLabels[row.kind] }}</small
+                  >{{ formatOrderNumber(row.orderNo) }} ·
+                  {{ kindLabels[row.kind] }}</small
                 >
               </td>
               <td>

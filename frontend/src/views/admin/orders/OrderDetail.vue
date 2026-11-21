@@ -12,6 +12,7 @@ import {
 import { hasCredentialFields } from '../../../../../backend/src/contracts/credential-fields'
 import { productFormSchema } from '../../../../../backend/src/contracts/product-form'
 import ProductFormInputs from '../../../components/ProductFormInputs.vue'
+import OrderNumber from '../../../components/OrderNumber.vue'
 import OrderAction, { type Action } from './OrderAction.vue'
 import OrderForm from './OrderForm.vue'
 import {
@@ -212,7 +213,8 @@ onMounted(load)
         <div>
           <h2>{{ order.productNameSnapshot }}</h2>
           <p>
-            {{ order.orderNo }} · {{ kindLabels[order.kind] }} · 版本
+            <OrderNumber :order-no="order.orderNo" />
+            · {{ kindLabels[order.kind] }} · 版本
             {{ order.version }}
           </p>
         </div>

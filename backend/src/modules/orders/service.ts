@@ -29,6 +29,13 @@ const customerSearch = (search: string): Prisma.UserWhereInput => ({
   ],
 })
 
+function orderNumberSearch(search: string): Prisma.OrderWhereInput[] {
+  const filters: Prisma.OrderWhereInput[] = [{ orderNo: { contains: search } }]
+  if (/^[0-9]{3} [0-9]{3} [0-9]{3}$/.test(search))
+    filters.push({ orderNo: search.replaceAll(' ', '') })
+  return filters
+}
+
 function orderWhere(
   input: CustomerFilters,
   userId?: string,
@@ -39,10 +46,10 @@ function orderWhere(
     kind: input.kind,
     paymentStatus: input.paymentStatus,
     fulfillmentStatus: input.fulfillmentStatus,
-    orderNo: { contains: input.orderNo },
+    AND: [{ OR: orderNumberSearch(input.orderNo) }],
     productNameSnapshot: { contains: input.productName },
     OR: [
-      { orderNo: { contains: input.search } },
+      ...orderNumberSearch(input.search),
       { productNameSnapshot: { contains: input.search } },
       // Private customer labels are searchable only in the ADMIN scope.
       ...(userId === undefined
