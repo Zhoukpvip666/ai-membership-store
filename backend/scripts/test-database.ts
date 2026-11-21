@@ -42,6 +42,9 @@ const paymentsOnly = process.argv.includes('--payments-only')
 const refundsOnly = process.argv.includes('--refunds-only')
 const adminCenterOnly = process.argv.includes('--admin-orders-only')
 const customerCenterOnly = process.argv.includes('--customer-orders-only')
+const customerSubscriptionsOnly = process.argv.includes(
+  '--customer-subscriptions-only',
+)
 const catalogOnly = process.argv.includes('--catalog-only')
 const purchaseOnly = process.argv.includes('--customer-purchase-only')
 const fulfillmentOnly = process.argv.includes('--fulfillment-only')
@@ -56,6 +59,7 @@ const creationOnly =
   fulfillmentOnly ||
   adminCenterOnly ||
   customerCenterOnly ||
+  customerSubscriptionsOnly ||
   catalogOnly ||
   purchaseOnly
 const creationUpgradeSnapshot = join(directory, 'creation-upgrade.json')
@@ -636,7 +640,15 @@ try {
     // Fresh runner-owned database, fictional login/settings fixtures; never Seed.
     run(process.execPath, ['test/integration/product-fixture.ts'], env)
   }
-  if (purchaseOnly && !browserMode) {
+  if (customerSubscriptionsOnly && !browserMode) {
+    console.info(
+      run(
+        process.execPath,
+        ['--test', 'test/integration/customer-subscriptions.test.ts'],
+        env,
+      ),
+    )
+  } else if (purchaseOnly && !browserMode) {
     console.info(
       run(
         process.execPath,
@@ -807,15 +819,17 @@ try {
           ...(splitBrowserProjects ? ['--project=mobile-edge'] : []),
           ...(purchaseOnly
             ? ['customer-purchase.spec.ts']
-            : catalogOnly
-              ? ['public-catalog.spec.ts']
-              : customerCenterOnly
-                ? ['customer-order-center.spec.ts']
-                : adminCenterOnly
-                  ? ['admin-order-center.spec.ts']
-                  : fulfillmentOnly
-                    ? ['manual-fulfillment.spec.ts']
-                    : []),
+            : customerSubscriptionsOnly
+              ? ['customer-subscriptions.spec.ts']
+              : catalogOnly
+                ? ['public-catalog.spec.ts']
+                : customerCenterOnly
+                  ? ['customer-order-center.spec.ts']
+                  : adminCenterOnly
+                    ? ['admin-order-center.spec.ts']
+                    : fulfillmentOnly
+                      ? ['manual-fulfillment.spec.ts']
+                      : []),
           ...process.argv
             .slice(2)
             .filter(
@@ -832,6 +846,7 @@ try {
                   '--fulfillment-only',
                   '--admin-orders-only',
                   '--customer-orders-only',
+                  '--customer-subscriptions-only',
                   '--catalog-only',
                   '--customer-purchase-only',
                   '--focused',
