@@ -311,3 +311,9 @@ The first public HTTP run was 5/6 because the new test used the wrong validation
 The first T20 browser run reached the existing 120-second Vite preview startup limit before running any scenario. The serial rerun passed both viewports with the same browser config, assertions, and timeouts.
 
 The first order lifecycle aggregate reached the existing 600-second nested runner budget after the read, edit, creation, revision, and subscription suites passed. On rerun those suites and cancellation, offline payment, and offline refund passed 135/135 combined. Fulfillment was 20/21 because one parallel request in the existing pool regression returned HTTP 409 CONFLICT. A subsequent standalone fulfillment run passed 21/21. Its production code, assertions, and timeouts are unchanged from main.
+
+### PR #33 review verification
+
+- `npm run test:db -w backend -- --catalog-only --fresh` passed 6/6. The unlisted fixture has no archive timestamp, and the archived fixture is listed. The test verifies each fixture is absent from the list and its detail returns 404 NOT_FOUND.
+- `npm run test:e2e -w backend -- --catalog-only` passed 4/4 on desktop Edge and 4/4 on mobile Edge emulation. The new test holds the catalog GET until it sees the loading message and releases the request in `finally`. It then verifies product cards render and the loading message clears.
+- `npm run format:check`, `npm run typecheck`, and `npm run lint` passed.

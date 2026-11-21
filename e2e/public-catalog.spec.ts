@@ -73,6 +73,42 @@ async function checkNoHorizontalOverflow(page: Page) {
   ).toBe(true)
 }
 
+test('catalog shows loading until the product list request is released', async ({
+  page,
+}) => {
+  let releaseRequest!: () => void
+  const requestGate = new Promise<void>((resolve) => {
+    releaseRequest = resolve
+  })
+  await page.route(
+    (url) => url.pathname === catalogPath,
+    async (route) => {
+      if (route.request().method() === 'GET') await requestGate
+      await route.continue()
+    },
+  )
+
+  const loading = page.getByText('正在加载商品…', { exact: true })
+  try {
+    await Promise.all([
+      page.waitForRequest(
+        (request) =>
+          request.method() === 'GET' &&
+          new URL(request.url()).pathname === catalogPath,
+      ),
+      page.goto('/'),
+    ])
+    await expect(loading).toBeVisible()
+  } finally {
+    releaseRequest()
+  }
+
+  await expect(
+    page.getByRole('heading', { name: featured.name, exact: true }),
+  ).toBeVisible()
+  await expect(loading).toHaveCount(0)
+})
+
 test('guest catalog loads, then searches, filters and paginates using the public API', async ({
   page,
 }, info) => {

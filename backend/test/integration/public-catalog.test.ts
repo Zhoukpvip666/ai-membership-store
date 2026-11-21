@@ -77,11 +77,11 @@ before(async () => {
         name: 'Gamma 100%Xready\\path',
         sortOrder: 1,
       },
-      { ...fixture, slug: 'alpha-unlisted', listed: false },
+      { ...fixture, slug: 'alpha-unlisted', listed: false, archivedAt: null },
       {
         ...fixture,
         slug: 'alpha-archived',
-        listed: false,
+        listed: true,
         archivedAt: createdAt,
       },
     ],
@@ -126,6 +126,9 @@ test('guests see only listed and unarchived products with the exact public proje
   assert.equal(result.total, 4)
   assert.equal(result.page, 1)
   assert.equal(result.pageSize, 20)
+  const slugs = result.items.map((item) => item.slug)
+  assert.ok(!slugs.includes('alpha-unlisted'), 'unlisted product leaked')
+  assert.ok(!slugs.includes('alpha-archived'), 'archived product leaked')
   for (const product of result.items)
     assert.deepEqual(Object.keys(product).sort(), keys)
   assert.deepEqual(
