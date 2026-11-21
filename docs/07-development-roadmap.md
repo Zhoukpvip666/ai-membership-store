@@ -123,12 +123,13 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 
 ## T23 — Production deployment readiness
 
-**Status: T23.0 design and read-only Seoul VPS audit, pending owner review.** [Production design and readiness audit](28-production-deployment-design.md). The candidate is the existing shared VPS. Its approved capacity, credentials and release readiness are still to be established.
+**Status: T23.0 design and Seoul VPS audit awaiting review in PR #37.** [Production design and readiness audit](28-production-deployment-design.md). The candidate is the existing shared VPS. Its approved capacity, credentials and release readiness are still to be established.
 
 - T23.1 — Production configuration and security. Validate HTTPS origin, credentials, trusted proxy, sessions, Origin checks, invitations and worker lifecycle.
 - T23.2 — Caddy, systemd and MySQL deployment definitions. Provide site/unit/Compose templates that preserve existing listeners and services.
 - T23.3 — Backup, recovery, logging and monitoring. Demonstrate encrypted backup, isolated restore, log redaction and alerts.
-- T23.4 — Isolated deployment rehearsal and launch checklist. Verify shared-host capacity, prior-site health, application behavior and recovery before requesting production rollout approval.
+- T23.4 — Isolated deployment rehearsal and launch checklist. Verify shared-host capacity, prior-site health, application behavior and recovery before requesting T23.5 approval.
+- T23.5 — Controlled production launch. Under separate approvals, verify the recovery point, apply the approved Migration, configure DNS and firewall, start the dedicated services and reload Caddy. Verify smoke tests and existing-site health before opening traffic, with a rehearsed rollback ready.
 
 Each stage requires its own review. Production Migration, data cleanup, service restarts and deployment require separate approval for the specific operation. T23.0 approves no production installation or application changes.
 
@@ -352,7 +353,7 @@ These remain future work and must not be pulled into Task 1.2:
 
 ## Current review boundary
 
-Tasks 1.2.1–1.2.3, Phase 2, order foundation/read/create/edit/cancel/payment/refund/fulfillment, T20 and T21 are merged. T22.1, T22.2, T22.3A and T22.3B are merged in PRs #33, #34, #35 and #36 respectively. The current review boundary is the T23.0 design. T23.1, production rollout, renewal and payment-provider integration require separate authorization.
+Tasks 1.2.1–1.2.3, Phase 2, order foundation/read/create/edit/cancel/payment/refund/fulfillment, T20 and T21 are merged. T22 is complete. T22.1, T22.2, T22.3A and T22.3B are merged in PRs #33, #34, #35 and #36 respectively. The T23.0 design awaits review in PR #37. T23.1, T23.5 production rollout, renewal and payment-provider integration require separate authorization.
 
 T19 supersedes the earlier generic Task 1.2.4 fulfillment placeholder below: use the merged D24-D32/D37/D52/D59/D64/D83-D88 contract in [docs/24-manual-fulfillment-api.md](24-manual-fulfillment-api.md). In particular, NOT_REQUIRED zero-price orders are fulfillable, and renewal/SYSTEM_RENEWAL are excluded.
 
