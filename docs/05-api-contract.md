@@ -30,7 +30,7 @@ Both public reads expose only slug, name, description, type, priceFen, renewalPr
 
 The purchase GET reads the current listed, unarchived product. It returns the nine public fields plus id, updatedAt (UTC ISO-8601 with milliseconds), and formSchema. The form projection exposes version and ordered fields with id, type, label, required, hint, and options for select, radio, and checkbox only. Invalid or credential-collecting schemas return 409 PRODUCT_FORM_UNAVAILABLE. Guests and invalid or inactive Sessions get 401, and an authenticated ADMIN gets 403. Missing, unlisted, and archived products share 404 NOT_FOUND.
 
-T22.3A extends POST /customer/orders with required expectedProductUpdatedAt. After checking the saved idempotency response and locking User then Product, the service compares the exact UTC millisecond timestamp. A stale version returns 409 PRODUCT_CHANGED without business writes. See the addendum in docs/19. The login flow returns a guest to the same purchase route after successful CUSTOMER login. No online payment, proof upload, cart, subscription UI, renewal, email, migration, or deployment is included.
+T22.3A extends POST /customer/orders with required expectedProductUpdatedAt. After checking the saved idempotency response and locking User then Product, the service compares the exact UTC millisecond timestamp. A stale version returns 409 PRODUCT_CHANGED without business writes. See the addendum in docs/19. The login flow returns a guest to the same purchase route after successful CUSTOMER login. T22.3B submits the normalized form and the exact version from the purchase GET after the customer confirms their review. It uses a UUID idempotency key and holds the request and key in memory while the outcome is uncertain. No online payment, proof upload, cart, subscription UI, renewal, email, migration, or deployment is included.
 
 ## Order edit API (implemented and merged in PR #14)
 
@@ -205,7 +205,7 @@ The customer login/me projection includes username but never adminLabel; adminis
 | GET | /me/subscriptions | Current customer's own subscriptions |
 | GET | /me/subscriptions/:id | Own subscription detail and renewal history |
 
-No customer subscription read or renewal endpoint is implemented. T22.1 provides public catalog reads. T22.2 provides the ACTIVE-CUSTOMER purchase-product read. Storefront order submission remains planned for T22.3B.
+No customer subscription read or renewal endpoint is implemented. T22.1 provides public catalog reads. T22.2 provides the ACTIVE-CUSTOMER purchase-product read. T22.3B uses the existing customer order POST and opens /account/orders?orderId=:id on success. The order dialog independently loads the customer order detail GET, with the existing own-order and hidden-order 404 rules.
 
 ## 8. Dashboard
 

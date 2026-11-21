@@ -39,6 +39,21 @@ export interface OrderGuidance {
   paymentInstructions: string
 }
 
+export function parseOrderId(value: unknown) {
+  return typeof value === 'string' &&
+    value.length === 36 &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+    ? value
+    : undefined
+}
+
+export const customerOrderLocation = (orderId: string) => ({
+  path: '/account/orders',
+  query: { orderId },
+})
+
 export const customerOrderPath = (id: string) =>
   '/customer/orders/' + encodeURIComponent(id)
 export const readCustomerOrders = (query: URLSearchParams) =>

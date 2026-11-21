@@ -13,6 +13,7 @@ export async function api<T>(
   method = 'GET',
   body?: unknown,
   idempotencyKey?: string,
+  signal?: AbortSignal,
 ): Promise<T> {
   let response: Response
   try {
@@ -20,6 +21,7 @@ export async function api<T>(
       method,
       credentials: 'same-origin',
       cache: 'no-store',
+      signal,
       headers:
         method === 'GET'
           ? {}

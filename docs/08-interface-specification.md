@@ -108,13 +108,13 @@ The same Vue application may serve both surfaces with route-level layouts and au
 - Show customer-facing product information. 立即购买 opens the protected purchase route.
 - Do not render dynamic fields or request the purchase form schema on this page.
 
-**购买 /purchase/:slug（T22.2）**
+**购买 /purchase/:slug（T22.2、T22.3B）**
 - Route requires an ACTIVE CUSTOMER Session. The page fetches the customer-safe form projection when the guard accepts navigation.
 - A guest is sent to customer login with a validated same-origin redirect; after login the customer returns to the same purchase route and the form loads automatically.
 - Render the existing eight-type ProductFormInputs component with empty customer values; do not apply administrator preview defaults.
-- Show server-provided prices as read-only. 检查填写信息 validates answers locally and shows field-level reasons. Clear in-memory answers on navigation or product change.
-- T22.3 will connect the existing customer order-creation API for one product per order.
-- After order submission is implemented in T22.3, open the T21 order detail using /account/orders?orderId=:id. Existing offline payment instructions remain in T21.
+- Show server-provided prices as read-only. 检查填写信息 validates answers locally and shows field-level errors. A valid draft opens 核对订单, with the amount, service period, renewal price if applicable, and customer answers using the configured option labels. 返回修改 requires another review before confirmation.
+- 确认下单 submits one product through the existing customer order API. Disable editing and repeated submissions while a request is in flight. If the outcome is uncertain, offer 重试原请求 with the original in-memory request and key, and warn before leaving. On PRODUCT_CHANGED, discard the draft and reload the product for explicit review.
+- Open the T21 order detail using /account/orders?orderId=:id. The dialog loads the authorized detail separately and shares its selection with browser navigation. Payable orders display the T21 offline payment guidance and countdown. Zero-amount orders show 处理中 without a payment prompt.
 - No cart, online payment, proof upload, customer subscription/renewal, email, or provider integration.
 
 ## 4. Unified owner/admin console

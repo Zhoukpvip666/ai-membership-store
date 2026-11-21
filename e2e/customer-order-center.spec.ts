@@ -272,8 +272,12 @@ test('admin saves and clears plain-text guidance, customer sees it only on eligi
     await instructions.fill('')
     await save()
     await page.reload()
+    await expect(page).toHaveURL(
+      (url) => url.searchParams.get('orderId') === order.id,
+    )
+    await expect(detail).toContainText(order.orderNo)
     await expect(
-      (await open(page, order.orderNo)).getByRole('region', {
+      detail.getByRole('region', {
         name: '线下付款说明',
       }),
     ).toContainText('商家暂未配置付款说明，请联系商家确认')
