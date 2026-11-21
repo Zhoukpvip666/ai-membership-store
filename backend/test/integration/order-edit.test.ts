@@ -400,7 +400,14 @@ test('complete frozen-form replacement drops omitted optional data without filli
   assert.equal(result.status, 200, JSON.stringify(result.body))
   assert.deepEqual(result.body.order.formData, next)
   assert.equal(Object.hasOwn(result.body.order.formData, 'note'), false)
-  assert.deepEqual(result.body.order.formSchemaSnapshot, schema)
+  assert.deepEqual(result.body.order.formSchemaSnapshot, {
+    version: 1,
+    fields: schema.fields.map(({ defaultValue, ...field }) => {
+      if (field.id === 'note')
+        assert.equal(defaultValue, 'Never fill implicitly')
+      return { ...field, hint: '' }
+    }),
+  })
   assert.equal(result.body.order.productNameSnapshot, 'Frozen product')
   await rejected(
     () =>

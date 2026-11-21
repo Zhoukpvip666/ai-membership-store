@@ -126,6 +126,28 @@ export const productFormSchema = z
   })
 export type ProductFormSchema = z.output<typeof productFormSchema>
 export type FormField = z.output<typeof formField>
+
+export function projectCustomerForm(schema: ProductFormSchema) {
+  return {
+    version: schema.version,
+    fields: schema.fields.map((field) => ({
+      id: field.id,
+      type: field.type,
+      label: field.label,
+      required: field.required,
+      hint: field.hint,
+      ...('options' in field
+        ? {
+            options: field.options.map(({ label, value }) => ({
+              label,
+              value,
+            })),
+          }
+        : {}),
+    })),
+  }
+}
+
 export const emptyFormSchema = (): ProductFormSchema => ({
   version: 1,
   fields: [],

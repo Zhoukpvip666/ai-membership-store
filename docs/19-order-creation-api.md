@@ -2,7 +2,7 @@
 
 - Document: ORDER-CREATE-API
 - Version: 1.0
-- Status: Merged in PR #11 (`b1f5d147ce8be27780740d187ebace63c29629cf`); development database not migrated
+- Status: Merged in PR #11 (`b1f5d147ce8be27780740d187ebace63c29629cf`); T22.3A customer request upgrade implemented and awaiting review
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order read API](16-order-read-api.md), [Order revision foundation](18-order-revision-foundation.md)
 
@@ -17,7 +17,7 @@ Implement exactly two order creation endpoints, sharing one domain service:
 | POST | /api/v1/customer/orders | ACTIVE CUSTOMER | Create USER ordinary order |
 | POST | /api/v1/admin/orders | ADMIN | Create ADMIN ordinary order for an existing CUSTOMER |
 
-Existing GET routes remain unchanged. No order mutation routes other than creation are added.
+The existing GET paths keep their role and ownership checks. T22.3A applies the safe customer form projection to creation, list and detail.
 
 Order source is server-derived:
 - customer route -> USER, createdByUserId = authenticated customer, createdByAdminId = NULL
@@ -45,7 +45,7 @@ Never accept source, creator IDs, order number, order ID, hidden, statuses, paid
 
 Read the Product inside the transaction and lock it for the duration of validation and order creation.
 
-- USER: product must be listed and not archived.
+- USER: product must match the reviewed version, be listed and be unarchived.
 - ADMIN: product may be listed or unlisted, but must not be archived.
 - Both: reject missing/archived products.
 - Both: only SUBSCRIPTION and ONE_TIME products can be ordered.
@@ -64,12 +64,14 @@ All requests use JSON, existing CSRF headers, no-store response policy, and a re
 ```json
 {
   "productId": "uuid",
+  "expectedProductUpdatedAt": "2026-11-21T10:00:00.123Z",
   "formData": {
     "stableFieldId": "customer-provided value"
   }
 }
 ```
 
+- expectedProductUpdatedAt is required and must match the UTC ISO-8601 millisecond timestamp returned by GET /customer/products/:slug.
 - No userId, amountFen, price, source, creator, status, snapshot, or internalNote.
 - Final amountFen is derived server-side from the locked Product.priceFen.
 - The customer cannot override the price.
@@ -135,9 +137,9 @@ Both cases:
 Use the shared actor-scoped idempotency contract from D33-D36 and PR #9.
 
 1. Authenticate the principal and validate the route's role. The USER principal must currently be ACTIVE; the ADMIN principal must be ADMIN.
-2. Validate header syntax/length and strict request shape. Compute requestHash from the normalized client business intent, including operation and route-specific input. Include admin amountFen, price adjustment reason and internalNote where applicable. Exclude requestId, headers other than Idempotency-Key, network metadata and current Product-derived values.
+2. Validate header syntax/length and strict request shape. Compute requestHash from the normalized client business intent, including operation and route-specific input. Include the CUSTOMER expectedProductUpdatedAt and the ADMIN amountFen, price adjustment reason and internalNote where applicable. Exclude requestId, headers other than Idempotency-Key, network metadata and current Product-derived values.
 3. Enter the transaction and look up (actorUserId, keyHash). If found, compare requestHash: same -> return the stored original response; different -> 409 IDEMPOTENCY_CONFLICT. Do this before revalidating current Product state or repricing.
-4. For a first request, lock/recheck the User row (for USER and target customer), and lock/read the Product row. Verify status/eligibility, derive price and snapshots, validate the frozen form schema and data.
+4. For a first request, lock/recheck the User row, then lock and read Product. Compare the CUSTOMER version at millisecond precision and verify eligibility, derive price and snapshots, and validate the form schema and data.
 5. Create Order with version 1 and the complete frozen snapshots.
 6. Build strict OrderRevision V1 from the persisted Order using the PR #9 whitelist; actorType USER or ADMIN and actorUserId is the real acting user. Do not invent SYSTEM actor for a human request.
 7. Create ORDER_CREATED OrderEvent with the existing exclusive actor columns: USER uses actorUserId, ADMIN uses actorAdminId, with actorType and the other actor FK NULL. OrderRevision and IdempotencyRecord use generic actorUserId for both roles. Never forge an AdminAuditLog actor. For ADMIN only, create the corresponding sanitized AdminAuditLog in the same transaction. For USER, D54 requires OrderRevision + OrderEvent; do not write a customer into AdminAuditLog.
@@ -174,6 +176,7 @@ Use the existing API error envelope and do not echo sensitive request values.
 | ADMIN target absent/not CUSTOMER | 404 | CUSTOMER_NOT_FOUND |
 | ADMIN target DISABLED | 409 | CUSTOMER_DISABLED |
 | Product absent | 404 | PRODUCT_NOT_FOUND |
+| CUSTOMER product version differs | 409 | PRODUCT_CHANGED |
 | Product archived | 409 | PRODUCT_ARCHIVED |
 | USER selects unlisted Product | 409 | PRODUCT_NOT_AVAILABLE |
 | Invalid/missing subscription period | 409 | PRODUCT_PERIOD_UNCONFIGURED |
@@ -313,10 +316,10 @@ The existing subscription browser selector now searches editable remote controls
 Browser observations: an earlier concurrent build temporarily replaced the preview dist/index.html and one navigation received404; its request preceded the rewritten index by1.6s, and the exact failed test passed alone. A later full run observed pointer interception when selecting from a long existing mobile subscription dropdown; the exact subscription test also passed alone. The first search-helper revision incorrectly tried to fill a read-only form select; an explicit editable-control check corrects that test error. The lifecycle regression now uses the selector's actual search API where available before exact selection, retaining every business assertion and original timeouts. This is test isolation/stability work, not a claimed fix for the pre-existing long-dropdown mobile pointer behavior; manual UI review of that separate case remains outside this API task. No production UI/CSS was modified.
 
 
-## 13. T22 approved customer purchase extension — not implemented
+## 13. T22.3A customer version guard and DTO safety
 
-T22 approves a forward-only extension to the CUSTOMER creation request. The currently merged implementation on main still accepts exactly {productId,formData}; do not claim that expectedProductUpdatedAt is already supported. When the separately authorized T22 implementation is delivered, the CUSTOMER request becomes strict {productId,expectedProductUpdatedAt,formData}. The ADMIN request remains unchanged.
+T22.3A implements the strict CUSTOMER request {productId,expectedProductUpdatedAt,formData}. Legacy two-field bodies receive 400 INVALID_INPUT. The ADMIN request retains its existing fields.
 
-The value is the exact UTC ISO-8601 millisecond timestamp returned by the T22 ACTIVE-CUSTOMER-only GET /customer/products/:slug. The order service performs the existing actor-scoped idempotency lookup first, then locks and re-reads Product. It compares the submitted timestamp with the locked Product.updatedAt and rechecks listed/unarchived eligibility. A mismatch returns 409 PRODUCT_CHANGED before creating Order, OrderRevision, OrderEvent, or a successful idempotency response. The timestamp participates in the canonical request hash. Exact replay of a previously committed same-key request still returns its original response before checking later Product changes, preserving D33-D35.
+The value is the exact UTC ISO-8601 millisecond timestamp returned by the T22 ACTIVE-CUSTOMER-only GET /customer/products/:slug. The order service performs the existing actor-scoped idempotency lookup first, then locks and re-reads Product. It compares the submitted timestamp with the locked Product.updatedAt and rechecks listed/unarchived eligibility. A mismatch returns 409 PRODUCT_CHANGED before creating Order, OrderRevision, OrderEvent, or a successful idempotency response. The timestamp participates in the canonical request hash. An exact replay of a successfully committed request under this contract returns its original response before checking later Product changes, preserving D33-D35. Existing idempotency records retain their original hashes and stored responses.
 
-This extension requires no new database field or Migration. It is an approved design contract only; the current API schema and implementation remain unchanged until T22 code is separately authorized and merged.
+The CUSTOMER creation, list and detail share the T22.2 form allowlist. The existing unsafe-schema and credential checks run against the complete frozen schema and values before projection. Order, Revision and ADMIN responses retain the original schema. No new database field or Migration is required. Storefront order submission, online payments and deployment are outside T22.3A. See the [T22.3A verification record](27-customer-storefront-and-order-placement.md#14-t223a-implementation-report).

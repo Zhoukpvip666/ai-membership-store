@@ -79,7 +79,7 @@ for (const role of ['ADMIN', 'CUSTOMER'] as const) {
             priceAdjustmentReason: 'Browser gift',
             internalNote: 'Private browser note',
           }
-        : {}),
+        : { expectedProductUpdatedAt: product.updatedAt.toISOString() }),
     }
     const key = randomUUID(),
       path = '/api/v1/' + role.toLowerCase() + '/orders'
