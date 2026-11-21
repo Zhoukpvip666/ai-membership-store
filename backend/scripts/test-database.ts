@@ -41,6 +41,7 @@ const refundsOnly = process.argv.includes('--refunds-only')
 const adminCenterOnly = process.argv.includes('--admin-orders-only')
 const customerCenterOnly = process.argv.includes('--customer-orders-only')
 const catalogOnly = process.argv.includes('--catalog-only')
+const purchaseOnly = process.argv.includes('--customer-purchase-only')
 const fulfillmentOnly = process.argv.includes('--fulfillment-only')
 const editOnly = process.argv.includes('--edit-only')
 // Editing reuses the committed twelve-migration compatibility path, without Seed.
@@ -53,7 +54,8 @@ const creationOnly =
   fulfillmentOnly ||
   adminCenterOnly ||
   customerCenterOnly ||
-  catalogOnly
+  catalogOnly ||
+  purchaseOnly
 const creationUpgradeSnapshot = join(directory, 'creation-upgrade.json')
 const revisionUpgradeSnapshot = join(directory, 'revision-upgrade.json')
 // Protected history cannot be deleted to prepare empty-database API/seed tests.
@@ -631,7 +633,15 @@ try {
     // Fresh runner-owned database, fictional login/settings fixtures; never Seed.
     run(process.execPath, ['test/integration/product-fixture.ts'], env)
   }
-  if (catalogOnly && !browserMode) {
+  if (purchaseOnly && !browserMode) {
+    console.info(
+      run(
+        process.execPath,
+        ['--test', 'test/integration/customer-purchase.test.ts'],
+        env,
+      ),
+    )
+  } else if (catalogOnly && !browserMode) {
     console.info(
       run(
         process.execPath,
@@ -791,15 +801,17 @@ try {
           '--config',
           join(cwd, '..', 'playwright.config.ts'),
           ...(splitBrowserProjects ? ['--project=mobile-edge'] : []),
-          ...(catalogOnly
-            ? ['public-catalog.spec.ts']
-            : customerCenterOnly
-              ? ['customer-order-center.spec.ts']
-              : adminCenterOnly
-                ? ['admin-order-center.spec.ts']
-                : fulfillmentOnly
-                  ? ['manual-fulfillment.spec.ts']
-                  : []),
+          ...(purchaseOnly
+            ? ['customer-purchase.spec.ts']
+            : catalogOnly
+              ? ['public-catalog.spec.ts']
+              : customerCenterOnly
+                ? ['customer-order-center.spec.ts']
+                : adminCenterOnly
+                  ? ['admin-order-center.spec.ts']
+                  : fulfillmentOnly
+                    ? ['manual-fulfillment.spec.ts']
+                    : []),
           ...process.argv
             .slice(2)
             .filter(
@@ -817,6 +829,7 @@ try {
                   '--admin-orders-only',
                   '--customer-orders-only',
                   '--catalog-only',
+                  '--customer-purchase-only',
                   '--focused',
                 ].includes(argument),
             ),

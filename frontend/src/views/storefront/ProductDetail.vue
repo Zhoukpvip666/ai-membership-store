@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { readCatalogProduct, type PublicProduct } from '../../api/catalog'
 import { ApiError } from '../../api/client'
-import { money } from '../../stores/format'
+import ProductSummary from '../../components/ProductSummary.vue'
 
 const props = defineProps<{ slug: string }>()
 const product = ref<PublicProduct>()
@@ -10,12 +10,6 @@ const error = ref('')
 const missing = ref(false)
 const loading = ref(true)
 let sequence = 0
-const units = { DAY: '天', MONTH: '个月', YEAR: '年' } as const
-const period = computed(() => {
-  const unit = product.value?.servicePeriodUnit
-  const count = product.value?.servicePeriodCount
-  return unit && count ? count + ' ' + units[unit] : undefined
-})
 
 async function load() {
   const current = ++sequence
@@ -44,39 +38,13 @@ watch(() => props.slug, load, { immediate: true })
     <p v-else-if="error" role="alert" class="form-error">
       {{ error }} <ElButton v-if="!missing" link @click="load">重试</ElButton>
     </p>
-    <article v-else-if="product" class="product-card detail-card">
-      <span
-        :class="['badge', product.type === 'SUBSCRIPTION' ? 'blue' : 'purple']"
+    <ProductSummary v-else-if="product" :product="product">
+      <ElButton
+        type="primary"
+        @click="$router.push({ name: 'customer-purchase', params: { slug } })"
+        >立即购买</ElButton
       >
-        {{ product.type === 'SUBSCRIPTION' ? '订阅服务' : '一次性服务' }}
-      </span>
-      <h1>{{ product.name }}</h1>
-      <p v-if="product.description" class="product-description">
-        {{ product.description }}
-      </p>
-      <dl class="catalog-facts">
-        <div>
-          <dt>初始价格</dt>
-          <dd>{{ money(product.priceFen) }}</dd>
-        </div>
-        <div>
-          <dt>服务周期</dt>
-          <dd>
-            {{ period ?? product.termLabel }}
-            <span v-if="period" class="muted"> · {{ product.termLabel }}</span>
-          </dd>
-        </div>
-        <div
-          v-if="
-            product.type === 'SUBSCRIPTION' && product.renewalPriceFen !== null
-          "
-        >
-          <dt>续费价格</dt>
-          <dd>{{ money(product.renewalPriceFen) }}</dd>
-        </div>
-      </dl>
-      <ElButton type="primary" disabled>暂未开放线上购买</ElButton>
-    </article>
+    </ProductSummary>
   </section>
 </template>
 
@@ -89,24 +57,5 @@ watch(() => props.slug, load, { immediate: true })
 .catalog-detail a {
   justify-self: start;
   color: #3468ed;
-}
-.detail-card {
-  display: block;
-  overflow-wrap: anywhere;
-}
-.detail-card h1 {
-  margin: 12px 0;
-}
-.catalog-facts {
-  display: grid;
-  gap: 12px;
-  margin: 20px 0;
-}
-.catalog-facts dt {
-  font-size: 12px;
-  color: #66758b;
-}
-.catalog-facts dd {
-  margin: 4px 0 0;
 }
 </style>

@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Brand from '../../components/Brand.vue'
 import { auth } from '../../stores/auth'
+import { isCustomerRedirect } from '../../router/customer-redirect'
 const props = defineProps<{ admin?: boolean }>()
 const route = useRoute()
 const router = useRouter()
@@ -26,9 +27,7 @@ async function submit() {
     const allowed =
       user.role === 'ADMIN'
         ? target.startsWith('/admin') && !target.startsWith('/admin/login')
-        : ['/profile', '/orders', '/account/orders', '/subscriptions'].includes(
-            target,
-          )
+        : isCustomerRedirect(target)
     await router.replace(
       allowed ? target : user.role === 'ADMIN' ? '/admin/users' : '/profile',
     )

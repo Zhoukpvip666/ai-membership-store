@@ -2,7 +2,7 @@
 
 > **T21 CUSTOMER order center override (2026-11-20):** `/account/orders` is the real API-backed view of the signed-in customer's own orders, using the existing customer list/detail/edit/cancel APIs plus `GET /customer/order-guidance`. This override applies to existing-order management and is merged in PR #31. See [T21 contract](26-customer-order-center.md).
 
-> **T22 customer storefront override (2026-11-20):** T22.1 lets visitors browse listed, unarchived products and product details. Product detail never loads dynamic formSchema. In the planned purchase flow, only after clicking 立即购买 may an ACTIVE CUSTOMER enter the protected purchase route and load the safe form projection. Guests are redirected to login and automatically returned to the same purchase route after successful login. T22 reuses the existing customer order-creation API for offline-payment orders only; no online payment, proof upload, cart, renewal, email, or deployment. See [T22 contract](27-customer-storefront-and-order-placement.md).
+> **T22 customer storefront override (2026-11-20):** T22.1 lets visitors browse listed, unarchived products and product details. Product detail never loads dynamic formSchema. T22.2 enables 立即购买 and loads the safe form projection on the protected purchase route for ACTIVE CUSTOMERS. Guests are redirected to login and automatically returned to the same purchase route after successful login. T22 reuses the existing customer order-creation API for offline-payment orders only; no online payment, proof upload, cart, renewal, email, or deployment. See [T22 contract](27-customer-storefront-and-order-placement.md).
 
 
 > **T20 administrator order center override (2026-11-20):** `/admin/orders` is the real ADMIN order workspace, not Mock. It uses the merged order list/detail/create/edit/cancel/payment/refund/fulfillment APIs plus the T20 OrderEvent timeline and internal-note API. The order detail actions are state-driven: paid pending orders must be cancelled before a refund; PAID and NOT_REQUIRED PROCESSING orders may be fulfilled; zero-price orders remain in the fulfillment queue. The original Task 1.2.3 statement that order screens remain Mock is superseded only for the ADMIN order page. T21 has since replaced the CUSTOMER order page; the operating overview remains Mock. See [T20 contract](25-admin-order-center.md).
@@ -11,7 +11,7 @@
 > **Current Phase 2 override (2026-11-17):** The owner separately authorized user-name refactoring and administrator-only subscription management before offline orders. `displayName` becomes nullable `username` (customer-owned, no new editing/activation flow yet) and `adminLabel` (admin-only). Admin naming is adminLabel → username → login-email prefix; customer responses exclude adminLabel. Subscription sources are ADMIN/SYSTEM, stored states ACTIVE/TERMINATED. Admin creates independent subscription records and directly edits/renews/terminates them without orders, payments, email or automatic duration arithmetic. Product/form snapshots are frozen; archived products block new subscriptions/renewals but allow maintenance of existing unexpired subscriptions. Expired ACTIVE rows grant no entitlement and cannot be edited/renewed, even before the minute worker terminates them. [Phase 2 details](14-user-subscription-core.md) supersede conflicting legacy subscription rules below. No development database migration is performed by implementation/tests.
 
 
-Task 1.2.3 persistence update: product management and settings use local ADMIN APIs, alongside persistent customer management. Product dialogs add description, sort order and a responsive field editor/preview for eight supported types; archive replaces deletion, immediately unlists and cannot be reversed. Only listed/archivedAt represent product state; there are no separate purchase or renewal switches. Every field has a fixed read-only ID, editable label/hint/required/default, optional choices and move/delete controls. Schema limits/errors are visible before saving. Preview input is ephemeral and has no submission action. The original Task 1.2.3 prototype kept order/subscription/overview screens Mock; T20 supersedes the ADMIN order page and T21 supersedes the CUSTOMER order page. The operating overview remains Mock. T22.1 replaces the storefront ADMIN preview with a public catalog and product detail. Customer purchasing remains a later T22 stage. The desktop/mobile layout baseline below remains applicable. See [13-products-settings-forms.md](13-products-settings-forms.md).
+Task 1.2.3 persistence update: product management and settings use local ADMIN APIs, alongside persistent customer management. Product dialogs add description, sort order and a responsive field editor/preview for eight supported types; archive replaces deletion, immediately unlists and cannot be reversed. Only listed/archivedAt represent product state; there are no separate purchase or renewal switches. Every field has a fixed read-only ID, editable label/hint/required/default, optional choices and move/delete controls. Schema limits/errors are visible before saving. Preview input is ephemeral and has no submission action. The original Task 1.2.3 prototype kept order/subscription/overview screens Mock; T20 supersedes the ADMIN order page and T21 supersedes the CUSTOMER order page. The operating overview remains Mock. T22.1 replaces the storefront ADMIN preview with a public catalog and product detail. T22.2 opens the protected purchase form and local checks. Order submission remains a later stage. The desktop/mobile layout baseline below remains applicable. See [13-products-settings-forms.md](13-products-settings-forms.md).
 
 This document is the approved first-version UI baseline for the customer storefront and the single-owner management console. It is intentionally simple and should be implemented before real payment, supplier, or database workflows.
 
@@ -105,15 +105,16 @@ The same Vue application may serve both surfaces with route-level layouts and au
 - Do not load or expose formSchema, default values, targetField, archive/listing internals, or administrator fields.
 
 **商品详情 /products/:slug**
-- Show customer-facing product information. In T22.1 the purchase action is disabled and labelled 暂未开放线上购买.
+- Show customer-facing product information. 立即购买 opens the protected purchase route.
 - Do not render dynamic fields or request the purchase form schema on this page.
 
-**购买 /purchase/:slug（T22.2/T22.3 planned）**
-- Route requires an ACTIVE CUSTOMER Session. Only after the customer clicks 立即购买 does this page fetch the customer-safe form projection.
+**购买 /purchase/:slug（T22.2）**
+- Route requires an ACTIVE CUSTOMER Session. The page fetches the customer-safe form projection when the guard accepts navigation.
 - A guest is sent to customer login with a validated same-origin redirect; after login the customer returns to the same purchase route and the form loads automatically.
 - Render the existing eight-type ProductFormInputs component with empty customer values; do not apply administrator preview defaults.
-- One product creates one order. Show server-provided price as read-only, validate required fields, and submit through the existing customer order-creation API.
-- After success, open the T21 order detail using /account/orders?orderId=:id. Existing offline payment instructions remain in T21.
+- Show server-provided prices as read-only. 检查填写信息 validates answers locally and shows field-level reasons. Clear in-memory answers on navigation or product change.
+- T22.3 will connect the existing customer order-creation API for one product per order.
+- After order submission is implemented in T22.3, open the T21 order detail using /account/orders?orderId=:id. Existing offline payment instructions remain in T21.
 - No cart, online payment, proof upload, customer subscription/renewal, email, or provider integration.
 
 ## 4. Unified owner/admin console
@@ -208,11 +209,11 @@ The original Task 1.1 prototype uses Mock data. T20 supersedes that baseline for
 - The operating overview retains its Mock behavior.
 - Product filters and product add/edit/listing/archive continue to use the existing local ADMIN APIs.
 - Unlisted/unarchived products remain manageable; archived products are unlisted, cannot be edited/relisted, and retain readable details. Product changes never rewrite historical orders or current entitlement dates. Dynamic form configuration and preview remain available.
-- T22.1 provides public catalog and product details. Customer purchasing remains unavailable during this slice.
+- T22.1 provides public catalog and product details. T22.2 provides the protected purchase form and local checks.
 - Mock data and simulated actions outside the T20 ADMIN order page must be clearly labelled.
 - The ADMIN order center never claims that the application itself transferred customer money, initiated a refund, contacted a supplier, or sent email.
 - T21 replaces the CUSTOMER order-history Mock branch with the existing own-order list/detail/edit/cancel APIs and the safe order-guidance endpoint.
-- The later T22 stages cover the protected purchase form, login continuation and reuse of the existing customer order-creation API for offline orders.
+- T22.3 will integrate the existing customer order-creation API for offline orders.
 
 ## 6. Implementation acceptance criteria
 

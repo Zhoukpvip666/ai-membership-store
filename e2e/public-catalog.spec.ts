@@ -162,7 +162,7 @@ test('guest catalog loads, then searches, filters and paginates using the public
   await checkNoHorizontalOverflow(page)
 })
 
-test('guest product detail displays public data and offers no purchase or form request', async ({
+test('guest product detail displays public data and defers the form until purchase login', async ({
   page,
 }) => {
   const calls: string[] = []
@@ -187,12 +187,15 @@ test('guest product detail displays public data and offers no purchase or form r
   await expect(detail).toContainText('12.00')
   await expect(detail).toContainText('续费价格')
   await expect(detail).toContainText('9.00')
-  await expect(
-    detail.getByRole('button', { name: '暂未开放线上购买' }),
-  ).toBeDisabled()
   await expect(detail.getByRole('textbox')).toHaveCount(0)
   expect(calls).toEqual([catalogPath, catalogPath + '/' + featured.slug])
   await checkNoHorizontalOverflow(page)
+  await detail.getByRole('button', { name: '立即购买', exact: true }).click()
+  await expect(page).toHaveURL(
+    (url) =>
+      url.pathname === '/login' &&
+      url.searchParams.get('redirect') === '/purchase/' + featured.slug,
+  )
 
   await page.goto('/products/' + unavailable.slug)
   await expect(page.getByRole('alert')).toContainText('商品不存在')

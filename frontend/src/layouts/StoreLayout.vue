@@ -55,7 +55,10 @@ const nav = [
       </div>
     </header>
     <main class="store-main">
-      <div v-if="!$route.meta.publicCatalog" class="demo-notice">
+      <div
+        v-if="!$route.meta.publicCatalog && !$route.meta.customerPurchase"
+        class="demo-notice"
+      >
         <FlaskConical :size="15" /><span
           >本地管理工具 · 管理员可预览真实商品，暂未开放线上购买</span
         ><span class="demo-pill">LOCAL</span>

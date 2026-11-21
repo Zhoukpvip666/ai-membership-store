@@ -19,6 +19,16 @@ export function publicCatalogRoutes(database: PrismaClient) {
   return router
 }
 
+export function customerPurchaseRoutes(database: PrismaClient) {
+  const router = Router()
+  const catalog = publicCatalog(database)
+  router.get('/products/:slug', async (request, response) => {
+    catalogDetailQuery.parse(request.query)
+    response.json(await catalog.purchase(request.params.slug))
+  })
+  return router
+}
+
 // Mounted behind the existing /admin session, role, CSRF and mutation-limit guards.
 export function productSettingsRoutes(database: PrismaClient) {
   const router = Router()

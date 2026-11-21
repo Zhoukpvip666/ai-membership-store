@@ -1,4 +1,5 @@
 import { api } from './client'
+import type { ProductFormSchema } from '../../../backend/src/contracts/product-form'
 
 export interface PublicProduct {
   slug: string
@@ -19,8 +20,17 @@ interface CatalogPage {
   pageSize: number
 }
 
+export interface PurchaseProduct extends PublicProduct {
+  id: string
+  updatedAt: string
+  formSchema: ProductFormSchema
+}
+
 export const readCatalog = (query: URLSearchParams) =>
   api<CatalogPage>('/catalog/products?' + query)
 
 export const readCatalogProduct = (slug: string) =>
   api<PublicProduct>('/catalog/products/' + encodeURIComponent(slug))
+
+export const readPurchaseProduct = (slug: string) =>
+  api<PurchaseProduct>('/customer/products/' + encodeURIComponent(slug))
