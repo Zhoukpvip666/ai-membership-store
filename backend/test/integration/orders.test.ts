@@ -38,6 +38,7 @@ const schema = {
       type: 'text',
       label: 'Original account label',
       required: true,
+      defaultValue: 'editor-only identifier',
     },
   ],
 }
@@ -827,7 +828,23 @@ test('DTOs retain frozen product/period/schema/data and real timestamps after pr
     assert.equal(order.termSnapshot, 'Frozen calendar month')
     assert.equal(order.servicePeriodUnitSnapshot, 'MONTH')
     assert.equal(order.servicePeriodCountSnapshot, 1)
-    assert.deepEqual(order.formSchemaSnapshot, schema)
+    assert.deepEqual(
+      order.formSchemaSnapshot,
+      prefix === '/admin'
+        ? schema
+        : {
+            version: 1,
+            fields: [
+              {
+                id: 'account',
+                type: 'text',
+                label: 'Original account label',
+                required: true,
+                hint: '',
+              },
+            ],
+          },
+    )
     assert.deepEqual(order.formData, { account: 'alice-original-account' })
     assert.equal(order.paidAt, null)
     assert.equal(

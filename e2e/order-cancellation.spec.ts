@@ -102,7 +102,7 @@ for (const role of ['ADMIN', 'CUSTOMER'] as const) {
             priceAdjustmentReason: 'Gift',
             internalNote: 'PRIVATE_NOTE',
           }
-        : {}),
+        : { expectedProductUpdatedAt: product.updatedAt.toISOString() }),
     })
     expect(created.status).toBe(201)
     const id = created.body.order.id,

@@ -2,11 +2,11 @@
 
 - Document: CUSTOMER-STOREFRONT-AND-ORDER-PLACEMENT
 - Version: 1.0
-- Status: Design approved in PR #32. T22.1 merged in PR #33. T22.2 implemented and awaiting review. T22.3 has not started.
+- Status: Design approved in PR #32. T22.1 merged in PR #33. T22.2 merged in PR #34. T22.3A implemented and awaiting review. T22.3B has not started.
 - Date: 2026-11-20
 - Related: [Product requirements](01-product-requirements.md), [User and operations flows](02-user-and-operations-flows.md), [API contract](05-api-contract.md), [Interface specification](08-interface-specification.md), [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order creation API](19-order-creation-api.md), [Customer order center](26-customer-order-center.md)
 
-> Sections 1–11 record the approved T22 design. Sections 12 and 13 record the public catalog and protected purchase form with their verification.
+> Sections 1–11 record the approved T22 design. Sections 12–14 record the public catalog, protected purchase form, and customer order API upgrade with their verification.
 
 ## 1. Goal and boundary
 
@@ -324,7 +324,7 @@ The first order lifecycle aggregate reached the existing 600-second nested runne
 - The service validates the full database schema and checks for prohibited credential fields before projecting the response. The allowlist preserves the ordered field IDs, labels, hints, required flags, and applicable options. It excludes all editor defaults. Invalid forms return a sanitized 409 PRODUCT_FORM_UNAVAILABLE.
 - The 立即购买 button opens the protected purchase route. Guests and expired Sessions are redirected to login with the current purchase destination. Login accepts strict internal purchase paths and the existing customer destinations. An authenticated administrator is sent to order management.
 - The responsive purchase page reuses the product summary and ProductFormInputs. The shared form contract and credential detection validate answers in the browser. Answers stay in component memory and are cleared on product changes and navigation. 检查填写信息 makes no business request.
-- T22.3 order submission and order-center continuation have not started. This slice needs no new Migration, database column, or dependency.
+- At T22.2 delivery, order submission and order-center continuation were still planned. This slice needs no new Migration, database column, or dependency.
 
 ### T22.2 verification
 
@@ -347,3 +347,35 @@ The MySQL runner used disposable MySQL 8.4 projects with synthetic fixtures and 
 | `git diff --check` | Passed |
 
 On the first desktop run, the Element Plus placeholder intercepted clicks on the readonly select input. Six scenarios passed and the form scenario hit the existing 30-second test limit. The rerun opens the select with ArrowDown, following the existing browser test pattern. It verifies the selected options and the same validation outcomes with the original timeout.
+
+## 14. T22.3A implementation report
+
+- CUSTOMER creation requires a strict `{productId,expectedProductUpdatedAt,formData}` body. The expected timestamp is the canonical UTC timestamp with three fractional digits from the purchase GET. The ADMIN request retains its existing shape.
+- The existing transaction checks the persisted idempotency record first. A first request acquires User then Product locks and reads the current product. The customer version must equal the locked row's millisecond timestamp before validation and order writes. The request hash includes the version. A stale version returns 409 PRODUCT_CHANGED and leaves Product, Order and history intact.
+- A successful same-key replay returns the original response before checking whether the product is still current or orderable. A changed version with the same key conflicts. New success, Revision, Event and idempotency response commit together. Only ADMIN creates an administrator audit record.
+- CUSTOMER creation, list and detail apply the T22.2 field allowlist to safe frozen forms. Unsafe-schema and credential checks still inspect the original snapshot and values. Editor defaults are removed from the customer projection. Stored Order and Revision snapshots and the ADMIN DTO retain the full schema.
+- T22.3B has not started. The storefront purchase page still runs local checks only. No online payment, database Migration, dependency change or deployment is included.
+
+### T22.3A verification
+
+The database suites use random isolated MySQL 8.4 projects and synthetic fixtures. The browser tests use desktop Edge and mobile Edge viewport emulation.
+
+| Command | Result |
+|---|---|
+| `npm test` | Frontend 30/30 and backend 72/72 |
+| `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run build`, `npm run db:validate` | Passed |
+| `npm run test:db -w backend -- --creation-only --fresh` | Creation 19/19, Revision 9/9 and subscription 10/10 |
+| `npm run test:db -w backend -- --fulfillment-only --fresh` | 160/160 across read (14), edit (19), create (19), revision (9), subscription (10), cancellation (25), payment (25), refund (18), and fulfillment (21) |
+| `npm run test:db -w backend -- --admin-orders-only --fresh` | T20 14/14 |
+| `npm run test:db -w backend -- --customer-orders-only --fresh` | T21 3/3 and authentication 14/14 |
+| `npm run test:db -w backend -- --products-only --fresh` | Product and settings 11/11 |
+| `npm run test:db -w backend -- --catalog-only --fresh` | T22.1 catalog 6/6 |
+| `npm run test:db -w backend -- --customer-purchase-only --fresh` | T22.2 purchase projection 5/5 |
+| `npm run test:e2e -w backend -- --creation-only order-creation.spec.ts order-edit.spec.ts order-cancellation.spec.ts public-catalog.spec.ts customer-purchase.spec.ts` | Desktop Edge 18/18 and mobile Edge emulation 18/18 |
+| `npm run test:e2e -w backend -- --admin-orders-only` | T20 desktop Edge 10/10 and mobile Edge emulation 10/10 |
+| `npm run test:e2e -w backend -- --customer-orders-only` | T21 desktop Edge 8/8 and mobile Edge emulation 8/8 |
+| `git diff --check` | Passed |
+
+Creation regression covers exact millisecond matching, the live purchase GET version, a real ADMIN price update, a competing database writer that holds the Product row lock, and rejection before business writes. It also covers version-only idempotency conflicts, replay after unlisting and archiving, simultaneous duplicates, and rollback at each applicable write stage. The CUSTOMER creation, list and detail DTOs exclude defaults while the ADMIN DTO and stored history preserve them.
+
+All listed T22.3A commands passed on their first run. The browser creation, edit and cancellation fixtures send the required product version only for CUSTOMER creation. Their original business assertions and timeouts were retained.

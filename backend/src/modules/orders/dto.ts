@@ -4,7 +4,10 @@ import {
   hasCredentialText,
   hasCredentialValues,
 } from '../../contracts/credential-fields.ts'
-import { productFormSchema } from '../../contracts/product-form.ts'
+import {
+  productFormSchema,
+  projectCustomerForm,
+} from '../../contracts/product-form.ts'
 import { formDataSchema } from '../../contracts/form-data.ts'
 
 // Explicit projections: never join today's Product or fetch internal order data.
@@ -134,7 +137,8 @@ export function customerOrderDto(order: CustomerOrder, now = new Date()) {
     hasCredentialValues(dto.formData)
   return {
     ...dto,
-    formSchemaSnapshot: unsafe ? null : dto.formSchemaSnapshot,
+    formSchemaSnapshot:
+      !unsafe && schema.success ? projectCustomerForm(schema.data) : null,
     formData: unsafe ? null : dto.formData,
     targetIdentifier:
       unsafe ||

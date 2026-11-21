@@ -190,8 +190,14 @@ test('customer projection suppresses unsafe frozen forms and legacy values witho
       value: 'password: fictional tagged credential',
     },
     { id: 'account', label: '账号', value: 'safe account', unexpected: true },
+    {
+      id: 'account',
+      label: '账号',
+      value: 'safe account',
+      defaultValue: 'Bearer synthetic-private-default',
+    },
   ]
-  for (const { id, label, value, unexpected } of cases) {
+  for (const { id, label, value, unexpected, defaultValue } of cases) {
     const record = await db.order.create({
       data: {
         orderNo: 'T21-' + randomUUID().replaceAll('-', ''),
@@ -207,7 +213,15 @@ test('customer projection suppresses unsafe frozen forms and legacy values witho
         contactEmailSnapshot: 'fixture@example.com',
         formSchemaSnapshot: {
           version: 1,
-          fields: [{ id, label, type: 'text', required: true }],
+          fields: [
+            {
+              id,
+              label,
+              type: 'text',
+              required: true,
+              ...(defaultValue ? { defaultValue } : {}),
+            },
+          ],
         },
         formData: {
           [id]: value,
@@ -236,5 +250,9 @@ test('customer projection suppresses unsafe frozen forms and legacy values witho
     )
     const raw = await call('/admin/orders/' + record.id, admin)
     assert.deepEqual(raw.body.order.formData, record.formData)
+    assert.deepEqual(
+      raw.body.order.formSchemaSnapshot,
+      record.formSchemaSnapshot,
+    )
   }
 })

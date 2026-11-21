@@ -10,7 +10,11 @@ import { creationForm } from '../src/modules/orders/create-form.ts'
 
 test('creation DTOs are strict, separate identities/prices, and require explicit integer Fen', () => {
   const input = { productId: randomUUID(), formData: {} }
-  assert.deepEqual(createCustomerOrder.parse(input), input)
+  const customer = {
+    ...input,
+    expectedProductUpdatedAt: '2024-02-29T10:00:00.123Z',
+  }
+  assert.deepEqual(createCustomerOrder.parse(customer), customer)
   for (const field of [
     'userId',
     'amountFen',
@@ -21,10 +25,18 @@ test('creation DTOs are strict, separate identities/prices, and require explicit
     'paymentStatus',
   ])
     assert(
-      !createCustomerOrder.safeParse({ ...input, [field]: 'forged' }).success,
+      !createCustomerOrder.safeParse({ ...customer, [field]: 'forged' })
+        .success,
     )
   const admin = { ...input, userId: randomUUID(), amountFen: 0 }
   assert.equal(createAdminOrder.parse(admin).internalNote, null)
+  assert(
+    !createAdminOrder.safeParse({
+      ...customer,
+      userId: admin.userId,
+      amountFen: 0,
+    }).success,
+  )
   for (const amountFen of [undefined, null, '100', -1, 1.5, 2147483648])
     assert(!createAdminOrder.safeParse({ ...admin, amountFen }).success)
   for (const priceAdjustmentReason of ['', '   ', 'x'.repeat(501)])
@@ -36,6 +48,25 @@ test('creation DTOs are strict, separate identities/prices, and require explicit
       .priceAdjustmentReason,
     'discount',
   )
+})
+
+test('CUSTOMER creation requires a real UTC timestamp with exactly three fractional digits', () => {
+  const input = { productId: randomUUID(), formData: {} }
+  assert(!createCustomerOrder.safeParse(input).success)
+  for (const expectedProductUpdatedAt of [
+    '2026-02-29T10:00:00.123Z',
+    '2026-11-21T24:00:00.123Z',
+    '2026-11-21T10:00:00.123+00:00',
+    '2026-11-21T10:00:00.123',
+    '2026-11-21T10:00:00Z',
+    '2026-11-21T10:00:00.1234Z',
+    '2026-11-21T10:00:00.123Z ',
+    1795255200123,
+  ])
+    assert(
+      !createCustomerOrder.safeParse({ ...input, expectedProductUpdatedAt })
+        .success,
+    )
 })
 
 test('required idempotency key follows existing syntax without trimming or storing raw keys', () => {

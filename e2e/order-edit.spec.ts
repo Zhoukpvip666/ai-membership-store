@@ -107,7 +107,7 @@ for (const role of ['ADMIN', 'CUSTOMER'] as const) {
       formData: { account: 'original', note: 'remove on replacement' },
       ...(role === 'ADMIN'
         ? { userId: target.id, amountFen: 9900, internalNote: 'Private note' }
-        : {}),
+        : { expectedProductUpdatedAt: product.updatedAt.toISOString() }),
     })
     expect(created.status).toBe(201)
     const id = created.body.order.id

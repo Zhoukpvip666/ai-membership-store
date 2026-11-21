@@ -30,7 +30,7 @@ Both public reads expose only slug, name, description, type, priceFen, renewalPr
 
 The purchase GET reads the current listed, unarchived product. It returns the nine public fields plus id, updatedAt (UTC ISO-8601 with milliseconds), and formSchema. The form projection exposes version and ordered fields with id, type, label, required, hint, and options for select, radio, and checkbox only. Invalid or credential-collecting schemas return 409 PRODUCT_FORM_UNAVAILABLE. Guests and invalid or inactive Sessions get 401, and an authenticated ADMIN gets 403. Missing, unlisted, and archived products share 404 NOT_FOUND.
 
-T22.3 will reuse the existing POST /customer/orders. Its approved forward CUSTOMER request adds expectedProductUpdatedAt to the current productId/formData body; the service will compare it after the Product row lock and return 409 PRODUCT_CHANGED without writes when stale. This forward extension is not yet implemented; see the addendum in docs/19. The login flow returns a guest to the same purchase route after successful CUSTOMER login. No online payment, proof upload, cart, subscription UI, renewal, email, migration, or deployment is included.
+T22.3A extends POST /customer/orders with required expectedProductUpdatedAt. After checking the saved idempotency response and locking User then Product, the service compares the exact UTC millisecond timestamp. A stale version returns 409 PRODUCT_CHANGED without business writes. See the addendum in docs/19. The login flow returns a guest to the same purchase route after successful CUSTOMER login. No online payment, proof upload, cart, subscription UI, renewal, email, migration, or deployment is included.
 
 ## Order edit API (implemented and merged in PR #14)
 
@@ -205,7 +205,7 @@ The customer login/me projection includes username but never adminLabel; adminis
 | GET | /me/subscriptions | Current customer's own subscriptions |
 | GET | /me/subscriptions/:id | Own subscription detail and renewal history |
 
-No customer subscription read or renewal endpoint is implemented. T22.1 provides public catalog reads. T22.2 provides the ACTIVE-CUSTOMER purchase-product read. Storefront order submission remains planned for T22.3.
+No customer subscription read or renewal endpoint is implemented. T22.1 provides public catalog reads. T22.2 provides the ACTIVE-CUSTOMER purchase-product read. Storefront order submission remains planned for T22.3B.
 
 ## 8. Dashboard
 
@@ -241,9 +241,9 @@ This implemented write stage is limited to POST `/customer/orders` and POST `/ad
 
 ## Order creation implementation details
 
-Both POST routes require a valid persisted Session, CSRF Origin/custom header, strict JSON body and Idempotency-Key (1–128 ASCII letters/digits or `_.:-`). On current main, the implemented customer schema is exactly `{productId,formData}`; ADMIN additionally requires `{userId,amountFen}` and permits priceAdjustmentReason (trimmed nonblank, max500) and internalNote (nullable, max2000, defaultNULL). No client source/identity override, statuses, version or snapshots. See [creation contract](19-order-creation-api.md).
+Both POST routes require a valid persisted Session, CSRF Origin/custom header, strict JSON body and Idempotency-Key (1–128 ASCII letters/digits or `_.:-`). T22.3A requires the exact customer body `{productId,expectedProductUpdatedAt,formData}`. The version is a valid UTC ISO-8601 timestamp with exactly three fractional digits. The ADMIN body requires `{productId,userId,amountFen,formData}` and permits priceAdjustmentReason (trimmed nonblank, max500) and internalNote (nullable, max2000, defaultNULL). No client source/identity override, statuses, version or snapshots. See [creation contract](19-order-creation-api.md).
 
-The existing serializable transaction helper performs bounded retries for recognized MySQL write/deadlock conflicts. User and Product are locked in that order after persisted idempotency lookup. The same transaction commits Order, immutable V1 revision, ORDER_CREATED event, ADMIN-only sanitized audit and original `{order}` response. Customer contact snapshots use notificationEmail, falling back to loginEmail; new targetIdentifier remainsNULL. Both roles reject unknown periods and invalid/credential-collecting forms, without changing catalog rows. Existing subscription idempotency semantics remain unchanged.
+The existing serializable transaction helper performs bounded retries for recognized MySQL write/deadlock conflicts. User and Product are locked in that order after persisted idempotency lookup. The same transaction commits Order, immutable V1 revision, ORDER_CREATED event, ADMIN-only sanitized audit and original `{order}` response. Customer contact snapshots use notificationEmail, falling back to loginEmail; new targetIdentifier remainsNULL. Both roles reject unknown periods and invalid/credential-collecting forms, without changing catalog rows. CUSTOMER order responses project safe frozen schemas without editor defaults. The persisted Order and Revision retain the full schema, as does the ADMIN DTO. Existing subscription idempotency semantics remain unchanged.
 
 A pending customer's valid Session receives403 ACCOUNT_NOT_ELIGIBLE only on POST /customer/orders; all other existing routes keep ACTIVE-only authentication. Disabled/expired/revoked Sessions still return401. ADMIN target errors use404 CUSTOMER_NOT_FOUND or409 CUSTOMER_DISABLED. Zero-price DTOs have remainingSeconds=0; exact replay may retain an earlier countdown for positive-price orders, so GET detail provides a fresh clock.
 

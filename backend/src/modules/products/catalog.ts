@@ -2,7 +2,10 @@ import { z } from 'zod'
 import type { Prisma, PrismaClient } from '../../generated/prisma/client.ts'
 import { ApiError } from '../../http/errors.ts'
 import { hasCredentialFields } from '../../contracts/credential-fields.ts'
-import { productFormSchema } from '../../contracts/product-form.ts'
+import {
+  productFormSchema,
+  projectCustomerForm,
+} from '../../contracts/product-form.ts'
 
 const pageNumber = (max: number) =>
   z
@@ -42,24 +45,7 @@ function purchaseForm(input: unknown) {
       'PRODUCT_FORM_UNAVAILABLE',
       '此商品的服务表单暂不可用',
     )
-  return {
-    version: schema.data.version,
-    fields: schema.data.fields.map((field) => ({
-      id: field.id,
-      type: field.type,
-      label: field.label,
-      required: field.required,
-      hint: field.hint,
-      ...('options' in field
-        ? {
-            options: field.options.map(({ label, value }) => ({
-              label,
-              value,
-            })),
-          }
-        : {}),
-    })),
-  }
+  return projectCustomerForm(schema.data)
 }
 
 export function publicCatalog(database: PrismaClient) {

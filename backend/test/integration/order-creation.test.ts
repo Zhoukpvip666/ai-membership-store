@@ -83,12 +83,16 @@ async function product(extra: Partial<Prisma.ProductCreateInput> = {}) {
     },
   })
 }
-const body = (p: Product) => ({
+const commonBody = (p: Product) => ({
   productId: p.id,
   formData: { account: 'non-sensitive-account' },
 })
+const body = (p: Product) => ({
+  ...commonBody(p),
+  expectedProductUpdatedAt: p.updatedAt.toISOString(),
+})
 const adminBody = (p: Product) => ({
-  ...body(p),
+  ...commonBody(p),
   userId: alice.id,
   amountFen: p.priceFen,
 })
@@ -241,6 +245,7 @@ test('strict role DTOs reject forged ownership, price, state and snapshot fields
     'hidden',
     'version',
     'paymentStatus',
+    'fulfillmentStatus',
     'createdByAdminId',
     'productNameSnapshot',
     'paidAt',
@@ -265,6 +270,47 @@ test('strict role DTOs reject forged ownership, price, state and snapshot fields
     () => request('customer', { ...body(p), formData: undefined }),
     400,
   )
+})
+
+test('HTTP creation requires the canonical millisecond UTC version only for CUSTOMER', async () => {
+  const p = await product({ updatedAt: new Date('2026-11-21T10:00:00.123Z') })
+  for (const expectedProductUpdatedAt of [
+    undefined,
+    null,
+    'not-a-timestamp',
+    '2026-02-29T10:00:00.123Z',
+    '2026-11-21T10:00:00.123+00:00',
+    '2026-11-21T10:00:00Z',
+    '2026-11-21T10:00:00.1234Z',
+  ])
+    await rejected(
+      () => request('customer', { ...body(p), expectedProductUpdatedAt }),
+      400,
+      'INVALID_INPUT',
+    )
+  await rejected(
+    () =>
+      request('admin', {
+        ...adminBody(p),
+        expectedProductUpdatedAt: p.updatedAt.toISOString(),
+      }),
+    400,
+    'INVALID_INPUT',
+  )
+  const purchase = await fetch(base + '/api/v1/customer/products/' + p.slug, {
+    headers: { cookie: cookies.customer },
+  })
+  assert.equal(purchase.status, 200)
+  const { id, updatedAt } = await purchase.json()
+  assert.equal(id, p.id)
+  assert.equal(updatedAt, '2026-11-21T10:00:00.123Z')
+  const result = await request('customer', {
+    ...body(p),
+    expectedProductUpdatedAt: updatedAt,
+  })
+  assert.equal(result.status, 201)
+  assert.equal(result.body.order.amountFen, p.priceFen)
+  assert.equal((await request('admin', adminBody(p))).status, 201)
 })
 
 test('ADMIN may target active/pending CUSTOMER only, and must explicitly supply valid Fen and price adjustment reason', async () => {
@@ -343,7 +389,11 @@ test('product eligibility distinguishes listed, unlisted, archived, missing and 
       'PRODUCT_NOT_FOUND',
     )
     await rejected(
-      () => request(role, { ...input, productId: unknownPeriod.id }),
+      () =>
+        request(
+          role,
+          role === 'admin' ? adminBody(unknownPeriod) : body(unknownPeriod),
+        ),
       409,
       'PRODUCT_PERIOD_UNCONFIGURED',
     )
@@ -353,6 +403,62 @@ test('product eligibility distinguishes listed, unlisted, archived, missing and 
       .servicePeriodCount,
     null,
   )
+})
+
+test('stale versions reject each product change without writes, even one millisecond apart', async () => {
+  const shownVersion = new Date('2026-11-21T10:00:00.123Z')
+  const currentVersion = new Date('2026-11-21T10:00:00.124Z')
+  const changes: Prisma.ProductUpdateInput[] = [
+    { priceFen: 42 },
+    { formSchema: { version: 1, fields: [] } },
+    { description: 'Changed description' },
+    { servicePeriodUnit: 'YEAR', servicePeriodCount: 2 },
+    { listed: false },
+    { listed: false, archivedAt: currentVersion },
+  ]
+  for (const change of changes) {
+    const p = await product({ updatedAt: shownVersion })
+    await db.product.update({
+      where: { id: p.id },
+      data: { ...change, updatedAt: currentVersion },
+    })
+    await rejected(() => request('customer', body(p)), 409, 'PRODUCT_CHANGED')
+  }
+})
+
+test('a real ADMIN product edit invalidates the old version and a refreshed request uses the new price', async () => {
+  const p = await product({ updatedAt: new Date('2026-01-01T00:00:00.123Z') })
+  const key = randomUUID()
+  const response = await fetch(base + '/api/v1/admin/products/' + p.id, {
+    method: 'PATCH',
+    headers: {
+      cookie: cookies.admin,
+      origin: env.APP_BASE_URL,
+      'x-requested-with': 'MembershipStore',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ priceFen: 4200 }),
+  })
+  assert.equal(response.status, 200)
+  const { product: current } = await response.json()
+  assert.notEqual(current.updatedAt, p.updatedAt.toISOString())
+  await rejected(
+    () => request('customer', body(p), key),
+    409,
+    'PRODUCT_CHANGED',
+  )
+
+  const refreshed = await request(
+    'customer',
+    {
+      ...body(p),
+      expectedProductUpdatedAt: current.updatedAt,
+    },
+    key,
+  )
+  assert.equal(refreshed.status, 201)
+  assert.equal(refreshed.body.order.amountFen, 4200)
+  assert.equal(refreshed.body.order.priceSnapshotFen, 4200)
 })
 
 test('both actors enforce all dynamic field types, required values, options and unknown fields', async () => {
@@ -427,7 +533,15 @@ test('both actors enforce all dynamic field types, required values, options and 
     const result = await request(role, { ...input, formData: valid })
     assert.equal(result.status, 201)
     assert.deepEqual(result.body.order.formData, valid)
-    assert.deepEqual(result.body.order.formSchemaSnapshot, full)
+    assert.deepEqual(
+      result.body.order.formSchemaSnapshot,
+      role === 'admin'
+        ? full
+        : {
+            version: 1,
+            fields: full.fields.map((field) => ({ ...field, hint: '' })),
+          },
+    )
   }
 })
 
@@ -614,6 +728,84 @@ test('complete role-safe DTOs, frozen terms, V1 revisions and correct actor-spec
   assert.equal(response.body.order.renewalPriceSnapshotFen, null)
 })
 
+test('CUSTOMER create, list and detail remove editor defaults while ADMIN and stored history retain them', async () => {
+  const option = { label: 'Basic', value: 'basic' }
+  const choice = {
+    id: 'plan',
+    type: 'select',
+    label: 'Plan',
+    required: false,
+    hint: 'Choose the service',
+    options: [option],
+  }
+  const schema = {
+    version: 1,
+    fields: [
+      { ...form.fields[0], defaultValue: 'editor-only account' },
+      form.fields[1],
+      { ...choice, defaultValue: 'basic' },
+    ],
+  }
+  const projection = { version: 1, fields: [...form.fields, choice] }
+  const p = await product({ formSchema: schema })
+  const created = await request('customer', body(p))
+  assert.equal(created.status, 201)
+  const order = created.body.order
+  const stored = await db.order.findUniqueOrThrow({ where: { id: order.id } })
+  const revisions = await db.orderRevision.findMany({
+    where: { orderId: order.id },
+  })
+  assert.equal(revisions.length, 1)
+  assert.deepEqual(stored.formSchemaSnapshot, schema)
+  assert.deepEqual(revisions[0].snapshotJson, buildOrderSnapshot(stored))
+  const detail = await request(
+    'customer',
+    undefined,
+    null,
+    cookies.customer,
+    'GET',
+    '/' + order.id,
+  )
+  const list = await request(
+    'customer',
+    undefined,
+    null,
+    cookies.customer,
+    'GET',
+    '?search=' + order.orderNo,
+  )
+  const adminDetail = await request(
+    'admin',
+    undefined,
+    null,
+    cookies.admin,
+    'GET',
+    '/' + order.id,
+  )
+  assert.equal(detail.status, 200)
+  assert.equal(list.status, 200)
+  assert.equal(adminDetail.status, 200)
+  assert.equal(list.body.total, 1)
+  for (const result of [order, detail.body.order, list.body.items[0]]) {
+    assert.deepEqual(Object.keys(result).sort(), [...customerKeys].sort())
+    assert.deepEqual(result.formSchemaSnapshot, projection)
+    assert.deepEqual(result.formData, body(p).formData)
+  }
+  assert.deepEqual(adminDetail.body.order.formSchemaSnapshot, schema)
+  const adminCreated = await request('admin', adminBody(p))
+  assert.equal(adminCreated.status, 201)
+  assert.deepEqual(adminCreated.body.order.formSchemaSnapshot, schema)
+  assert.deepEqual(
+    (await db.order.findUniqueOrThrow({ where: { id: order.id } }))
+      .formSchemaSnapshot,
+    schema,
+  )
+  assert.deepEqual(
+    await db.orderRevision.findMany({ where: { orderId: order.id } }),
+    revisions,
+  )
+})
+
 test('zero-price USER catalog and ADMIN adjustment create NOT_REQUIRED/PROCESSING without payment facts or entitlements', async () => {
   const p = await product({ priceFen: 0 })
   const ordinary = await product()
@@ -712,13 +904,30 @@ test('same actor/key replays exact original DTO after product price/schema/archi
     selfKey = randomUUID(),
     selfInput = body(self)
   const selfFirst = await request('customer', selfInput, selfKey)
-  await db.product.update({
+  assert.equal(selfFirst.status, 201)
+  const changed = await db.product.update({
     where: { id: self.id },
-    data: { listed: false, priceFen: 1 },
+    data: {
+      listed: false,
+      priceFen: 1,
+      updatedAt: new Date(self.updatedAt.getTime() + 1),
+    },
   })
-  assert.deepEqual(
-    (await request('customer', selfInput, selfKey)).body,
-    selfFirst.body,
+  const unlistedReplay = await request('customer', selfInput, selfKey)
+  assert.equal(unlistedReplay.status, 201)
+  assert.deepEqual(unlistedReplay.body, selfFirst.body)
+  await rejected(
+    () =>
+      request(
+        'customer',
+        {
+          ...selfInput,
+          expectedProductUpdatedAt: changed.updatedAt.toISOString(),
+        },
+        selfKey,
+      ),
+    409,
+    'IDEMPOTENCY_CONFLICT',
   )
   await rejected(
     () =>
@@ -729,6 +938,15 @@ test('same actor/key replays exact original DTO after product price/schema/archi
       ),
     409,
   )
+  await db.product.update({
+    where: { id: self.id },
+    data: { archivedAt: new Date(), formSchema: { version: 1, fields: [] } },
+  })
+  const beforeArchiveReplay = await snapshot()
+  const archivedReplay = await request('customer', selfInput, selfKey)
+  assert.equal(archivedReplay.status, 201)
+  assert.deepEqual(archivedReplay.body, selfFirst.body)
+  assert(isDeepStrictEqual(await snapshot(), beforeArchiveReplay))
 })
 
 test('sequential retries, actor namespaces, distinct keys and canonical field ordering preserve idempotency', async () => {
@@ -738,6 +956,7 @@ test('sequential retries, actor namespaces, distinct keys and canonical field or
   const first = await request('customer', input, key)
   const reordered = {
     formData: { account: 'non-sensitive-account' },
+    expectedProductUpdatedAt: input.expectedProductUpdatedAt,
     productId: p.id,
   }
   assert.deepEqual((await request('customer', reordered, key)).body, first.body)
@@ -811,21 +1030,28 @@ test('injected database failures at revision/event/audit/idempotency roll back e
     'AdminAuditLog',
     'IdempotencyRecord',
   ]) {
-    const key = randomUUID()
-    sql(
-      `CREATE TRIGGER Creation_test_failure BEFORE INSERT ON \`${table}\` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'ISOLATED_CREATION_FAILURE';`,
-    )
-    try {
-      await rejected(() => request('admin', adminBody(p), key), 503)
-    } finally {
-      sql('DROP TRIGGER Creation_test_failure;')
+    const roles =
+      table === 'AdminAuditLog'
+        ? (['admin'] as const)
+        : (['admin', 'customer'] as const)
+    for (const role of roles) {
+      const key = randomUUID()
+      const input = role === 'admin' ? adminBody(p) : body(p)
+      sql(
+        `CREATE TRIGGER Creation_test_failure BEFORE INSERT ON \`${table}\` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'ISOLATED_CREATION_FAILURE';`,
+      )
+      try {
+        await rejected(() => request(role, input, key), 503)
+      } finally {
+        sql('DROP TRIGGER Creation_test_failure;')
+      }
+      assert.equal((await request(role, input, key)).status, 201)
     }
-    assert.equal((await request('admin', adminBody(p), key)).status, 201)
   }
 })
 
-test('customer/product locks recheck concurrent disable/archive instead of creating from stale state', async () => {
-  for (const table of ['User', 'Product'] as const) {
+test('customer/product locks recheck a concurrent disable, archive or price edit before creation', async () => {
+  for (const change of ['disable', 'archive', 'price'] as const) {
     const p = await product()
     const target = await db.user.create({
       data: { loginEmail: randomUUID() + '@example.com', status: 'ACTIVE' },
@@ -838,14 +1064,15 @@ test('customer/product locks recheck concurrent disable/archive instead of creat
     const ready = new Promise<void>((resolve) => {
       locked = resolve
     })
+    const before = await snapshot()
     const writer = db.$transaction(async (tx) => {
-      if (table === 'User')
+      if (change === 'disable')
         await tx.$queryRaw`SELECT id FROM User WHERE id = ${target.id} FOR UPDATE`
       else
         await tx.$queryRaw`SELECT id FROM Product WHERE id = ${p.id} FOR UPDATE`
       locked()
       await gate
-      if (table === 'User')
+      if (change === 'disable')
         await tx.user.update({
           where: { id: target.id },
           data: { status: 'DISABLED' },
@@ -853,7 +1080,12 @@ test('customer/product locks recheck concurrent disable/archive instead of creat
       else
         await tx.product.update({
           where: { id: p.id },
-          data: { listed: false, archivedAt: new Date() },
+          data: {
+            ...(change === 'archive'
+              ? { listed: false, archivedAt: new Date() }
+              : { priceFen: 7 }),
+            updatedAt: new Date(p.updatedAt.getTime() + 1),
+          },
         })
     })
     await ready
@@ -876,8 +1108,21 @@ test('customer/product locks recheck concurrent disable/archive instead of creat
     }
     await writer
     const result = await pending
-    assert.equal(result.status, table === 'User' ? 403 : 409)
+    assert.equal(result.status, change === 'disable' ? 403 : 409)
+    assert.equal(
+      result.body.error.code,
+      change === 'disable' ? 'ACCOUNT_NOT_ELIGIBLE' : 'PRODUCT_CHANGED',
+    )
     assert.equal(await db.order.count({ where: { userId: target.id } }), 0)
+    const after = await snapshot()
+    for (const table of [
+      'Order',
+      'OrderRevision',
+      'OrderEvent',
+      'IdempotencyRecord',
+      'AdminAuditLog',
+    ])
+      assert.deepEqual(after[table], before[table])
   }
 })
 

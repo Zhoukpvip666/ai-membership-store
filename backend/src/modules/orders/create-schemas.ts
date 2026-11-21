@@ -6,7 +6,10 @@ const common = {
   productId: id,
   formData: z.record(z.string(), z.unknown()),
 }
-export const createCustomerOrder = z.strictObject(common)
+export const createCustomerOrder = z.strictObject({
+  ...common,
+  expectedProductUpdatedAt: z.iso.datetime({ precision: 3 }),
+})
 export const createAdminOrder = z.strictObject({
   ...common,
   userId: id,

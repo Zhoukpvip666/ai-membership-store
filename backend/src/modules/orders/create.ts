@@ -53,6 +53,16 @@ export function orderCreationService(database: PrismaClient) {
           where: { id: productId },
         })
         if (!product) throw new ApiError(404, 'PRODUCT_NOT_FOUND', '商品不存在')
+        if (
+          intent.role === 'CUSTOMER' &&
+          product.updatedAt.toISOString() !==
+            intent.input.expectedProductUpdatedAt
+        )
+          throw new ApiError(
+            409,
+            'PRODUCT_CHANGED',
+            '商品信息已变更，请重新确认',
+          )
         if (product.archivedAt)
           throw new ApiError(409, 'PRODUCT_ARCHIVED', '商品已归档')
         if (!admin && !product.listed)
