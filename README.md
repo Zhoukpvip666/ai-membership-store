@@ -103,6 +103,10 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 
 ## Important launch gates
 
+For local T24.1 WeChat collection settings, apply the additive migration before opening the administrator settings page. Set `WECHAT_QR_STORAGE_DIR` to a private absolute path on persistent storage outside the checkout, or use the ignored `.local-data/wechat-qr` directory at the checkout root. Keep the storage directory outside any static web root. Give the API process read/write access and include it in backups with the database. The new switch starts disabled until an administrator uploads an image and enables collection.
+
+Uploads write an immutable file before the transaction updates the current reference and audit. Superseded files and files left unpublished by failed operations are retained to protect in-flight reads and permit recovery. During maintenance, stop writes, back up both stores and remove only files that are outside the live reference and any retained backup. Keep the storage path stable across API restarts.
+
 Before accepting real orders, the operator must verify that the supplier is authorized to provide and resell the relevant service, that the service provider's terms permit the intended invitation/resale workflow, that customer-facing descriptions are accurate, and that the selected payment/settlement arrangement is permitted for the merchant and product category. The project documents do not constitute legal or payment-provider approval.
 
 ## Repository structure

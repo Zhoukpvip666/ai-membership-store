@@ -8,13 +8,14 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(
+async function request(
   path: string,
   method = 'GET',
   body?: unknown,
   idempotencyKey?: string,
   signal?: AbortSignal,
-): Promise<T> {
+): Promise<Response> {
+  const upload = body instanceof Blob
   let response: Response
   try {
     response = await fetch('/api/v1' + path, {
@@ -26,11 +27,17 @@ export async function api<T>(
         method === 'GET'
           ? {}
           : {
-              'Content-Type': 'application/json',
+              'Content-Type': upload
+                ? 'application/octet-stream'
+                : 'application/json',
               'X-Requested-With': 'MembershipStore',
               ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
             },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: upload
+        ? body
+        : body === undefined
+          ? undefined
+          : JSON.stringify(body),
     })
   } catch {
     throw new ApiError(0, 'NETWORK_ERROR', '无法连接本地 API，请确认后端已启动')
@@ -45,7 +52,22 @@ export async function api<T>(
       error?.error?.message ?? '操作失败，请稍后重试',
     )
   }
+  return response
+}
+
+export async function api<T>(
+  path: string,
+  method = 'GET',
+  body?: unknown,
+  idempotencyKey?: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  const response = await request(path, method, body, idempotencyKey, signal)
   return response.status === 204 ? (undefined as T) : response.json()
+}
+
+export async function apiBlob(path: string) {
+  return (await request(path)).blob()
 }
 
 export interface Account {

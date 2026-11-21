@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { settings } from '../../stores/settings'
+import WechatPaymentSettings from './WechatPaymentSettings.vue'
 const form = reactive({
   storeName: '',
   ownerEmail: '',
@@ -90,17 +91,17 @@ onMounted(load)
         <p class="inline-note">
           通知邮箱不改变管理员登录邮箱，本阶段不发送任何邮件。
         </p>
-        <ElFormItem label="线下付款说明">
+        <ElFormItem label="商家备注">
           <ElInput
             v-model="form.paymentInstructions"
             type="textarea"
             :rows="5"
             maxlength="4000"
             show-word-limit
-            aria-label="线下付款说明"
+            aria-label="商家备注"
           />
           <small class="muted"
-            >客户会在有效的待付款订单中看到这段纯文本。请勿填写密码、验证码或密钥。留空可清除说明。</small
+            >全店统一纯文本，可填写客服联系方式、付款注意事项或售后说明。留空表示无备注。</small
           >
         </ElFormItem>
       </div>
@@ -108,5 +109,6 @@ onMounted(load)
         >保存设置</ElButton
       >
     </ElForm>
+    <WechatPaymentSettings />
   </section>
 </template>

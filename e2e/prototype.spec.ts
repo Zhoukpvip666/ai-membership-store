@@ -32,6 +32,8 @@ test.beforeEach(async ({ page }) => {
           },
         },
       })
+    if (path === '/api/v1/admin/settings/wechat-payment')
+      return route.fulfill({ json: { enabled: false, imageUrl: null } })
     if (
       [
         '/api/v1/admin/orders',

@@ -6,6 +6,7 @@ import {
   type BrowserContext,
 } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
+import sharp from 'sharp'
 import { integrationEnvironment } from '../backend/test/integration/support.ts'
 import { createDatabase } from '../backend/src/db/client.ts'
 const env = integrationEnvironment()
@@ -28,7 +29,7 @@ function guardRequests(page: Page) {
     if (
       url.pathname.startsWith('/api/') &&
       !catalogRead &&
-      !/^\/api\/v1\/(auth\/(login|me|logout)|admin\/(users|settings|products(?:\/[^/]+(?:\/archive)?)?))$/.test(
+      !/^\/api\/v1\/(auth\/(login|me|logout)|admin\/(users|settings(?:\/wechat-(?:payment|qr))?|products(?:\/[^/]+(?:\/archive)?)?))$/.test(
         url.pathname,
       )
     )
@@ -606,6 +607,68 @@ test('settings save to database, reload with brand and reject invalid timezone',
     fullPage: true,
   })
 })
+test('wechat settings upload and replace a preview, enforce enable eligibility, and persist on reload', async ({
+  page,
+}) => {
+  await page.goto('/admin/settings')
+  const panel = page.getByRole('region', { name: '收款设置' })
+  await expect(page.getByLabel('商家备注', { exact: true })).toBeVisible()
+  const toggle = panel.getByRole('switch', { name: '启用微信收款' })
+  const switchLabel = panel.getByText('启用微信收款', { exact: true })
+  await expect(toggle).toBeDisabled()
+  await expect(
+    panel.getByText('尚未上传微信收款码。上传后可启用。'),
+  ).toBeVisible()
+  const file = panel.getByLabel('微信收款码图片')
+  const picture = (background: string) =>
+    sharp({ create: { width: 72, height: 72, channels: 3, background } })
+  await file.setInputFiles({
+    name: 'fake.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('plain text'),
+  })
+  await panel.getByRole('button', { name: '上传收款码' }).click()
+  await expect(panel.getByRole('alert')).toContainText('请上传有效的')
+  await expect(toggle).toBeDisabled()
+
+  await file.setInputFiles({
+    name: 'fixture.png',
+    mimeType: 'image/png',
+    buffer: await picture('#FFFFFF').png().toBuffer(),
+  })
+  await panel.getByRole('button', { name: '上传收款码' }).click()
+  const preview = panel.getByRole('img', { name: '当前微信收款码' })
+  await expect(preview).toBeVisible()
+  await expect(toggle).toBeEnabled()
+  await switchLabel.click()
+  await expect(toggle).toBeChecked()
+  const first = await preview.getAttribute('src')
+  await file.setInputFiles({
+    name: 'replacement.webp',
+    mimeType: 'image/webp',
+    buffer: await picture('#00FFFF').webp().toBuffer(),
+  })
+  await panel.getByRole('button', { name: '更换收款码' }).click()
+  await expect(preview).toBeVisible()
+  await expect(preview).not.toHaveAttribute('src', first!)
+  await expect(toggle).toBeChecked()
+
+  await page.reload()
+  await expect(toggle).toBeChecked()
+  await expect(preview).toBeVisible()
+  await switchLabel.click()
+  await expect(toggle).not.toBeChecked()
+  await expect(preview).toBeVisible()
+  await page.reload()
+  await expect(preview).toBeVisible()
+  await expect(toggle).not.toBeChecked()
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true)
+})
+
 test('server rejects invalid form schemas without leaking values and unauthenticated users cannot read products/settings', async ({
   page,
   context,

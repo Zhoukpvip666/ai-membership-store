@@ -5,6 +5,7 @@ import { createRequire } from 'node:module'
 import { randomBytes } from 'node:crypto'
 import {
   mkdtempSync,
+  existsSync,
   writeFileSync,
   unlinkSync,
   rmdirSync,
@@ -18,6 +19,7 @@ const cwd = fileURLToPath(new URL('..', import.meta.url))
 const project = 'membership-foundation-' + randomBytes(6).toString('hex')
 const directory = mkdtempSync(join(tmpdir(), 'membership-foundation-'))
 const envFile = join(directory, 'test.env')
+const qrStorageDirectory = join(directory, 'wechat-qr')
 const upgradeSnapshot = join(directory, 'upgrade.json')
 const orderUpgradeSnapshot = join(directory, 'order-upgrade.json')
 const sourceUpgradeSnapshot = join(directory, 'source-upgrade.json')
@@ -248,6 +250,7 @@ try {
     ADMIN_EMAIL: 'owner@example.com',
     ADMIN_PASSWORD: adminPassword,
     FOUNDATION_DB_TEST: project,
+    WECHAT_QR_STORAGE_DIR: qrStorageDirectory,
   }
   if (!browserMode && !freshInstall) {
     // Exercise the actual committed old schema with populated records before upgrading.
@@ -688,13 +691,10 @@ try {
         run(process.execPath, ['--test', 'test/integration/' + suite], env),
       )
   } else if (productsOnly && !browserMode) {
-    console.info(
-      run(
-        process.execPath,
-        ['--test', 'test/integration/products.test.ts'],
-        env,
-      ),
-    )
+    for (const suite of ['products.test.ts', 'wechat-payment.test.ts'])
+      console.info(
+        run(process.execPath, ['--test', 'test/integration/' + suite], env),
+      )
   } else if (ordersOnly) {
     // Fresh, runner-owned MySQL only. No Seed CLI, seedAdministrator, worker or browser.
     console.info(
@@ -716,7 +716,7 @@ try {
       try {
         const versions = await db.$queryRawUnsafe('SELECT COUNT(*) AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL');
         const tables = await db.$queryRawUnsafe('SELECT COUNT(*) AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()');
-        assert.equal(Number(versions[0].n), 12);
+        assert.equal(Number(versions[0].n), 13);
         assert.equal(Number(tables[0].n), 14);
         if (await db.user.count() === 0) {
           await db.user.create({ data: { loginEmail: 'model-fixture@example.com', role: 'ADMIN', status: 'DISABLED' } });
@@ -951,6 +951,11 @@ try {
     unlinkSync(creationUpgradeSnapshot)
   } catch {
     /* Optional isolated upgrade artifact. */
+  }
+  if (existsSync(qrStorageDirectory)) {
+    for (const filename of readdirSync(qrStorageDirectory))
+      unlinkSync(join(qrStorageDirectory, filename))
+    rmdirSync(qrStorageDirectory)
   }
   rmdirSync(directory)
 }

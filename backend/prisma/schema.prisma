@@ -440,6 +440,8 @@ model AppSettings {
   ownerEmail          String   @db.VarChar(254)
   timezone            String   @default("Asia/Shanghai") @db.VarChar(64)
   paymentInstructions String   @default("") @db.VarChar(4000)
+  wechatPayEnabled    Boolean  @default(false)
+  wechatQrImageKey    String?  @db.VarChar(40)
   updatedAt           DateTime @updatedAt @db.DateTime(3)
 }
 

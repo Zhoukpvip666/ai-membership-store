@@ -16,6 +16,7 @@ const snapshot = async () => ({
 try {
   if (phase === 'before') {
     const admin = await db.user.findFirstOrThrow({ where: { role: 'ADMIN' } })
+    await db.$executeRaw`UPDATE AppSettings SET paymentInstructions = 'Existing merchant note' WHERE id = 1`
     const user = await db.user.create({
       data: { loginEmail: randomUUID() + '@example.com' },
     })
@@ -74,6 +75,21 @@ try {
       JSON.parse(JSON.stringify(await snapshot())),
       JSON.parse(readFileSync(path, 'utf8')),
     )
+    assert.deepEqual(
+      await db.appSettings.findUniqueOrThrow({
+        where: { id: 1 },
+        select: {
+          paymentInstructions: true,
+          wechatPayEnabled: true,
+          wechatQrImageKey: true,
+        },
+      }),
+      {
+        paymentInstructions: 'Existing merchant note',
+        wechatPayEnabled: false,
+        wechatQrImageKey: null,
+      },
+    )
     const columns = await db.$queryRaw<
       { definition: string }[]
     >`SELECT COLUMN_TYPE AS definition FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='Order' AND COLUMN_NAME='paymentStatus'`
@@ -83,7 +99,7 @@ try {
       0,
     )
     console.info(
-      'Migration twelve preserved every business row and revision exactly; no zero-order reclassification or fabricated payment facts. Repeat deploy and schema diff passed.',
+      'Migrations twelve and thirteen preserved existing business fields and revisions, including the merchant note. WeChat starts disabled without an image.',
     )
   }
 } finally {

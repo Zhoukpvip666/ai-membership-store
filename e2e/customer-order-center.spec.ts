@@ -213,7 +213,7 @@ test('admin saves and clears plain-text guidance, customer sees it only on eligi
     await cookie(adminContext, admin.id)
     const adminPage = await adminContext.newPage()
     await adminPage.goto('/admin/settings')
-    const instructions = adminPage.getByLabel('线下付款说明', { exact: true })
+    const instructions = adminPage.getByLabel('商家备注', { exact: true })
     await expect(instructions).toBeEnabled()
     await expect(instructions).toHaveAttribute('maxlength', '4000')
     await adminPage

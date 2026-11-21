@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isAbsolute } from 'node:path'
 
 const loopback = new Set(['localhost', '127.0.0.1', '[::1]'])
 const localDatabaseUrl = z.string().refine((value) => {
@@ -49,6 +50,11 @@ const appEnv = databaseEnv.extend({
         value.trim().length >= 12 && !value.startsWith('replace_with_'),
     ),
   API_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  WECHAT_QR_STORAGE_DIR: z
+    .string()
+    .trim()
+    .refine((value) => isAbsolute(value) && !value.includes('\0'))
+    .optional(),
 })
 
 export class EnvironmentError extends Error {

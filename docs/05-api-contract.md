@@ -119,6 +119,12 @@ Customer order reads are implemented at `/customer/orders` as documented above; 
 | POST | /admin/products/:id/archive | Irreversibly archive and unlist product |
 | GET | /admin/settings | Read ADMIN settings including store name, owner email, timezone and paymentInstructions |
 | PATCH | /admin/settings | Update store name, owner email and timezone; T21 accepts optional plain-text paymentInstructions (max 4000) |
+| GET | /admin/settings/wechat-payment | Read `{enabled,imageUrl}`; imageUrl is null when no QR has been uploaded |
+| PATCH | /admin/settings/wechat-payment | Set `{enabled:boolean}` and return the same metadata |
+| GET | /admin/settings/wechat-qr | Read the current validated image as `image/png` |
+| PUT | /admin/settings/wechat-qr | Upload one binary PNG, JPEG or WebP image and return the same metadata |
+
+T24.1 routes require ADMIN and use no-store responses. PUT accepts `application/octet-stream` with a 2 MiB body limit. It retains the exact Origin and custom CSRF header checks and the existing administrator mutation limit. The server validates image signatures, dimensions up to 2048 pixels per side and full decoding, then stores a metadata-free PNG capped at 2 MiB. The image route takes no path, filename or query parameters. The response exposes a fixed administrator URL. Enabling before upload returns 409. Missing or unreadable configured files return 503. The fixed image lookup and enable state can be reused behind a separately authorized customer route with payable-order and ownership checks. The existing customer guidance projection is unchanged.
 
 No supplier-cost or secret credential fields.
 

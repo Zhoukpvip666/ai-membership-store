@@ -21,13 +21,9 @@ try {
         activatedAt: new Date(),
       },
     })
-    await tx.appSettings.create({
-      data: {
-        id: 1,
-        storeName: 'Isolated product fixture',
-        ownerEmail: env.ADMIN_EMAIL,
-      },
-    })
+    // Also used before applying the current AppSettings migration.
+    await tx.$executeRaw`INSERT INTO AppSettings (id,storeName,ownerEmail,updatedAt)
+      VALUES (1,'Isolated product fixture',${env.ADMIN_EMAIL},UTC_TIMESTAMP(3))`
   })
 } finally {
   await db.$disconnect()
