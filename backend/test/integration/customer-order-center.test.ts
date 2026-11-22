@@ -92,10 +92,10 @@ after(async () => {
   await db.$disconnect()
 })
 
-test('guidance requires an ACTIVE CUSTOMER session and has an exact no-store projection', async () => {
+test('guidance requires an ACTIVE storefront session and has an exact no-store projection', async () => {
   for (const [cookie, status] of [
     ['', 401],
-    [admin, 403],
+    [admin, 200],
     [pending, 401],
     [disabled, 401],
   ] as const)

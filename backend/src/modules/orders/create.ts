@@ -7,14 +7,11 @@ import { buildOrderSnapshot, orderRevisionSelect } from './revisions.ts'
 import { creationForm } from './create-form.ts'
 import type { AdminCreation, CustomerCreation } from './create-schemas.ts'
 import { insertWithOrderNumber } from './order-number.ts'
-
-type Intent =
-  | { role: 'CUSTOMER'; input: CustomerCreation }
-  | { role: 'ADMIN'; input: AdminCreation }
+import { orderActorType, orderOperation, type OrderIntent } from './actor.ts'
 
 export function orderCreationService(database: PrismaClient) {
   return async (
-    intent: Intent,
+    intent: OrderIntent<CustomerCreation, AdminCreation>,
     actorId: string,
     key: string,
     requestId: string,
@@ -23,15 +20,15 @@ export function orderCreationService(database: PrismaClient) {
       database,
       actorId,
       key,
-      intent.role === 'ADMIN' ? 'ADMIN_ORDER_CREATE' : 'CUSTOMER_ORDER_CREATE',
+      orderOperation(intent, 'CREATE'),
       intent.input,
       async (tx) => {
-        const admin = intent.role === 'ADMIN' ? intent.input : null
+        const admin = intent.scope === 'management' ? intent.input : null
         const userId = admin?.userId ?? actorId
         // Both paths acquire locks in the same order: target User, then Product.
         // All eligibility checks happen after locking, not on stale HTTP reads.
         await tx.$queryRaw`SELECT id FROM User WHERE id = ${userId} FOR UPDATE`
-        const customer = await tx.user.findUnique({
+        const buyer = await tx.user.findUnique({
           where: { id: userId },
           select: {
             id: true,
@@ -41,11 +38,13 @@ export function orderCreationService(database: PrismaClient) {
             loginEmail: true,
           },
         })
-        if (!customer || customer.role !== 'CUSTOMER')
+        const expectedRole =
+          intent.scope === 'management' ? 'CUSTOMER' : intent.actorRole
+        if (!buyer || buyer.role !== expectedRole)
           throw new ApiError(404, 'CUSTOMER_NOT_FOUND', '客户不存在')
-        if (admin && customer.status === 'DISABLED')
+        if (admin && buyer.status === 'DISABLED')
           throw new ApiError(409, 'CUSTOMER_DISABLED', '客户已停用')
-        if (!admin && customer.status !== 'ACTIVE')
+        if (!admin && buyer.status !== 'ACTIVE')
           throw new ApiError(403, 'ACCOUNT_NOT_ELIGIBLE', '账户尚不可下单')
         const { productId } = intent.input
         await tx.$queryRaw`SELECT id FROM Product WHERE id = ${productId} FOR UPDATE`
@@ -54,7 +53,7 @@ export function orderCreationService(database: PrismaClient) {
         })
         if (!product) throw new ApiError(404, 'PRODUCT_NOT_FOUND', '商品不存在')
         if (
-          intent.role === 'CUSTOMER' &&
+          intent.scope === 'storefront' &&
           product.updatedAt.toISOString() !==
             intent.input.expectedProductUpdatedAt
         )
@@ -102,7 +101,8 @@ export function orderCreationService(database: PrismaClient) {
             'PRICE_ADJUSTMENT_REASON_REQUIRED',
             '调整价格时必须填写原因',
           )
-        const actorType = admin ? 'ADMIN' : 'USER'
+        const actorType = orderActorType(intent)
+        const isAdminActor = actorType === 'ADMIN'
         const order = await insertWithOrderNumber((orderNo) =>
           tx.order.create({
             data: {
@@ -111,8 +111,8 @@ export function orderCreationService(database: PrismaClient) {
               userId,
               productId,
               source: actorType,
-              createdByAdminId: admin ? actorId : null,
-              createdByUserId: admin ? null : actorId,
+              createdByAdminId: isAdminActor ? actorId : null,
+              createdByUserId: isAdminActor ? null : actorId,
               kind: product.type === 'SUBSCRIPTION' ? 'INITIAL' : 'ONE_TIME',
               hidden: false,
               productNameSnapshot: product.name,
@@ -126,8 +126,7 @@ export function orderCreationService(database: PrismaClient) {
               formSchemaSnapshot: product.formSchema as Prisma.InputJsonValue,
               formData,
               amountFen,
-              contactEmailSnapshot:
-                customer.notificationEmail ?? customer.loginEmail,
+              contactEmailSnapshot: buyer.notificationEmail ?? buyer.loginEmail,
               internalNote: admin?.internalNote ?? null,
               paymentStatus: amountFen === 0 ? 'NOT_REQUIRED' : 'UNPAID',
               fulfillmentStatus: amountFen === 0 ? 'PROCESSING' : 'NOT_STARTED',
@@ -159,13 +158,13 @@ export function orderCreationService(database: PrismaClient) {
             orderId: order.id,
             eventType: 'ORDER_CREATED',
             actorType,
-            actorUserId: admin ? null : actorId,
-            actorAdminId: admin ? actorId : null,
+            actorUserId: isAdminActor ? null : actorId,
+            actorAdminId: isAdminActor ? actorId : null,
             toStateJson: state,
             note: admin?.priceAdjustmentReason ?? null,
           },
         })
-        if (admin)
+        if (isAdminActor)
           await tx.adminAuditLog.create({
             data: {
               actorAdminId: actorId,
@@ -173,7 +172,7 @@ export function orderCreationService(database: PrismaClient) {
               entityType: 'Order',
               entityId: order.id,
               requestId,
-              reason: admin.priceAdjustmentReason,
+              reason: admin?.priceAdjustmentReason,
               afterJson: state,
             },
           })

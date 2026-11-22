@@ -669,6 +669,7 @@ try {
       'customer-order-center.test.ts',
       'customer-payment-claim.test.ts',
       'auth.test.ts',
+      'admin-storefront.test.ts',
     ])
       console.info(
         run(process.execPath, ['--test', 'test/integration/' + suite], env),

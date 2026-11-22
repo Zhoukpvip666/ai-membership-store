@@ -40,7 +40,7 @@ The same Vue application may serve both surfaces with route-level layouts and au
 
 - Top header with compact logo/site name, navigation, and signed-in account/avatar.
 - On desktop and mobile, show 管理控制台 only for a confirmed ADMIN session. Restore the role from the server on load and refresh. While the ADMIN storefront is open, recheck the session when the window regains focus or the tab becomes visible and every 30 seconds while visible.
-- Navigation items: 商品, 我的订阅, 我的订单, 个人中心.
+- Navigation items: 商品, 我的订阅, 我的订单, 个人中心. ACTIVE administrators use the same storefront to purchase at the listed price, manage their own eligible orders, submit payment claims and view their own subscriptions. The management console retains its separate controls.
 - Product catalog is the default page.
 - Category filters: 全部, 订阅服务, 一次性服务.
 - Product cards in a three-column grid on typical desktop widths.
@@ -76,7 +76,7 @@ The same Vue application may serve both surfaces with route-level layouts and au
 - The first UI prototype uses mock data and must not claim a real payment was processed.
 
 **我的订阅**
-- `/subscriptions` shows the signed-in ACTIVE customer's subscriptions. Cards show the frozen product name and term, the subscription status, expiry date and renewal price.
+- `/subscriptions` shows the signed-in ACTIVE storefront account's own subscriptions. Cards show the frozen product name and term, the subscription status, expiry date and renewal price.
 - Filter by all, active, expired or terminated. Support server-side pagination, a loading state, an empty state and a retry action after a failed request.
 - Details show the start and expiry times in the business timezone and link to the source order when it belongs to the customer and is visible. Historical subscriptions can have no source order.
 - Product delisting and archival leave the subscription's frozen display data and expiry intact. Keep subscription form values and internal notes private. Renewal actions are out of scope.

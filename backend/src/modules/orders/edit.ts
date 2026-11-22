@@ -6,16 +6,14 @@ import { creationForm } from './create-form.ts'
 import { adminOrderDto, adminOrderSelect, customerOrderDto } from './dto.ts'
 import type { AdminEdit, CustomerEdit } from './edit-schemas.ts'
 import { buildOrderSnapshot, orderRevisionSelect } from './revisions.ts'
+import { orderActorType, orderOperation, type OrderIntent } from './actor.ts'
 
-type Intent =
-  | { role: 'CUSTOMER'; input: CustomerEdit }
-  | { role: 'ADMIN'; input: AdminEdit }
 const ineligible = () =>
   new ApiError(409, 'ORDER_NOT_EDITABLE', '订单当前不可编辑')
 
 export function orderEditService(database: PrismaClient) {
   return async (
-    intent: Intent,
+    intent: OrderIntent<CustomerEdit, AdminEdit>,
     orderId: string,
     actorId: string,
     key: string,
@@ -25,10 +23,10 @@ export function orderEditService(database: PrismaClient) {
       database,
       actorId,
       key,
-      intent.role === 'ADMIN' ? 'ADMIN_ORDER_EDIT' : 'CUSTOMER_ORDER_EDIT',
+      orderOperation(intent, 'EDIT'),
       { orderId, ...intent.input },
       async (tx) => {
-        const admin = intent.role === 'ADMIN' ? intent.input : null
+        const admin = intent.scope === 'management' ? intent.input : null
         // Include ownership in both the locking query and the ORM read. A foreign
         // ID has the same response as a missing ID, before any state is inspected.
         if (admin)
@@ -122,7 +120,8 @@ export function orderEditService(database: PrismaClient) {
           where: { id: orderId },
           select: { ...orderRevisionSelect, user: adminOrderSelect.user },
         })
-        const actorType = admin ? 'ADMIN' : 'USER'
+        const actorType = orderActorType(intent)
+        const isAdminActor = actorType === 'ADMIN'
         await tx.orderRevision.create({
           data: {
             orderId,
@@ -147,14 +146,14 @@ export function orderEditService(database: PrismaClient) {
             orderId,
             eventType: 'NOTE',
             actorType,
-            actorUserId: admin ? null : actorId,
-            actorAdminId: admin ? actorId : null,
+            actorUserId: isAdminActor ? null : actorId,
+            actorAdminId: isAdminActor ? actorId : null,
             fromStateJson: state(order),
             toStateJson: state(updated),
             note: admin?.priceAdjustmentReason ?? null,
           },
         })
-        if (admin)
+        if (isAdminActor)
           await tx.adminAuditLog.create({
             data: {
               actorAdminId: actorId,
@@ -162,7 +161,7 @@ export function orderEditService(database: PrismaClient) {
               entityType: 'Order',
               entityId: orderId,
               requestId,
-              reason: admin.priceAdjustmentReason,
+              reason: admin?.priceAdjustmentReason,
               beforeJson: state(order),
               afterJson: state(updated),
             },

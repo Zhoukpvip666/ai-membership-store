@@ -99,13 +99,6 @@ router.beforeEach(async (to) => {
     }
   if (to.meta.authenticated && !auth.state.user)
     return { path: '/login', query: { redirect: to.fullPath } }
-  if (to.meta.customerPurchase && auth.state.user?.role !== 'CUSTOMER')
-    return '/admin/orders'
-  if (
-    (to.meta.customerOrders || to.meta.customerSubscriptions) &&
-    auth.state.user?.role !== 'CUSTOMER'
-  )
-    return '/profile'
 })
 window.addEventListener('membership:unauthenticated', () => {
   if (router.currentRoute.value.meta.admin)

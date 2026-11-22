@@ -288,7 +288,8 @@ test('cancel HTTP endpoints require active persisted role Sessions, CSRF, owners
   )
   await rejected(
     () => request('customer', order.id, body(), randomUUID(), cookies.admin),
-    403,
+    404,
+    'NOT_FOUND',
   )
   await rejected(
     () => request('customer', order.id, body(), randomUUID(), cookies.bob),

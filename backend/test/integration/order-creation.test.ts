@@ -212,16 +212,11 @@ test('creation enforces persisted Session, role, ACTIVE self-order eligibility a
       cookies.revoked,
     ])
       await rejected(() => request(role, input, randomUUID(), cookie), 401)
-    await rejected(
-      () =>
-        request(
-          role,
-          input,
-          randomUUID(),
-          cookies[role === 'admin' ? 'customer' : 'admin'],
-        ),
-      403,
-    )
+    if (role === 'admin')
+      await rejected(
+        () => request(role, input, randomUUID(), cookies.customer),
+        403,
+      )
   }
   await rejected(
     () => request('customer', body(p), randomUUID(), cookies.pending),

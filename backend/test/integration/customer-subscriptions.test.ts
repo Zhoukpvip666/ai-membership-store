@@ -159,15 +159,21 @@ after(async () => {
   await db.$disconnect()
 })
 
-test('only an authenticated CUSTOMER can read subscriptions and ownership cannot be overridden', async () => {
+test('subscription reads require an active session and never accept an ownership override', async () => {
   for (const endpoint of [path, path + '/' + fulfilledId]) {
     assert.equal((await request(endpoint)).status, 401)
-    assert.equal((await request(endpoint, adminCookie)).status, 403)
     assert.equal(
       (await request(endpoint + '?userId=' + owner, strangerCookie)).status,
       400,
     )
   }
+  const adminList = await request(path, adminCookie)
+  assert.equal(adminList.status, 200)
+  assert.deepEqual(adminList.body.items, [])
+  assert.equal(
+    (await request(path + '/' + fulfilledId, adminCookie)).status,
+    404,
+  )
   const empty = await request(path, strangerCookie)
   assert.equal(empty.status, 200)
   assert.deepEqual(empty.body.items, [])
