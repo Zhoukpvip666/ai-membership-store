@@ -43,7 +43,7 @@ The same Vue application may serve both surfaces with route-level layouts and au
 - Navigation items: 商品, 我的订阅, 我的订单, 个人中心. ACTIVE administrators use the same storefront to purchase at the listed price, manage their own eligible orders, submit payment claims and view their own subscriptions. The management console retains its separate controls.
 - Product catalog is the default page. Search and filters sit directly below the navigation.
 - Category filters: 全部, 订阅服务, 一次性服务.
-- Product cards use three columns on typical desktop widths, two columns on tablets and one column on mobile.
+- Product cards use three columns on typical desktop widths and two columns on tablets and mobile.
 - A card shows a centered 4:3 cover, the product name and the initial price. Use the shared placeholder when the cover is absent or fails to load. The whole card links to the detail page.
 - The current navigation item is visible in the header or mobile bar. On product detail and purchase routes, the catalog remains the current section.
 - Storefront colors, type, spacing, borders and focus styles use variables scoped to the storefront. A compact 预览环境 label identifies the local preview in the footer.
@@ -53,7 +53,7 @@ The same Vue application may serve both surfaces with route-level layouts and au
 
 - Compact top header with logo/site name and account/avatar entry.
 - Fixed bottom navigation with four items: 商品, 订阅, 订单, 我的.
-- Product cards become a compact single-column list with the same information and details link as desktop.
+- Product cards become a compact two-column grid with the same information and details link as desktop.
 - Bottom navigation must respect iOS safe-area insets and must not cover page content.
 - Checkout should use a mobile-friendly bottom sheet or full-width dialog.
 - On desktop, use the top navigation and do not show the mobile bottom bar.
@@ -234,7 +234,7 @@ The original Task 1.1 prototype uses Mock data. T20 supersedes that baseline for
 
 - Customer storefront and owner/admin console share the approved visual language.
 - Desktop and mobile navigation behave as specified.
-- Customer catalog uses three columns on desktop and one column on mobile.
+- Customer catalog uses three columns on desktop and two columns on mobile.
 - Admin navigation is sidebar on desktop and horizontally scrollable on mobile.
 - All six admin sections and four customer sections are navigable.
 - Main prototype interactions listed above work without a backend.

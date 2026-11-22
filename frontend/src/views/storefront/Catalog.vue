@@ -268,7 +268,7 @@ onMounted(load)
   line-height: 1.2;
   letter-spacing: -0.025em;
 }
-.catalog-product-link svg {
+.catalog-card-copy > svg {
   position: absolute;
   inset-inline-end: var(--store-space-5);
   top: 50%;
@@ -279,7 +279,7 @@ onMounted(load)
   justify-content: center;
   margin-top: var(--store-space-6);
 }
-@media (max-width: 979px) and (min-width: 768px) {
+@media (max-width: 979px) {
   .product-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -298,8 +298,20 @@ onMounted(load)
     min-height: 44px;
   }
   .product-grid {
-    grid-template-columns: minmax(0, 1fr);
     gap: var(--store-space-3);
+  }
+  .catalog-card-copy {
+    min-height: 0;
+    padding: var(--store-space-3);
+  }
+  .catalog-product-link h2 {
+    font-size: 15px;
+  }
+  .catalog-price {
+    font-size: clamp(17px, 4.8vw, 22px);
+  }
+  .catalog-card-copy > svg {
+    display: none;
   }
 }
 </style>

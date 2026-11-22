@@ -132,7 +132,7 @@ test('guest catalog loads, then searches, filters and paginates using the public
     await grid.evaluate(
       (el) => getComputedStyle(el).gridTemplateColumns.split(' ').length,
     ),
-  ).toBe(info.project.name === 'mobile-edge' ? 1 : 3)
+  ).toBe(info.project.name === 'mobile-edge' ? 2 : 3)
   await checkNoHorizontalOverflow(page)
 
   const search = page.getByRole('textbox', { name: '搜索商品', exact: true })
