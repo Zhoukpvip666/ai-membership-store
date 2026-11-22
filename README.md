@@ -109,6 +109,7 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 28. docs/27-customer-storefront-and-order-placement.md — approved T22 public catalog, protected purchase form, login continuation and offline order-placement design.
 29. [docs/28-production-deployment-design.md](docs/28-production-deployment-design.md) — merged production design and historical readiness audit; rollout requires separate evidence.
 30. [docs/29-product-cover-images.md](docs/29-product-cover-images.md) — T24.5B single-cover upload, display, storage and migration.
+31. [docs/30-storefront-launch-preparation.md](docs/30-storefront-launch-preparation.md) — next-task draft for customer-facing launch polish and T23.1 application readiness.
 
 Earlier milestone exclusions and test reports describe their original delivery scope. Later merged contracts supersede those exclusions for implemented features; historical test results are not evidence of a new test run or a current deployment.
 
@@ -164,7 +165,8 @@ Before accepting real orders, the operator must verify that the supplier is auth
     ├── 26-customer-order-center.md
     ├── 27-customer-storefront-and-order-placement.md
     ├── 28-production-deployment-design.md
-    └── 29-product-cover-images.md
+    ├── 29-product-cover-images.md
+    └── 30-storefront-launch-preparation.md
 ```
 
 ## Local development
