@@ -5,12 +5,14 @@ import {
   ReceiptText,
   UserRound,
   ArrowUpRight,
-  FlaskConical,
 } from '@lucide/vue'
 import Brand from '../components/Brand.vue'
 import { auth } from '../stores/auth'
 import { watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { settings } from '../stores/settings'
+
+const route = useRoute()
 watch(
   () => auth.state.user?.role,
   (role, _previous, onCleanup) => {
@@ -46,57 +48,70 @@ const nav = [
   },
   { path: '/profile', text: '个人中心', short: '我的', icon: UserRound },
 ]
+function currentPage(path: string) {
+  if (route.path === path) return 'page'
+  if (
+    (path === '/' &&
+      (route.meta.publicCatalog || route.meta.customerPurchase)) ||
+    (path === '/account/orders' && route.meta.customerOrders)
+  )
+    return 'location'
+}
 </script>
+
 <template>
   <div class="store-shell">
-    <header class="topbar">
-      <div class="store-header">
+    <header class="store-topbar">
+      <div class="store-header store-container">
         <Brand />
-        <nav class="desktop-nav" aria-label="用户导航">
+        <nav class="store-desktop-nav" aria-label="用户导航">
           <RouterLink
             v-for="item in nav"
             :key="item.path"
             :to="item.path"
-            :exact-active-class="'active'"
-            >{{ item.text }}</RouterLink
+            :aria-current="currentPage(item.path)"
           >
+            {{ item.text }}
+          </RouterLink>
         </nav>
-        <div class="header-actions">
+        <div class="store-header-actions">
           <RouterLink
             v-if="auth.state.user?.role === 'ADMIN'"
-            class="console-link"
+            class="store-console-link"
             to="/admin"
-            >管理控制台 <ArrowUpRight :size="14" /></RouterLink
-          ><RouterLink to="/profile" class="avatar" aria-label="个人中心">{{
-            auth.state.user?.username?.slice(0, 1) || '我'
-          }}</RouterLink>
+          >
+            管理控制台 <ArrowUpRight :size="15" aria-hidden="true" />
+          </RouterLink>
+          <RouterLink
+            to="/profile"
+            class="store-account-link"
+            :aria-label="auth.state.user ? '账户' : '登录'"
+          >
+            <UserRound :size="17" aria-hidden="true" />
+            <span v-if="!auth.state.user">登录</span>
+          </RouterLink>
         </div>
       </div>
     </header>
-    <main class="store-main">
-      <div
-        v-if="!$route.meta.publicCatalog && !$route.meta.customerPurchase"
-        class="demo-notice"
-      >
-        <FlaskConical :size="15" /><span
-          >本地管理工具 · 管理员可预览真实商品，暂未开放线上购买</span
-        ><span class="demo-pill">LOCAL</span>
-      </div>
+    <main class="store-main store-container">
       <RouterView />
-      <footer class="page-footer">
-        AI 会员商店 <span>·</span> 本地演示环境
-      </footer>
     </main>
-    <nav class="bottom-nav" aria-label="移动端用户导航">
+    <footer class="store-footer store-container">
+      <span>{{ settings.state.value.storeName }}</span>
+      <span class="store-preview-label">预览环境</span>
+    </footer>
+    <nav class="store-bottom-nav" aria-label="移动端用户导航">
       <RouterLink
         v-for="item in nav"
         :key="item.path"
         :to="item.path"
-        exact-active-class="active"
-        ><component :is="item.icon" :size="21" /><span>{{
-          item.short
-        }}</span></RouterLink
+        :aria-current="currentPage(item.path)"
       >
+        <component :is="item.icon" :size="20" aria-hidden="true" />
+        <span>{{ item.short }}</span>
+      </RouterLink>
     </nav>
   </div>
 </template>
+
+<style src="../storefront.css"></style>

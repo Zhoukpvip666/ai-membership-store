@@ -1,28 +1,88 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Layers2, Package } from '@lucide/vue'
 import type { PublicProduct } from '../api/catalog'
 import { money } from '../stores/format'
+import { productPeriod } from './product-period'
 
-const props = defineProps<{ product: PublicProduct; priceLabel?: string }>()
-const units = { DAY: '天', MONTH: '个月', YEAR: '年' } as const
-const period = computed(() => {
-  const { servicePeriodUnit: unit, servicePeriodCount: count } = props.product
-  return unit && count ? count + ' ' + units[unit] : undefined
-})
+const props = defineProps<{
+  product: PublicProduct
+  priceLabel?: string
+  variant?: 'detail'
+}>()
+const period = computed(() => productPeriod(props.product))
+const subscription = computed(() => props.product.type === 'SUBSCRIPTION')
+const renewalPrice = computed(() =>
+  subscription.value && props.product.renewalPriceFen !== null
+    ? money(props.product.renewalPriceFen)
+    : undefined,
+)
 </script>
 
 <template>
-  <article class="product-card detail-card">
-    <span
-      :class="['badge', product.type === 'SUBSCRIPTION' ? 'blue' : 'purple']"
-    >
-      {{ product.type === 'SUBSCRIPTION' ? '订阅服务' : '一次性服务' }}
+  <article v-if="variant === 'detail'" class="store-product-detail">
+    <header class="detail-intro store-surface">
+      <div class="detail-identity">
+        <span class="store-product-icon" :data-type="product.type">
+          <Layers2 v-if="subscription" :size="25" aria-hidden="true" />
+          <Package v-else :size="25" aria-hidden="true" />
+        </span>
+        <span class="store-type" :data-type="product.type">
+          {{ subscription ? '订阅服务' : '一次性服务' }}
+        </span>
+      </div>
+      <h1>{{ product.name }}</h1>
+    </header>
+    <aside class="detail-purchase store-surface" aria-label="价格与购买">
+      <dl class="detail-prices">
+        <div class="detail-initial-price">
+          <dt>初始价格</dt>
+          <dd>{{ money(product.priceFen) }}</dd>
+        </div>
+        <div v-if="period.text">
+          <dt>服务周期</dt>
+          <dd>{{ period.text }}</dd>
+        </div>
+        <div v-if="renewalPrice">
+          <dt>续费价格</dt>
+          <dd>{{ renewalPrice }}</dd>
+        </div>
+      </dl>
+      <slot />
+      <p v-if="product.priceFen > 0">下单后，可在订单详情查看付款指引。</p>
+    </aside>
+    <section class="detail-information store-surface" aria-label="商品信息">
+      <div v-if="product.description" class="detail-description">
+        <h2>商品介绍</h2>
+        <p class="product-description">{{ product.description }}</p>
+      </div>
+      <h2>服务信息</h2>
+      <dl class="detail-facts">
+        <div v-if="period.text">
+          <dt>服务周期</dt>
+          <dd>{{ period.text }}</dd>
+        </div>
+        <div v-if="period.note">
+          <dt>周期说明</dt>
+          <dd>{{ period.note }}</dd>
+        </div>
+        <div v-if="subscription">
+          <dt>续费说明</dt>
+          <dd>不会自动扣款。</dd>
+        </div>
+      </dl>
+    </section>
+  </article>
+
+  <article v-else class="summary-compact">
+    <span :class="['badge', subscription ? 'blue' : 'purple']">
+      {{ subscription ? '订阅服务' : '一次性服务' }}
     </span>
     <h1>{{ product.name }}</h1>
     <p v-if="product.description" class="product-description">
       {{ product.description }}
     </p>
-    <dl class="catalog-facts">
+    <dl class="compact-facts">
       <div>
         <dt>{{ priceLabel ?? '初始价格' }}</dt>
         <dd>{{ money(product.priceFen) }}</dd>
@@ -30,17 +90,13 @@ const period = computed(() => {
       <div>
         <dt>服务周期</dt>
         <dd>
-          {{ period ?? product.termLabel }}
-          <span v-if="period" class="muted"> · {{ product.termLabel }}</span>
+          {{ period.text }}
+          <span v-if="period.note" class="muted"> · {{ period.note }}</span>
         </dd>
       </div>
-      <div
-        v-if="
-          product.type === 'SUBSCRIPTION' && product.renewalPriceFen !== null
-        "
-      >
+      <div v-if="renewalPrice">
         <dt>续费价格</dt>
-        <dd>{{ money(product.renewalPriceFen) }}</dd>
+        <dd>{{ renewalPrice }}</dd>
       </div>
     </dl>
     <slot />
@@ -48,23 +104,184 @@ const period = computed(() => {
 </template>
 
 <style scoped>
-.detail-card {
-  display: block;
+.store-product-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  grid-template-areas: 'intro purchase' 'information purchase';
+  column-gap: var(--store-space-6);
+  align-items: start;
   overflow-wrap: anywhere;
 }
-.detail-card h1 {
+.detail-intro {
+  grid-area: intro;
+  border-bottom: 0;
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+  padding: var(--store-space-8) var(--store-space-8) var(--store-space-4);
+  box-shadow: none;
+}
+.detail-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--store-space-3);
+}
+.detail-identity .store-product-icon {
+  width: 48px;
+  height: 48px;
+}
+.detail-intro h1 {
+  margin: var(--store-space-4) 0 0;
+  font-size: clamp(27px, 3.4vw, 42px);
+  line-height: 1.18;
+  font-weight: 730;
+}
+.detail-information {
+  grid-area: information;
+  align-self: stretch;
+  border-top: 0;
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+  padding: 0 var(--store-space-8) var(--store-space-6);
+  box-shadow: none;
+}
+.detail-information h2 {
+  margin: 0 0 var(--store-space-2);
+  font-size: 16px;
+  font-weight: 700;
+}
+.detail-description {
+  border-top: 1px solid var(--store-line);
+  border-bottom: 1px solid var(--store-line);
+  padding: var(--store-space-5) 0;
+  margin-bottom: var(--store-space-5);
+}
+.detail-description p {
+  margin: 0;
+  color: var(--store-secondary);
+  font-size: 15px;
+  line-height: 1.75;
+}
+.detail-facts {
+  margin: 0;
+}
+.detail-facts > div {
+  display: grid;
+  grid-template-columns: 85px minmax(0, 1fr);
+  gap: var(--store-space-3);
+  padding-block: var(--store-space-2);
+  line-height: 1.55;
+}
+.detail-facts dt,
+.detail-prices dt {
+  color: var(--store-secondary);
+}
+.detail-facts dd,
+.detail-prices dd {
+  margin: 0;
+  font-weight: 600;
+}
+.detail-purchase {
+  grid-area: purchase;
+  padding: var(--store-space-6);
+}
+.detail-prices {
+  margin: 0 0 var(--store-space-5);
+}
+.detail-prices > div:not(.detail-initial-price) {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--store-space-1) var(--store-space-4);
+  margin-top: var(--store-space-3);
+}
+.detail-prices .detail-initial-price {
+  padding-bottom: var(--store-space-4);
+  margin-bottom: var(--store-space-4);
+  border-bottom: 1px solid var(--store-line);
+}
+.detail-initial-price dd {
+  margin-top: var(--store-space-2);
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(33px, 4vw, 44px);
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+  font-weight: 750;
+}
+.detail-purchase p {
+  margin: var(--store-space-3) 0 0;
+  color: var(--store-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+@media (max-width: 840px) {
+  .store-product-detail {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas: 'intro' 'purchase' 'information';
+    gap: var(--store-space-3);
+  }
+  .detail-intro,
+  .detail-purchase,
+  .detail-information {
+    border: 1px solid var(--store-line);
+    border-radius: var(--store-radius-lg);
+    padding: var(--store-space-4);
+  }
+  .detail-identity .store-product-icon {
+    width: 40px;
+    height: 40px;
+  }
+  .detail-intro h1 {
+    margin-top: var(--store-space-3);
+  }
+  .detail-description {
+    border-top: 0;
+    padding-top: 0;
+    padding-bottom: var(--store-space-4);
+    margin-bottom: var(--store-space-4);
+  }
+}
+.summary-compact {
+  background: #fff;
+  border: 1px solid #e4e9f1;
+  border-radius: 12px;
+  padding: 25px 24px 21px;
+  box-shadow: 0 3px 7px #27345c03;
+  overflow-wrap: anywhere;
+}
+.summary-compact h1 {
   margin: 12px 0;
 }
-.catalog-facts {
+.summary-compact p {
+  margin: 9px 0 25px;
+  font-size: 12px;
+}
+.compact-facts {
   display: grid;
   gap: 12px;
   margin: 20px 0;
 }
-.catalog-facts dt {
+.compact-facts dt {
   font-size: 12px;
   color: #66758b;
 }
-.catalog-facts dd {
+.compact-facts dd {
   margin: 4px 0 0;
+}
+@media (max-width: 1023px) {
+  .summary-compact {
+    padding: 23px 20px;
+  }
+}
+@media (max-width: 767px) {
+  .summary-compact {
+    border-radius: 10px;
+    padding: 19px;
+  }
+  .summary-compact p {
+    margin: 7px 0 0;
+    font-size: 11px;
+  }
 }
 </style>

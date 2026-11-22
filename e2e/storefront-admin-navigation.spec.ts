@@ -77,14 +77,10 @@ test('guest sees customer-only login navigation and no console link', async ({
   await expect(page.locator('a[href="/admin/login"]')).toHaveCount(0)
   await page.getByRole('link', { name: '返回商店' }).click()
   await expect(page).toHaveURL('/')
-  await expect(
-    page.getByRole('heading', { name: '商品', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('search')).toBeVisible()
   await expect(consoleLink(page)).toHaveCount(0)
   await page.reload()
-  await expect(
-    page.getByRole('heading', { name: '商品', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('search')).toBeVisible()
   await expect(consoleLink(page)).toHaveCount(0)
 
   await page.goto('/admin/login')
@@ -131,9 +127,7 @@ test('customer and admin login, restored session, direct admin access and logout
   await page.getByRole('button', { name: '退出登录' }).click()
   await expect(page).toHaveURL('/admin/login')
   await page.getByRole('link', { name: '返回商店' }).click()
-  await expect(
-    page.getByRole('heading', { name: '商品', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('search')).toBeVisible()
   await expect(consoleLink(page)).toHaveCount(0)
 })
 
@@ -148,9 +142,7 @@ test('an expired session removes the console link on an already open storefront'
   session.expire()
   await page.clock.fastForward(30_001)
   await expect(consoleLink(page)).toHaveCount(0)
-  await expect(
-    page.getByRole('heading', { name: '商品', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('search')).toBeVisible()
 })
 
 test('returning to the storefront rechecks an expired session before the next poll', async ({
@@ -198,9 +190,7 @@ test('logout discards a session check that started while the admin was signed in
     ])
     await expect(page).toHaveURL('/login')
     await page.getByRole('link', { name: '返回商店' }).click()
-    await expect(
-      page.getByRole('heading', { name: '商品', exact: true }),
-    ).toBeVisible()
+    await expect(page.getByRole('search')).toBeVisible()
     await expect(consoleLink(page)).toHaveCount(0)
   } finally {
     release()

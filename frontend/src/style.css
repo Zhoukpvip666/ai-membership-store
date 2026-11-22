@@ -167,15 +167,6 @@ strong,
   background: #fff;
   border-bottom: 1px solid #e7ebf2;
 }
-.store-header {
-  max-width: 1152px;
-  height: 100%;
-  padding: 0 28px;
-  margin: auto;
-  display: flex;
-  align-items: center;
-  gap: 52px;
-}
 .brand {
   display: inline-flex;
   align-items: center;
@@ -195,45 +186,11 @@ strong,
   color: #fff;
   box-shadow: 0 3px 7px #3468ed25;
 }
-.desktop-nav {
-  display: flex;
-  gap: 32px;
-  height: 100%;
-  align-items: stretch;
-}
-.desktop-nav a {
-  display: flex;
-  align-items: center;
-  position: relative;
-  color: #68758a;
-  font-weight: 500;
-}
-.desktop-nav a.active {
-  color: #3468ed;
-}
-.desktop-nav a.active:after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  height: 3px;
-  background: #3468ed;
-  left: 0;
-  right: 0;
-  border-radius: 3px;
-}
 .header-actions {
   display: flex;
   align-items: center;
   gap: 22px;
   margin-left: auto;
-}
-.console-link {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  color: #7c899c;
-  white-space: nowrap;
 }
 .avatar {
   height: 33px;
@@ -256,11 +213,6 @@ strong,
   width: 52px;
   height: 52px;
   font-size: 20px;
-}
-.store-main {
-  max-width: 1152px;
-  padding: 26px 28px 0;
-  margin: auto;
 }
 .demo-notice {
   display: flex;
@@ -323,25 +275,6 @@ strong,
   color: #3468ed;
   font-weight: 600;
 }
-.product-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
-}
-.product-card {
-  background: #fff;
-  border: 1px solid #e4e9f1;
-  border-radius: 12px;
-  padding: 25px 24px 21px;
-  box-shadow: 0 3px 7px #27345c03;
-  transition:
-    box-shadow 0.2s,
-    border-color 0.2s;
-}
-.product-card:hover {
-  box-shadow: 0 8px 28px #27345c0a;
-  border-color: #ccd8f3;
-}
 .badge {
   display: inline-flex;
   align-items: center;
@@ -372,56 +305,6 @@ strong,
   color: #8c97a8;
   background: #f0f2f6;
 }
-.product-card h2 {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 19px 0 22px;
-  line-height: 1.5;
-}
-.price {
-  font-size: 29px;
-  letter-spacing: -1px;
-  font-weight: 650;
-  color: #26334c;
-  line-height: 1.3;
-}
-.price small {
-  font-size: 12px;
-  letter-spacing: 0;
-  font-weight: 400;
-  color: #9aa4b5;
-  margin-left: 6px;
-}
-.product-card p {
-  margin: 9px 0 25px;
-  font-size: 12px;
-}
-.el-button.buy-button {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  height: 38px;
-  background: #f0f4ff;
-  border-color: #e5edff;
-  color: #3468ed;
-  font-size: 13px;
-}
-.buy-button span {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-}
-.buy-button:hover {
-  background: #3468ed;
-  color: white;
-}
-.el-button.buy-button.is-disabled {
-  background: #f3f4f7;
-  border-color: #e9edf3;
-  color: #a0aabd;
-}
 .page-footer {
   font-size: 11px;
   color: #a4adbc;
@@ -430,9 +313,6 @@ strong,
   gap: 10px;
   padding: 34px 0;
   letter-spacing: 0.3px;
-}
-.bottom-nav {
-  display: none;
 }
 .panel {
   background: #fff;
@@ -1023,12 +903,6 @@ tbody tr:hover {
   .admin-main {
     padding: 25px 24px 0;
   }
-  .store-header {
-    gap: 30px;
-  }
-  .desktop-nav {
-    gap: 22px;
-  }
 }
 @media (max-width: 1023px) {
   .admin-sidebar {
@@ -1073,20 +947,8 @@ tbody tr:hover {
   .subscription-summary {
     gap: 25px;
   }
-  .desktop-nav {
-    gap: 20px;
-  }
-  .store-header {
-    gap: 25px;
-  }
   .header-actions {
     gap: 14px;
-  }
-  .product-card {
-    padding: 23px 20px;
-  }
-  .product-card h2 {
-    font-size: 14px;
   }
 }
 @media (max-width: 767px) {
@@ -1095,9 +957,6 @@ tbody tr:hover {
   }
   .topbar {
     height: 64px;
-  }
-  .store-header {
-    padding: 0 19px;
   }
   .brand {
     font-size: 16px;
@@ -1108,22 +967,13 @@ tbody tr:hover {
     height: 30px;
     border-radius: 8px;
   }
-  .desktop-nav {
-    display: none;
-  }
   .header-actions {
     gap: 13px;
-  }
-  .console-link {
-    font-size: 10px;
   }
   .avatar {
     width: 29px;
     height: 29px;
     font-size: 12px;
-  }
-  .store-main {
-    padding: 18px 18px calc(75px + env(safe-area-inset-bottom));
   }
   .demo-notice {
     padding: 9px 10px;
@@ -1151,73 +1001,9 @@ tbody tr:hover {
     padding: 8px 13px;
     font-size: 12px;
   }
-  .product-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-  .product-card {
-    padding: 19px;
-    display: flex;
-    align-items: flex-end;
-    gap: 12px;
-    border-radius: 10px;
-  }
-  .product-info {
-    flex: 1;
-    min-width: 0;
-  }
-  .product-card h2 {
-    margin: 11px 0 12px;
-    font-size: 15px;
-  }
-  .product-card .price {
-    font-size: 25px;
-  }
-  .price small {
-    font-size: 10px;
-  }
-  .product-card p {
-    margin: 7px 0 0;
-    font-size: 11px;
-  }
-  .el-button.buy-button {
-    width: 101px;
-    flex-shrink: 0;
-    font-size: 12px;
-    height: 34px;
-    padding: 9px 12px;
-  }
-  .buy-button svg {
-    width: 13px;
-  }
   .badge {
     font-size: 10px;
     padding: 3px 7px;
-  }
-  .bottom-nav {
-    display: flex;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    background: #fffffff5;
-    backdrop-filter: blur(12px);
-    border-top: 1px solid #e4eaf3;
-    padding: 10px 12px calc(9px + env(safe-area-inset-bottom));
-    justify-content: space-around;
-  }
-  .bottom-nav a {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 5px;
-    color: #a2aec1;
-    font-size: 10px;
-    min-width: 55px;
-  }
-  .bottom-nav a.active {
-    color: #3468ed;
   }
   .page-footer {
     font-size: 10px;
