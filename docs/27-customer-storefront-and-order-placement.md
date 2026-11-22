@@ -93,6 +93,7 @@ Both public list and detail use an explicit allowlist:
 | priceFen | Initial selling price in integer CNY fen |
 | renewalPriceFen | Renewal price for subscription products; null for ONE_TIME |
 | termLabel | Human-readable service term |
+| coverImageUrl | Same-origin public cover URL when configured, or null (T24.5B) |
 | servicePeriodUnit | DAY, MONTH, YEAR, or null for ONE_TIME |
 | servicePeriodCount | Positive integer or null for ONE_TIME |
 

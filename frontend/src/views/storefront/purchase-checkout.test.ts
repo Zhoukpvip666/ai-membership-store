@@ -13,6 +13,7 @@ const product: PurchaseProduct = {
   slug: 'test-service',
   name: 'Test service',
   description: 'Test description',
+  coverImageUrl: null,
   type: 'ONE_TIME',
   priceFen: 9900,
   renewalPriceFen: null,

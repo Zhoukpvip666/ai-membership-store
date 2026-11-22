@@ -214,6 +214,7 @@ model Product {
   // NULL pair means an unknown legacy period; never infer from termLabel.
   servicePeriodUnit  ServicePeriodUnit?
   servicePeriodCount Int?
+  coverImageKey      String?            @db.VarChar(64)
   targetField        TargetField        @default(NONE)
   listed             Boolean            @default(false)
   sortOrder          Int                @default(0)

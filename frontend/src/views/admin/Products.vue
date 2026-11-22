@@ -5,12 +5,15 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../../api/client'
 import {
   readProducts,
+  removeProductCover,
+  uploadProductCover,
   type Product,
   type ProductFormSchema,
 } from '../../api/products'
 import { money, parsePrice, date } from '../../stores/format'
 import { settings } from '../../stores/settings'
 import { productFormSchema } from '../../../../backend/src/contracts/product-form'
+import ProductCover from '../../components/ProductCover.vue'
 import ProductFormEditor from '../../components/ProductFormEditor.vue'
 import ProductFormPreview from '../../components/ProductFormPreview.vue'
 const products = ref<Product[]>([])
@@ -26,6 +29,12 @@ const loading = ref(false),
 const editing = ref<string>(),
   detail = ref<Product>()
 const editingUnknownPeriod = ref(false)
+const coverImageUrl = ref<string | null>(null)
+const queuedCover = ref<File>()
+const coverBusy = ref(false)
+const coverError = ref('')
+const supportedCoverTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
+const maxCoverBytes = 4 * 1024 * 1024
 const periodLabels = { DAY: '固定天数', MONTH: '自然月', YEAR: '自然年' }
 const form = reactive({
   name: '',
@@ -65,7 +74,7 @@ function filter() {
   void load()
 }
 async function open(product?: Product) {
-  if (busy.value) return
+  if (busy.value || coverBusy.value) return
   busy.value = true
   try {
     const current = product
@@ -73,6 +82,9 @@ async function open(product?: Product) {
           .product
       : undefined
     editing.value = current?.id
+    coverImageUrl.value = current?.coverImageUrl ?? null
+    queuedCover.value = undefined
+    coverError.value = ''
     editingUnknownPeriod.value = Boolean(
       current?.type === 'SUBSCRIPTION' &&
       current.servicePeriodUnit === null &&
@@ -136,8 +148,50 @@ function changeType() {
     form.renewal = ''
   }
 }
+async function chooseCover(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || coverBusy.value || busy.value) return
+  coverError.value = ''
+  if (
+    !supportedCoverTypes.has(file.type) ||
+    file.size === 0 ||
+    file.size > maxCoverBytes
+  ) {
+    coverError.value = '请选择有效的 PNG、JPEG 或 WebP 图片（最多 4 MB）。'
+    return
+  }
+  if (!editing.value) {
+    queuedCover.value = file
+    return
+  }
+  await changeCover(editing.value, file)
+}
+
+async function changeCover(id: string, file?: File) {
+  if (coverBusy.value || busy.value) return
+  coverBusy.value = true
+  coverError.value = ''
+  try {
+    const result = file
+      ? await uploadProductCover(id, file)
+      : await removeProductCover(id)
+    coverImageUrl.value = result.coverImageUrl
+    queuedCover.value = undefined
+    products.value = products.value.map((item) =>
+      item.id === id ? { ...item, ...result } : item,
+    )
+    ElMessage.success(file ? '商品主图已保存' : '商品主图已删除')
+  } catch (e) {
+    coverError.value = (e as Error).message
+  } finally {
+    coverBusy.value = false
+  }
+}
+
 async function save() {
-  if (busy.value) return
+  if (busy.value || coverBusy.value) return
   busy.value = true
   try {
     const schema = productFormSchema.safeParse(form.formSchema)
@@ -180,11 +234,28 @@ async function save() {
       listed: form.listed,
       formSchema: schema.data,
     }
-    await api<Product>(
+    const { product: saved } = await api<{ product: Product }>(
       '/admin/products' + (editing.value ? '/' + editing.value : ''),
       editing.value ? 'PATCH' : 'POST',
       data,
     )
+    if (queuedCover.value) {
+      editing.value = saved.id
+      coverBusy.value = true
+      coverError.value = ''
+      try {
+        coverImageUrl.value = (
+          await uploadProductCover(saved.id, queuedCover.value)
+        ).coverImageUrl
+        queuedCover.value = undefined
+      } catch (e) {
+        coverError.value = '商品已保存，主图上传失败：' + (e as Error).message
+        await load()
+        return
+      } finally {
+        coverBusy.value = false
+      }
+    }
     visible.value = false
     ElMessage.success('商品已保存至数据库')
     await load()
@@ -374,6 +445,8 @@ onMounted(load)
       width="760px"
       class="responsive-dialog product-dialog"
       :close-on-click-modal="false"
+      :close-on-press-escape="!busy && !coverBusy"
+      :show-close="!busy && !coverBusy"
     >
       <ElForm label-position="top" @submit.prevent="save">
         <ElFormItem label="商品名称"
@@ -468,10 +541,70 @@ onMounted(load)
           </div>
           <ElSwitch v-model="form.listed" aria-label="商品上架" />
         </div>
+        <section class="admin-cover" aria-label="商品主图">
+          <h3>商品主图</h3>
+          <div class="admin-cover-content">
+            <ProductCover
+              class="admin-cover-preview"
+              :src="coverImageUrl"
+              alt="当前商品主图"
+            />
+            <div class="admin-cover-fields">
+              <label for="product-cover-file">{{
+                coverImageUrl ? '更换主图' : '上传主图'
+              }}</label>
+              <input
+                id="product-cover-file"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                :disabled="busy || coverBusy"
+                @change="chooseCover"
+              />
+              <small>PNG、JPEG、WebP，最大 4 MB。</small>
+              <p v-if="queuedCover" class="muted">
+                待上传：{{ queuedCover.name }}
+                <ElButton
+                  v-if="editing"
+                  link
+                  type="primary"
+                  :disabled="busy || coverBusy"
+                  @click="changeCover(editing, queuedCover)"
+                  >重试上传</ElButton
+                >
+                <ElButton
+                  link
+                  :disabled="busy || coverBusy"
+                  @click="queuedCover = undefined"
+                  >移除</ElButton
+                >
+              </p>
+              <p v-else-if="!editing" class="muted">保存商品后上传所选图片。</p>
+              <p v-if="coverBusy" role="status" class="muted">
+                正在处理商品主图…
+              </p>
+              <p v-if="coverError" class="form-error" role="alert">
+                {{ coverError }}
+              </p>
+              <ElButton
+                v-if="coverImageUrl && editing"
+                link
+                type="danger"
+                :disabled="busy || coverBusy"
+                @click="changeCover(editing)"
+                >删除主图</ElButton
+              >
+            </div>
+          </div>
+        </section>
         <ProductFormEditor v-model="form.formSchema" />
         <div class="dialog-actions">
-          <ElButton :disabled="busy" @click="visible = false">取消</ElButton
-          ><ElButton type="primary" native-type="submit" :loading="busy"
+          <ElButton :disabled="busy || coverBusy" @click="visible = false"
+            >取消</ElButton
+          ><ElButton
+            type="primary"
+            native-type="submit"
+            :loading="busy"
+            :disabled="coverBusy"
             >保存商品</ElButton
           >
         </div>
@@ -486,6 +619,10 @@ onMounted(load)
     >
       <template v-if="detail"
         ><h2>{{ detail.name }}</h2>
+        <ProductCover
+          class="admin-cover-preview"
+          :src="detail.coverImageUrl"
+          alt="当前商品主图" />
         <p class="product-description">
           {{ detail.description || '暂无说明' }}
         </p>
@@ -534,3 +671,40 @@ onMounted(load)
     </ElDialog>
   </section>
 </template>
+
+<style scoped>
+.admin-cover {
+  border: 1px solid #e0e5ef;
+  border-radius: 10px;
+  padding: 14px;
+  margin: 16px 0;
+}
+.admin-cover h3 {
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+.admin-cover-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+}
+.admin-cover-preview {
+  width: min(132px, 100%);
+  border-radius: 8px;
+}
+.admin-cover-fields {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+.admin-cover-fields input {
+  max-width: 100%;
+}
+.admin-cover-fields p {
+  margin: 0;
+}
+</style>

@@ -8,6 +8,7 @@ export interface PublicProduct {
   slug: string
   name: string
   description: string | null
+  coverImageUrl: string | null
   type: 'SUBSCRIPTION' | 'ONE_TIME'
   priceFen: number
   renewalPriceFen: number | null

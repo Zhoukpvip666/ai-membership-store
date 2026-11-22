@@ -100,6 +100,7 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 25. docs/25-admin-order-center.md — approved T20 ADMIN order workspace, safe event timeline, internal-note mutation, and integration contract for T14-T19 operations.
 26. docs/26-customer-order-center.md — approved and implemented T21 CUSTOMER own-order list/detail/edit/cancel, order-level refund visibility, lifecycle timeline and offline payment-guidance contract.
 27. docs/27-customer-storefront-and-order-placement.md — approved T22 public catalog, protected purchase form, login continuation and offline order-placement design.
+28. docs/29-product-cover-images.md — T24.5B single-cover upload, display, storage and migration.
 
 ## Important launch gates
 

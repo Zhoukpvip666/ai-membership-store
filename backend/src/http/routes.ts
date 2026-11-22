@@ -38,7 +38,10 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
   }
   const sessionCookieOptions = { ...cookieOptions, maxAge: SESSION_MS }
   router.use(csrf(env.APP_BASE_URL))
-  router.use('/catalog', publicCatalogRoutes(database))
+  router.use(
+    '/catalog',
+    publicCatalogRoutes(database, env.PRODUCT_COVER_STORAGE_DIR),
+  )
   const authenticate: RequestHandler = async (request, response, next) => {
     const principal = await auth.resolve(
       sessionCookie(request.headers.cookie),
@@ -113,7 +116,10 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
     },
   )
   const adminMutations = rateLimit(120)
-  router.use('/admin', productSettingsRoutes(database))
+  router.use(
+    '/admin',
+    productSettingsRoutes(database, env.PRODUCT_COVER_STORAGE_DIR),
+  )
   router.use('/admin', wechatPaymentRoutes(database, env.WECHAT_QR_STORAGE_DIR))
   router.use('/admin', subscriptionRoutes(database))
   router.use('/admin', adminOrderRoutes(database))

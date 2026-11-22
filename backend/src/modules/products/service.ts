@@ -3,6 +3,7 @@ import type { z } from 'zod'
 import { Prisma, type PrismaClient } from '../../generated/prisma/client.ts'
 import { transaction } from '../../db/transaction.ts'
 import { ApiError } from '../../http/errors.ts'
+import { adminCoverUrl } from './cover-image.ts'
 import {
   completeProduct,
   legacyProduct,
@@ -16,6 +17,7 @@ const select = {
   slug: true,
   name: true,
   description: true,
+  coverImageKey: true,
   type: true,
   priceFen: true,
   renewalPriceFen: true,
@@ -30,6 +32,12 @@ const select = {
   createdAt: true,
   updatedAt: true,
 } as const
+function adminProduct({
+  coverImageKey,
+  ...product
+}: Prisma.ProductGetPayload<{ select: typeof select }>) {
+  return { ...product, coverImageUrl: adminCoverUrl(product.id, coverImageKey) }
+}
 const missing = () => new ApiError(404, 'NOT_FOUND', '商品不存在')
 const snapshot = (product: {
   type: string
@@ -92,7 +100,12 @@ export function productService(database: PrismaClient) {
         }),
         database.product.count({ where }),
       ])
-      return { items, total, page: input.page, pageSize: input.pageSize }
+      return {
+        items: items.map(adminProduct),
+        total,
+        page: input.page,
+        pageSize: input.pageSize,
+      }
     },
     async detail(id: string) {
       const product = await database.product.findUnique({
@@ -100,7 +113,7 @@ export function productService(database: PrismaClient) {
         select,
       })
       if (!product) throw missing()
-      return product
+      return adminProduct(product)
     },
     create(
       input: z.output<typeof createProduct>,
@@ -120,7 +133,7 @@ export function productService(database: PrismaClient) {
           ...snapshot(product),
           fieldCount: input.formSchema.fields.length,
         })
-        return product
+        return adminProduct(product)
       })
     },
     edit(
@@ -182,14 +195,14 @@ export function productService(database: PrismaClient) {
           },
           snapshot(current),
         )
-        return product
+        return adminProduct(product)
       })
     },
     archive(id: string, actorId: string, requestId: string) {
       return transaction(database, async (tx) => {
         const current = await tx.product.findUnique({ where: { id }, select })
         if (!current) throw missing()
-        if (current.archivedAt) return current
+        if (current.archivedAt) return adminProduct(current)
         const product = await tx.product.update({
           where: { id },
           data: { listed: false, archivedAt: new Date() },
@@ -204,7 +217,7 @@ export function productService(database: PrismaClient) {
           { listed: false, archivedAt: product.archivedAt!.toISOString() },
           { listed: current.listed, archivedAt: null },
         )
-        return product
+        return adminProduct(product)
       })
     },
   }

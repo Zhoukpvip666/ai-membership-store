@@ -126,6 +126,7 @@ try {
       where: { role: 'CUSTOMER' },
     })
     const product = await db.product.findUniqueOrThrow({
+      select: { id: true },
       where: { slug: 'legacy-product' },
     })
     const subscription = await db.subscription.findFirstOrThrow({

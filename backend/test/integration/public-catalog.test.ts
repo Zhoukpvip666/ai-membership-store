@@ -9,6 +9,7 @@ import { integrationEnvironment } from './support.ts'
 const env = integrationEnvironment()
 const db = createDatabase(env.DATABASE_URL)
 const keys = [
+  'coverImageUrl',
   'description',
   'name',
   'priceFen',
@@ -30,6 +31,7 @@ const fixture = {
   servicePeriodUnit: 'MONTH',
   servicePeriodCount: 1,
 } as const
+const publicFixture = { ...fixture, coverImageUrl: null }
 const oneTime = {
   ...fixture,
   type: 'ONE_TIME',
@@ -133,7 +135,7 @@ test('guests see only listed and unarchived products with the exact public proje
     assert.deepEqual(Object.keys(product).sort(), keys)
   assert.deepEqual(
     result.items.find((item) => item.slug === fixture.slug),
-    fixture,
+    publicFixture,
   )
   assert.equal(
     result.items.find((item) => item.slug === 'alpha-once')?.renewalPriceFen,
@@ -141,7 +143,7 @@ test('guests see only listed and unarchived products with the exact public proje
   )
   const response = await fetch(endpoint + '/' + fixture.slug)
   assert.equal(response.status, 200)
-  assert.deepEqual(await response.json(), fixture)
+  assert.deepEqual(await response.json(), publicFixture)
 })
 
 test('guest detail gives the same 404 for missing, unlisted and archived slugs', async () => {
@@ -161,7 +163,12 @@ test('search trims, matches only names and AND-combines type and visibility', as
     ['alpha-once', 'alpha-subscription'],
   )
   const result = await page('?search=%20Alpha%20&type=SUBSCRIPTION&pageSize=1')
-  assert.deepEqual(result, { items: [fixture], total: 1, page: 1, pageSize: 1 })
+  assert.deepEqual(result, {
+    items: [publicFixture],
+    total: 1,
+    page: 1,
+    pageSize: 1,
+  })
   assert.equal((await page('?search=%20%20')).total, 4)
 })
 
@@ -170,7 +177,7 @@ test('search treats percent, underscore and backslash as literal name characters
     '?' + new URLSearchParams({ search: '100%_ready\\path' }),
   )
   assert.deepEqual(result, {
-    items: [fixture],
+    items: [publicFixture],
     total: 1,
     page: 1,
     pageSize: 20,

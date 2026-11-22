@@ -22,6 +22,7 @@ try {
       data: { loginEmail: 'revision-upgrade@example.com' },
     })
     const product = await db.product.create({
+      select: { id: true },
       data: {
         slug: randomUUID(),
         name: 'Upgrade fixture',

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Layers2, Package } from '@lucide/vue'
+import ProductCover from './ProductCover.vue'
 import type { PublicProduct } from '../api/catalog'
 import { money } from '../stores/format'
 import { productPeriod } from './product-period'
@@ -21,19 +21,18 @@ const renewalPrice = computed(() =>
 
 <template>
   <article v-if="variant === 'detail'" class="store-product-detail">
-    <header class="detail-intro store-surface">
-      <div class="detail-identity">
-        <span class="store-product-icon" :data-type="product.type">
-          <Layers2 v-if="subscription" :size="25" aria-hidden="true" />
-          <Package v-else :size="25" aria-hidden="true" />
-        </span>
+    <ProductCover
+      class="detail-cover store-surface"
+      :src="product.coverImageUrl ?? null"
+      :alt="product.name"
+    />
+    <aside class="detail-purchase store-surface" aria-label="价格与购买">
+      <header class="detail-intro">
         <span class="store-type" :data-type="product.type">
           {{ subscription ? '订阅服务' : '一次性服务' }}
         </span>
-      </div>
-      <h1>{{ product.name }}</h1>
-    </header>
-    <aside class="detail-purchase store-surface" aria-label="价格与购买">
+        <h1>{{ product.name }}</h1>
+      </header>
       <dl class="detail-prices">
         <div class="detail-initial-price">
           <dt>初始价格</dt>
@@ -106,29 +105,18 @@ const renewalPrice = computed(() =>
 <style scoped>
 .store-product-detail {
   display: grid;
-  grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
   grid-template-rows: auto 1fr;
-  grid-template-areas: 'intro purchase' 'information purchase';
-  column-gap: var(--store-space-6);
+  grid-template-areas: 'cover purchase' 'information purchase';
+  gap: var(--store-space-4) var(--store-space-6);
   align-items: start;
   overflow-wrap: anywhere;
 }
+.detail-cover {
+  grid-area: cover;
+}
 .detail-intro {
-  grid-area: intro;
-  border-bottom: 0;
-  border-end-start-radius: 0;
-  border-end-end-radius: 0;
-  padding: var(--store-space-8) var(--store-space-8) var(--store-space-4);
-  box-shadow: none;
-}
-.detail-identity {
-  display: flex;
-  align-items: center;
-  gap: var(--store-space-3);
-}
-.detail-identity .store-product-icon {
-  width: 48px;
-  height: 48px;
+  margin-bottom: var(--store-space-5);
 }
 .detail-intro h1 {
   margin: var(--store-space-4) 0 0;
@@ -138,12 +126,7 @@ const renewalPrice = computed(() =>
 }
 .detail-information {
   grid-area: information;
-  align-self: stretch;
-  border-top: 0;
-  border-start-start-radius: 0;
-  border-start-end-radius: 0;
-  padding: 0 var(--store-space-8) var(--store-space-6);
-  box-shadow: none;
+  padding: var(--store-space-6) var(--store-space-8);
 }
 .detail-information h2 {
   margin: 0 0 var(--store-space-2);
@@ -151,9 +134,8 @@ const renewalPrice = computed(() =>
   font-weight: 700;
 }
 .detail-description {
-  border-top: 1px solid var(--store-line);
   border-bottom: 1px solid var(--store-line);
-  padding: var(--store-space-5) 0;
+  padding-bottom: var(--store-space-5);
   margin-bottom: var(--store-space-5);
 }
 .detail-description p {
@@ -218,26 +200,17 @@ const renewalPrice = computed(() =>
   .store-product-detail {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto;
-    grid-template-areas: 'intro' 'purchase' 'information';
+    grid-template-areas: 'cover' 'purchase' 'information';
     gap: var(--store-space-3);
   }
-  .detail-intro,
   .detail-purchase,
   .detail-information {
-    border: 1px solid var(--store-line);
-    border-radius: var(--store-radius-lg);
     padding: var(--store-space-4);
-  }
-  .detail-identity .store-product-icon {
-    width: 40px;
-    height: 40px;
   }
   .detail-intro h1 {
     margin-top: var(--store-space-3);
   }
   .detail-description {
-    border-top: 0;
-    padding-top: 0;
     padding-bottom: var(--store-space-4);
     margin-bottom: var(--store-space-4);
   }

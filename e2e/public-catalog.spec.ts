@@ -132,7 +132,7 @@ test('guest catalog loads, then searches, filters and paginates using the public
     await grid.evaluate(
       (el) => getComputedStyle(el).gridTemplateColumns.split(' ').length,
     ),
-  ).toBe(info.project.name === 'mobile-edge' ? 1 : 3)
+  ).toBe(info.project.name === 'mobile-edge' ? 2 : 3)
   await checkNoHorizontalOverflow(page)
 
   const search = page.getByRole('textbox', { name: '搜索商品', exact: true })
@@ -172,7 +172,14 @@ test('guest product detail displays public data and defers the form until purcha
   const calls: string[] = []
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname
-    if (path.startsWith('/api/v1/') && path !== '/api/v1/auth/me')
+    const publicCover =
+      request.method() === 'GET' &&
+      /^\/api\/v1\/catalog\/products\/[^/]+\/cover-image$/.test(path)
+    if (
+      path.startsWith('/api/v1/') &&
+      path !== '/api/v1/auth/me' &&
+      !publicCover
+    )
       calls.push(path)
   })
   await page.goto('/')

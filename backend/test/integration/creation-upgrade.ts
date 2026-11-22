@@ -21,6 +21,7 @@ try {
       data: { loginEmail: randomUUID() + '@example.com' },
     })
     const product = await db.product.create({
+      select: { id: true },
       data: {
         slug: randomUUID(),
         name: 'Old product',
@@ -98,8 +99,12 @@ try {
       await db.order.count({ where: { paymentStatus: 'NOT_REQUIRED' } }),
       0,
     )
+    assert.equal(
+      await db.product.count({ where: { coverImageKey: { not: null } } }),
+      0,
+    )
     console.info(
-      'Migrations twelve and thirteen preserved existing business fields and revisions, including the merchant note. WeChat starts disabled without an image.',
+      'Migrations twelve through fourteen preserved existing business fields and revisions, including the merchant note. WeChat starts disabled and existing products have no cover.',
     )
   }
 } finally {

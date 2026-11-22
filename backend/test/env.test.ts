@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import {
   parseEnvironment,
   parseDatabaseEnvironment,
@@ -108,6 +109,38 @@ test('application config rejects public origins, weak/placeholders and invalid p
     assert.throws(
       () => parseEnvironment({ ...valid, API_PORT }),
       EnvironmentError,
+    )
+  }
+})
+
+test('product cover storage requires a private absolute path distinct from QR storage', () => {
+  const qr = resolve('cover-fixture/qr')
+  const cover = resolve('cover-fixture/product-covers')
+  assert.equal(
+    parseEnvironment({
+      ...valid,
+      WECHAT_QR_STORAGE_DIR: qr,
+      PRODUCT_COVER_STORAGE_DIR: cover,
+    }).PRODUCT_COVER_STORAGE_DIR,
+    cover,
+  )
+  for (const PRODUCT_COVER_STORAGE_DIR of [
+    'relative/covers',
+    qr,
+    resolve(qr, 'covers'),
+    resolve(qr, '..'),
+    fileURLToPath(new URL('../../frontend/public/covers/', import.meta.url)),
+    fileURLToPath(new URL('../../node_modules/covers/', import.meta.url)),
+    fileURLToPath(new URL('../src/contracts/covers/', import.meta.url)),
+  ]) {
+    assert.throws(
+      () =>
+        parseEnvironment({
+          ...valid,
+          WECHAT_QR_STORAGE_DIR: qr,
+          PRODUCT_COVER_STORAGE_DIR,
+        }),
+      /Invalid environment: PRODUCT_COVER_STORAGE_DIR/,
     )
   }
 })

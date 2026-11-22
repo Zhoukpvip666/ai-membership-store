@@ -20,6 +20,7 @@ const project = 'membership-foundation-' + randomBytes(6).toString('hex')
 const directory = mkdtempSync(join(tmpdir(), 'membership-foundation-'))
 const envFile = join(directory, 'test.env')
 const qrStorageDirectory = join(directory, 'wechat-qr')
+const coverStorageDirectory = join(directory, 'product-covers')
 const upgradeSnapshot = join(directory, 'upgrade.json')
 const orderUpgradeSnapshot = join(directory, 'order-upgrade.json')
 const sourceUpgradeSnapshot = join(directory, 'source-upgrade.json')
@@ -47,6 +48,7 @@ const customerSubscriptionsOnly = process.argv.includes(
 )
 const registrationOnly = process.argv.includes('--registration-only')
 const catalogOnly = process.argv.includes('--catalog-only')
+const coversOnly = process.argv.includes('--covers-only')
 const purchaseOnly = process.argv.includes('--customer-purchase-only')
 const fulfillmentOnly = process.argv.includes('--fulfillment-only')
 const editOnly = process.argv.includes('--edit-only')
@@ -63,6 +65,7 @@ const creationOnly =
   customerSubscriptionsOnly ||
   registrationOnly ||
   catalogOnly ||
+  coversOnly ||
   purchaseOnly
 const creationUpgradeSnapshot = join(directory, 'creation-upgrade.json')
 const revisionUpgradeSnapshot = join(directory, 'revision-upgrade.json')
@@ -257,6 +260,7 @@ try {
     ADMIN_PASSWORD: adminPassword,
     FOUNDATION_DB_TEST: project,
     WECHAT_QR_STORAGE_DIR: qrStorageDirectory,
+    PRODUCT_COVER_STORAGE_DIR: coverStorageDirectory,
   }
   if (!browserMode && !freshInstall) {
     // Exercise the actual committed old schema with populated records before upgrading.
@@ -652,6 +656,11 @@ try {
       console.info(
         run(process.execPath, ['--test', 'test/integration/' + suite], env),
       )
+  } else if (coversOnly && !browserMode) {
+    for (const suite of ['product-covers.test.ts', 'customer-purchase.test.ts'])
+      console.info(
+        run(process.execPath, ['--test', 'test/integration/' + suite], env),
+      )
   } else if (customerSubscriptionsOnly && !browserMode) {
     console.info(
       run(
@@ -745,7 +754,7 @@ try {
       try {
         const versions = await db.$queryRawUnsafe('SELECT COUNT(*) AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL');
         const tables = await db.$queryRawUnsafe('SELECT COUNT(*) AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()');
-        assert.equal(Number(versions[0].n), 13);
+        assert.equal(Number(versions[0].n), 14);
         assert.equal(Number(tables[0].n), 14);
         if (await db.user.count() === 0) {
           await db.user.create({ data: { loginEmail: 'model-fixture@example.com', role: 'ADMIN', status: 'DISABLED' } });
@@ -830,21 +839,23 @@ try {
           '--config',
           join(cwd, '..', 'playwright.config.ts'),
           ...(splitBrowserProjects ? ['--project=mobile-edge'] : []),
-          ...(registrationOnly
-            ? ['registration.spec.ts']
-            : purchaseOnly
-              ? ['customer-purchase.spec.ts']
-              : customerSubscriptionsOnly
-                ? ['customer-subscriptions.spec.ts']
-                : catalogOnly
-                  ? ['public-catalog.spec.ts']
-                  : customerCenterOnly
-                    ? ['customer-order-center.spec.ts']
-                    : adminCenterOnly
-                      ? ['admin-order-center.spec.ts']
-                      : fulfillmentOnly
-                        ? ['manual-fulfillment.spec.ts']
-                        : []),
+          ...(coversOnly
+            ? ['product-covers.spec.ts']
+            : registrationOnly
+              ? ['registration.spec.ts']
+              : purchaseOnly
+                ? ['customer-purchase.spec.ts']
+                : customerSubscriptionsOnly
+                  ? ['customer-subscriptions.spec.ts']
+                  : catalogOnly
+                    ? ['public-catalog.spec.ts']
+                    : customerCenterOnly
+                      ? ['customer-order-center.spec.ts']
+                      : adminCenterOnly
+                        ? ['admin-order-center.spec.ts']
+                        : fulfillmentOnly
+                          ? ['manual-fulfillment.spec.ts']
+                          : []),
           ...process.argv
             .slice(2)
             .filter(
@@ -864,6 +875,7 @@ try {
                   '--customer-subscriptions-only',
                   '--registration-only',
                   '--catalog-only',
+                  '--covers-only',
                   '--customer-purchase-only',
                   '--focused',
                 ].includes(argument),
@@ -987,10 +999,11 @@ try {
   } catch {
     /* Optional isolated upgrade artifact. */
   }
-  if (existsSync(qrStorageDirectory)) {
-    for (const filename of readdirSync(qrStorageDirectory))
-      unlinkSync(join(qrStorageDirectory, filename))
-    rmdirSync(qrStorageDirectory)
+  for (const storageDirectory of [qrStorageDirectory, coverStorageDirectory]) {
+    if (!existsSync(storageDirectory)) continue
+    for (const filename of readdirSync(storageDirectory))
+      unlinkSync(join(storageDirectory, filename))
+    rmdirSync(storageDirectory)
   }
   rmdirSync(directory)
 }

@@ -1,5 +1,10 @@
 import { z } from 'zod'
 import { isAbsolute } from 'node:path'
+import {
+  defaultQrStorage,
+  defaultCoverStorage,
+  isPrivateCoverDirectory,
+} from './image-directories.ts'
 
 const loopback = new Set(['localhost', '127.0.0.1', '[::1]'])
 const localDatabaseUrl = z.string().refine((value) => {
@@ -38,24 +43,41 @@ const localAppUrl = z.string().refine((value) => {
 })
 
 const databaseEnv = z.object({ DATABASE_URL: localDatabaseUrl })
-const appEnv = databaseEnv.extend({
-  APP_BASE_URL: localAppUrl,
-  ADMIN_EMAIL: z.string().trim().toLowerCase().pipe(z.email().max(254)),
-  ADMIN_PASSWORD: z
-    .string()
-    .min(12)
-    .max(128)
-    .refine(
-      (value) =>
-        value.trim().length >= 12 && !value.startsWith('replace_with_'),
-    ),
-  API_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  WECHAT_QR_STORAGE_DIR: z
-    .string()
-    .trim()
-    .refine((value) => isAbsolute(value) && !value.includes('\0'))
-    .optional(),
-})
+const storageDirectory = z
+  .string()
+  .trim()
+  .refine((value) => isAbsolute(value) && !value.includes('\0'))
+  .optional()
+const appEnv = databaseEnv
+  .extend({
+    APP_BASE_URL: localAppUrl,
+    ADMIN_EMAIL: z.string().trim().toLowerCase().pipe(z.email().max(254)),
+    ADMIN_PASSWORD: z
+      .string()
+      .min(12)
+      .max(128)
+      .refine(
+        (value) =>
+          value.trim().length >= 12 && !value.startsWith('replace_with_'),
+      ),
+    API_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+    WECHAT_QR_STORAGE_DIR: storageDirectory,
+    PRODUCT_COVER_STORAGE_DIR: storageDirectory,
+  })
+  .superRefine((env, context) => {
+    if (
+      !isPrivateCoverDirectory(
+        env.WECHAT_QR_STORAGE_DIR ?? defaultQrStorage,
+        env.PRODUCT_COVER_STORAGE_DIR ?? defaultCoverStorage,
+      )
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['PRODUCT_COVER_STORAGE_DIR'],
+        message:
+          'Use private storage separate from the web root and QR storage',
+      })
+  })
 
 export class EnvironmentError extends Error {
   constructor(fields: string[]) {
