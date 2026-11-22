@@ -2,9 +2,11 @@
 
 - Document: ORDER-CREATE-API
 - Version: 1.0
-- Status: Merged in PR #11 (`b1f5d147ce8be27780740d187ebace63c29629cf`); T22.3A customer request upgrade implemented and awaiting review
+- Status: Merged in PR #11 (`b1f5d147ce8be27780740d187ebace63c29629cf`); T22.3A customer request upgrade merged in PR #35
 - Date: 2026-11-19
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order read API](16-order-read-api.md), [Order revision foundation](18-order-revision-foundation.md)
+
+> **Current scope and later extension:** This document preserves the original creation task and its verification history. Other lifecycle APIs and storefront submission were implemented in later stages; see the [current project status](00-project-status.md). T24.4B.1 (merged PR #43) additionally permits an ACTIVE ADMIN to create their own order through `/customer/orders`, using the same catalog price, product-version check, form validation and customer-safe response. In that self-service path CUSTOMER produces source USER and ADMIN produces source ADMIN; identity/source remain server-derived. This supersedes only the original CUSTOMER-only role/source descriptions below. It does not grant the self-service route the management route's target-user or price-override fields. See the [current API contract](05-api-contract.md).
 
 This document converts the currently ACTIVE decisions into the first order-write API task. It does not authorize payment confirmation, order editing, cancellation, fulfillment, renewal, notifications, payment gateway integration, supplier integration, frontend order-center integration, or deployment.
 

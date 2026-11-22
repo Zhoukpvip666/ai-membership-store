@@ -1,10 +1,10 @@
 # Task 1.2.2 — Authentication, customers, and invitations
 
-> Historical milestone report. The current user/subscription contract and fourth incremental migration are documented in [Phase 2](14-user-subscription-core.md). Prior table/test counts and displayName/source/status descriptions below describe their original milestone, not the current schema.
+> Historical milestone report. See [current project status](00-project-status.md) for merged capabilities. [Phase 2](14-user-subscription-core.md) records the later user/subscription compatibility contract; subsequent order centers, subscription reads and public registration are also merged. Prior table/test counts, invitation-only registration and displayName/source/status descriptions below belong to their original milestone.
 
 ## Scope and status
 
-Implements only the approved local authentication/customer/invitation milestone. Task 1.2.3 has not started. The existing 11-table schema and initial migration are unchanged. Implementation and verification use a separate worktree; the original checkout, local `.env`, running API and development database are preserved.
+This historical delivery implemented only the approved local authentication/customer/invitation milestone. Task 1.2.3 had not started at that time and is now merged. The report's existing 11-table schema and initial migration were unchanged. Implementation and verification used a separate worktree; the original checkout, local `.env`, running API and development database were preserved.
 
 ## Implemented behavior
 
@@ -146,6 +146,6 @@ Tests, commands and documentation:
 
 No schema, migration, dependency lockfile, developer configuration or existing database data is changed.
 
-## Remaining boundaries
+## Boundaries at the original milestone
 
-No product/order/subscription CRUD, online payment, SMTP/email, supplier API, self-registration, password reset, real customer order/subscription history API or public deployment is implemented. Customer login-email changes are outside the approved profile PATCH contract. Rate limits are per API process. The single seeded ADMIN remains the only administrator; no administrator provisioning UI is added. The next roadmap task is Task 1.2.3, which requires a separate human-reviewed authorization and has not started.
+This delivery added no product/order/subscription CRUD, online payment, SMTP/email, supplier API, self-registration, password reset, real customer order/subscription history API or public deployment. Customer login-email changes were outside the approved profile PATCH contract. Rate limits were per API process, and no administrator provisioning UI was added. Task 1.2.3 was the next separately authorized task at that time. Use the current status index and [API contract](05-api-contract.md) for later merged product, order, subscription and registration capabilities; this report is not a new statement about deployed accounts or server state.

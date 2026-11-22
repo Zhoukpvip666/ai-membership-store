@@ -1,10 +1,12 @@
 # T23.0 — Production deployment design and readiness audit
 
-**Status** — Design PR #37 awaiting review. Baseline `57b329722377047e9fc3d254a7c63f93856b433b` is the merge of PR #36 into `origin/main`. PRs #33, #34, #35 and #36 are merged. The candidate host is the existing Seoul Linux VPS. `shop.example.com` is a placeholder. The merged storefront and local tests do not establish Internet readiness.
+> **Merged snapshot (2026-11-23, Asia/Shanghai):** Reconciled against `main` at `105e1514e6ce97853d5e83d0b5c131df6872551b`. See [project status](00-project-status.md) for the current implementation boundary. Milestone reports and test results below retain their original scope; this documentation update does not rerun tests or establish deployment status.
+
+**Status** — Design PR #37 is merged. The application audit below retains its historical baseline `57b329722377047e9fc3d254a7c63f93856b433b`, the merge of PR #36 into `origin/main`; it is not a fresh audit of the current tree or server. The candidate host is the existing Seoul Linux VPS. `shop.example.com` is a placeholder. The merged storefront and local tests do not establish Internet readiness.
 
 This design preserves the single-merchant offline-payment and manual-fulfillment workflow. The roadmap's earlier generic deployment proposal is historical. Production implementation and rollout require separate approval. T23.0 performed an owner-authorized, read-only server audit.
 
-## 1. Existing Seoul server
+## 1. Historical Seoul server audit (2026-11-21)
 
 The initial snapshot and follow-up were taken on 2026-11-21 using the existing SSH host entry with strict host-key verification and host-key updates disabled. The initial audit inspected OS/package metadata, `free`, `vmstat`, `df`, `lsblk`, `ps`, `ss`, `systemctl` and selected process executable/file-descriptor metadata. A separately authorized stop of three services took place before the latest read-only follow-up. The audit did not inspect service configurations, credentials, application data or database contents. Listener evidence describes host bindings only. Actual public reachability, firewall rules and configured virtual hosts still need verification.
 
@@ -26,7 +28,7 @@ The initial snapshot and follow-up were taken on 2026-11-21 using the existing S
 
 Recommend reusing the host and aiming for at least **4 GiB RAM** before an approved coexistence rehearsal. This is a planning target, not a capacity guarantee. A resize may restart the VPS and requires approval. Measure workload peaks, swap/OOM, DB pool waits, API latency, worker completion, disk growth and existing-site health. Include backup and restore space in disk budgeting. If the rehearsal fails these checks or a resize is unavailable, evaluate a separate host or a revised resource plan. Build and scan release artifacts on a separate Linux build host to avoid increasing peak load on the VPS.
 
-## 2. Application readiness gaps
+## 2. Application readiness gaps at the historical audit baseline
 
 | Priority | Repository evidence and effect on a public release |
 | --- | --- |

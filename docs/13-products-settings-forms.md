@@ -1,8 +1,8 @@
 # Task 1.2.3 — Products, settings and dynamic form configuration
 
-> Historical milestone report. The current user/subscription contract and fourth incremental migration are documented in [Phase 2](14-user-subscription-core.md). Prior table/test counts and displayName/source/status descriptions below describe their original milestone, not the current schema.
+> Historical milestone report with later implementation addenda. See [current project status](00-project-status.md) for merged capabilities. [Phase 2](14-user-subscription-core.md) records the later subscription compatibility contract. Prior table/test counts and prototype-only boundaries below describe their original milestone, not the current schema or complete application.
 
-Implemented for owner review. Stop after the PR; Task 1.2.4 is not started.
+Task 1.2.3 is merged. Subsequent order/payment/fulfillment stages, public storefront, WeChat settings and product covers are also merged; the corresponding addenda and current status index describe those later scopes. Historical verification results below are unchanged and do not establish a target deployment's state.
 
 ## Delivered behavior
 

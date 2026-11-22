@@ -1,6 +1,8 @@
 # System Architecture
 
-> **Current Phase 2 override (2026-11-17):** The owner separately authorized user-name refactoring and administrator-only subscription management before offline orders. `displayName` becomes nullable `username` (customer-owned, no new editing/activation flow yet) and `adminLabel` (admin-only). Admin naming is adminLabel → username → login-email prefix; customer responses exclude adminLabel. Subscription sources are ADMIN/SYSTEM, stored states ACTIVE/TERMINATED. Admin creates independent subscription records and directly edits/renews/terminates them without orders, payments, email or automatic duration arithmetic. Product/form snapshots are frozen; archived products block new subscriptions/renewals but allow maintenance of existing unexpired subscriptions. Expired ACTIVE rows grant no entitlement and cannot be edited/renewed, even before the minute worker terminates them. [Phase 2 details](14-user-subscription-core.md) supersede conflicting legacy subscription rules below. No development database migration is performed by implementation/tests.
+> **Document scope:** This document combines the architectural baseline with original planning options. See the [current project status](00-project-status.md) for implemented modules. SMTP/outbox, supplier integration/transfer tracking and email reminders below are future design, not running components. Production topology is specified in [T23.0 deployment design](28-production-deployment-design.md); neither that design nor a merged PR establishes a server's deployment state.
+
+> **Historical Phase 2 override (2026-11-17):** The owner separately authorized user-name refactoring and administrator-only subscription management before offline orders. `displayName` becomes nullable `username` (customer-owned, no new editing/activation flow yet) and `adminLabel` (admin-only). Admin naming is adminLabel → username → login-email prefix; customer responses exclude adminLabel. Subscription sources are ADMIN/SYSTEM, stored states ACTIVE/TERMINATED. Admin creates independent subscription records and directly edits/renews/terminates them without orders, payments, email or automatic duration arithmetic. Product/form snapshots are frozen; archived products block new subscriptions/renewals but allow maintenance of existing unexpired subscriptions. Expired ACTIVE rows grant no entitlement and cannot be edited/renewed, even before the minute worker terminates them. [Phase 2 details](14-user-subscription-core.md) supersede conflicting legacy subscription rules below. No development database migration is performed by implementation/tests.
 
 
 ## 1. Architecture style
@@ -13,7 +15,7 @@ The application serves one merchant: the site owner. There is one configured pay
 
 Do not introduce microservices, Redis, Kubernetes, or a message broker without a measured requirement.
 
-## 2. Proposed technology stack
+## 2. Technology baseline and original planning options
 
 | Layer | Proposed technology | Notes |
 |---|---|---|
@@ -24,9 +26,9 @@ Do not introduce microservices, Redis, Kubernetes, or a message broker without a
 | ORM | Prisma | Schema and migrations |
 | Validation | Zod | Validate requests/configuration |
 | Authentication | Server-side session with HTTP-only cookie | No session token in localStorage |
-| Email | Nodemailer over SMTP or transactional provider | Credentials from environment |
-| Background work | Database-backed email outbox and scheduled worker | No separate queue service in MVP |
-| Deployment | Docker Compose | Single-server deployment |
+| Email | Nodemailer over SMTP or transactional provider | Planned; no SMTP/outbox implementation is connected |
+| Background work | Scheduled workers; planned database-backed email outbox | Order/subscription expiry workers exist; email delivery workers remain planned |
+| Deployment | Development MySQL uses Docker Compose | Production design: existing Caddy, systemd API and Docker MySQL; see T23.0, deployment state unverified |
 
 If a selected dependency/runtime is unavailable, report the issue and propose a compatible version before changing baseline.
 
@@ -71,6 +73,8 @@ If a selected dependency/runtime is unavailable, report the issue and propose a 
 Exact structure may be refined during scaffold task, but preserve module boundaries.
 
 ## 4. Runtime components
+
+This section retains the original component plan. Read implementation status from the current index above; the supplier/email components below are not implemented by the existing order APIs.
 
 ### Frontend
 - Follow [08-interface-specification.md](08-interface-specification.md) as the UI source of truth.

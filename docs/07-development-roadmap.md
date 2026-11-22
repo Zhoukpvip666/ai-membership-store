@@ -1,8 +1,14 @@
 # Development Roadmap
 
+## How to read this roadmap
+
+Start with the [project status index](00-project-status.md) for the current implemented features, remaining work and merged PRs. This file preserves milestone scope, decisions, acceptance criteria and historical validation results. A completed milestone's exclusions describe that delivery only and do not disable features added later. Recorded test results do not represent a new test run.
+
+The storefront has progressed through the merged T24 additions, including registration, ADMIN self-purchase, customer subscription reads, WeChat payment claims, storefront redesign and product covers. The operating overview remains Mock. Order-based renewal remains future work; the earlier ADMIN direct-renewal API is retained in compatibility mode. Production design is merged, but the currently deployed revision, applied migrations and server state were not inspected for this documentation update.
+
 ## Order creation API — merged
 
-**Status: Merged in PR #11 (`b1f5d14`); historical and fresh isolated verification passed. Development database remains unmigrated.** [Implementation contract](19-order-creation-api.md).
+**Status: Merged in PR #11 (`b1f5d14`); historical and fresh isolated verification passed. That implementation did not migrate the development database.** [Implementation contract](19-order-creation-api.md).
 
 - Implement POST `/customer/orders` and POST `/admin/orders` only; retain existing GET routes.
 - USER self-order requires ACTIVE account and listed/unarchived Product. ADMIN may target ACTIVE/PENDING_ACTIVATION CUSTOMER and listed/unlisted unarchived Product; DISABLED/archived are rejected.
@@ -40,7 +46,7 @@ T15 reuses all twelve committed migrations unchanged. Actual amount changes requ
 - SYSTEM timeout worker runs every minute using DB UTC time; cancels expired UNPAID/PENDING_VERIFICATION ordinary orders, closes pending payment attempts as FAILED, and writes SYSTEM Revision/Event without AdminAuditLog.
 - Payment confirmation, refund, fulfillment, notifications and frontend remain out of scope. Stop at PR review; no development DB deployment.
 
-Reuses all twelve migrations unchanged. Both manual handlers share the locked atomic cancellation service, with normalized original-response idempotency and exact role-safe DTOs. The worker processes at most 100 deterministic candidates per minute, with per-order SKIP LOCKED transactions, SYSTEM NULL actors, per-row rollback/retry and graceful shutdown. Real HTTP/MySQL tests cover payment facts, pending-attempt closure, all-stage fault injection, manual/worker/payment-lock races, repeated scans and existing write/read/subscription regressions. Payment-race tests use a synthetic writer only; no production payment-confirmation API is implemented.
+Reuses all twelve migrations unchanged. Both manual handlers share the locked atomic cancellation service, with normalized original-response idempotency and exact role-safe DTOs. The worker processes at most 100 deterministic candidates per minute, with per-order SKIP LOCKED transactions, SYSTEM NULL actors, per-row rollback/retry and graceful shutdown. Real HTTP/MySQL tests cover payment facts, pending-attempt closure, all-stage fault injection, manual/worker/payment-lock races, repeated scans and existing write/read/subscription regressions. T16 payment-race tests used a synthetic writer; the payment-confirmation API was implemented separately in T17.
 
 ## T17 offline payment attempts and confirmation — merged
 
@@ -114,16 +120,16 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 
 - Public GET catalog list/detail exposes only listed, unarchived product display fields. Public DTOs never expose formSchema, defaults, administrator fields, or archive/listing internals.
 - Product detail does not load or display dynamic form fields. T22.2 enables 立即购买 and lets an ACTIVE CUSTOMER enter /purchase/:slug to fetch the customer-safe form projection.
-- Guests are redirected to login with a validated same-origin purchase destination; successful CUSTOMER login automatically returns to the same purchase route and loads the form. ADMIN does not use customer purchase routes.
+- Guests are redirected to login with a validated same-origin purchase destination; successful login returns to the same purchase route and loads the form. T22 originally admitted CUSTOMER only; merged T24.4B.1 extends the same own-account flow to ACTIVE ADMIN sessions.
 - Reuse the existing eight-type form contract and ProductFormInputs. Do not apply administrator defaultValue values or persist incomplete drafts.
 - T22.3A extends POST /customer/orders. Customer price remains server-derived; product/form snapshots, complete validation, zero-price behavior, atomic history and Idempotency-Key remain unchanged.
 - The CUSTOMER API requires expectedProductUpdatedAt. It replays matching committed requests before checking the current version. Under the Product row lock a stale version returns 409 PRODUCT_CHANGED with no writes. T22.3B reloads the product, discards the old draft, and requires explicit review for the fresh version.
-- A successful storefront submission or idempotent replay opens the existing T21 order detail using /account/orders?orderId=:id. T21 payment guidance remains the only offline payment instruction.
+- A successful storefront submission or idempotent replay opens the existing T21 order detail using /account/orders?orderId=:id. T21 originally supplied plain-text payment guidance; merged T24.2 adds the protected WeChat QR and payment-claim panel.
 - No cart, online payment, proof upload, customer subscription/renewal, email, supplier automation, migration, deployment, or runtime dependency is included.
 
 ## T23 — Production deployment readiness
 
-**Status: T23.0 design and Seoul VPS audit awaiting review in PR #37.** [Production design and readiness audit](28-production-deployment-design.md). The candidate is the existing shared VPS. Its approved capacity, credentials and release readiness are still to be established.
+**Status: T23.0 production design and the historical Seoul VPS audit merged in PR #37.** [Production design and readiness audit](28-production-deployment-design.md). T23.1–T23.5 remain the planned production-readiness sequence in this repository. The original audit is a point-in-time observation; it does not establish current server capacity, configuration or deployment. See the [status index](00-project-status.md) for the evidence boundary.
 
 - T23.1 — Production configuration and security. Validate HTTPS origin, credentials, trusted proxy, sessions, Origin checks, invitations and worker lifecycle.
 - T23.2 — Caddy, systemd and MySQL deployment definitions. Provide site/unit/Compose templates that preserve existing listeners and services.
@@ -132,6 +138,14 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 - T23.5 — Controlled production launch. Under separate approvals, verify the recovery point, apply the approved Migration, configure DNS and firewall, start the dedicated services and reload Caddy. Verify smoke tests and existing-site health before opening traffic, with a rehearsed rollback ready.
 
 Each stage requires its own review. Production Migration, data cleanup, service restarts and deployment require separate approval for the specific operation. T23.0 approves no production installation or application changes.
+
+## T24 — Storefront and offline collection additions
+
+**Status: The additions through PR #46 are merged.** The [status index](00-project-status.md) maintains the PR-to-feature mapping and current boundaries, rather than duplicating that list here.
+
+Merged behavior includes readable order numbers, private WeChat QR configuration and customer payment claims, own-subscription reads, ADMIN self-purchase, public customer registration, storefront layout updates and optional product covers. A payment claim requests manual verification and does not establish a confirmed receipt. Product-cover changes preserve the existing product-version protection at checkout.
+
+Contracts are recorded in [API contracts](05-api-contract.md), [UI specification](08-interface-specification.md), [customer order center](26-customer-order-center.md) and [product-cover implementation](29-product-cover-images.md). These additions supersede earlier milestone exclusions for the corresponding features without introducing online payment, SMTP or automatic fulfillment.
 
 ## Order revision / generic idempotency foundation
 
@@ -144,7 +158,7 @@ Each stage requires its own review. Production Migration, data cleanup, service 
 
 ## Order API stage 1 — lists and details
 
-**Status: Implemented for owner acceptance after merged model PR #6.** [Contract and isolated verification](16-order-read-api.md).
+**Status: Merged; the original read-only stage followed model PR #6.** [Contract and isolated verification](16-order-read-api.md).
 
 - ADMIN and Session-authenticated CUSTOMER order list/detail GETs only; hidden=false in every database predicate, CUSTOMER ownership derived only from Session.
 - Strict pagination/search/kind/payment/fulfillment/sort filters; explicit per-role snapshot DTOs without authentication/audit data (subsequent foundation adds ADMIN-only internalNote) or current-Product substitutions.
@@ -162,7 +176,7 @@ Each stage requires its own review. Production Migration, data cleanup, service 
 
 ## Order/subscription refactoring — Stage 1 database foundation
 
-**Scope: schema/migration/compatibility/tests only; review before further development.** See [stage guide](15-order-subscription-foundation.md).
+**Status: Merged in PR #6. Historical scope: schema, migrations, compatibility and tests only.** See [stage guide](15-order-subscription-foundation.md).
 
 - Structured DAY/MONTH/YEAR periods and quantities; retain termLabel and unknown legacy NULLs.
 - Order product/period/form/data snapshots; USER/ADMIN/SYSTEM_RENEWAL origins, hidden renewals, lifecycle times and USER/ADMIN/SYSTEM events.
@@ -180,9 +194,9 @@ The new business target is order → confirmed full offline payment → fulfillm
 
 ## Phase 2 — User Model Refactoring & Subscription Management Core
 
-**Status: Merged; preserved as compatibility runtime while the model stage above is reviewed.** [Design, migration, tests and operation guide](14-user-subscription-core.md).
+**Status: Merged; retained as compatibility runtime alongside the later order-based initial-purchase workflow.** [Design, migration, tests and operation guide](14-user-subscription-core.md).
 
-This separately authorized phase supersedes the earlier order-first subscription sequence. Deliver user names/privacy, additive migration with SUSPENDED preflight, immutable subscription snapshots/eight-type form data, ADMIN list/create/detail/edit/renew/terminate/history, optimistic versions, persistent idempotency and minute expiry termination. Preserve accounts/sessions/invitations/history. Only isolated databases are migrated/tested; development migration is a manual post-review step. Run format/typecheck/lint/unit/database/E2E/build. Stop at a new PR; no order/payment, notification, verification-code, API-key or upstream work.
+This separately authorized phase delivered user names/privacy, additive migration with SUSPENDED preflight, immutable subscription snapshots/eight-type form data, ADMIN list/create/detail/edit/renew/terminate/history, optimistic versions, persistent idempotency and minute expiry termination. It preserved accounts/sessions/invitations/history and used only isolated databases for implementation tests. Its direct renewal updates an eligible subscription with an explicitly supplied expiry and creates no order or payment; it does not implement the planned order-based renewal. Order/payment, notification, verification-code, API-key and upstream work were outside this phase. Target-database migration remains an operator-controlled step.
 
 ## Delivery rules
 
@@ -216,7 +230,7 @@ This separately authorized phase supersedes the earlier order-first subscription
 
 ## Phase 1 — Repository scaffold and local operations
 
-**Status: Tasks 1.1–1.2.2 merged; Task 1.2.3 implemented for owner review. Task 1.2.4 has not started.**
+**Historical phase plan:** Tasks 1.1–1.2.3 are merged. The original Task 1.2.4 work was delivered through the later order/payment/refund/fulfillment stages. The customer portal has also progressed; the overview remains Mock. Use the status index rather than these original task boundaries for current availability.
 
 ### Task 1.1 — Responsive Mock UI prototype
 
@@ -231,11 +245,11 @@ This separately authorized phase supersedes the earlier order-first subscription
 
 ### Task 1.2 — Local offline customer and order management
 
-**Status: Database foundation and authentication/customers/invitations merged; product/settings persistence and form configuration implemented for owner review. Later subtasks have not started.**
+**Historical milestone:** Foundation, authentication/customers/invitations and product/settings persistence are merged. Subsequent milestones separately implemented orders, storefront purchases and customer self-service.
 
-Use [10-local-operations-mvp.md](10-local-operations-mvp.md) as the scope and implementation source of truth. Use [04-data-model.md](04-data-model.md) for the database model and [05-api-contract.md](05-api-contract.md) for API boundaries.
+Read [10-local-operations-mvp.md](10-local-operations-mvp.md) for this milestone's original scope. Later changes are summarized in the [status index](00-project-status.md), with current contracts in [04-data-model.md](04-data-model.md) and [05-api-contract.md](05-api-contract.md).
 
-The target is a usable local application for managing existing customers who pay offline. It is not deployed and is not an online store yet.
+The milestone originally targeted a local application for existing customers who pay offline. That historical scope does not describe the current storefront or establish any server deployment status.
 
 #### Task 1.2.1 — Prisma and local database foundation
 
@@ -281,7 +295,7 @@ Acceptance:
 
 #### Task 1.2.3 — Product and settings persistence
 
-**Status: Implemented for owner review.** See [13-products-settings-forms.md](13-products-settings-forms.md). Stop after this PR; do not start Task 1.2.4.
+**Status: Merged.** See [13-products-settings-forms.md](13-products-settings-forms.md) for the original delivery and later product additions.
 
 - Replace product Mock state with database-backed CRUD.
 - Persist only listed (catalog visibility) and archivedAt (irreversible archive) as product state. Unlisted/unarchived products remain ADMIN-selectable for future offline operations.
@@ -301,6 +315,8 @@ Future order selection must allow unlisted/unarchived products and reject archiv
 
 #### Task 1.2.4 — Offline orders, payments, refunds, and fulfillment
 
+**Historical placeholder, superseded by the merged order lifecycle stages above.** T19 allows PAID and NOT_REQUIRED zero-price fulfillment; the original paid-only acceptance line below is historical. A SYSTEM_RENEWAL database model does not mean a renewal service is implemented.
+
 - Admin creates ADMIN INITIAL/ONE_TIME orders. SYSTEM_RENEWAL creates only final paid/completed hidden RENEWAL orders; ordinary admin/customer renewal handling is a future service task.
 - Record payment channel, amount, actual time, reference, and note.
 - Admin confirms actual offline payment after checking the external account.
@@ -318,15 +334,17 @@ Acceptance:
 
 #### Task 1.2.5 — Superseded subscription sequence
 
-The owner-authorized Phase 2 above replaces this earlier order-first design. Its implementation is ready for review; do not start a duplicate subscription task or restore the former suspension/resumption states.
+The merged Phase 2 above replaced this earlier sequence and remains available for legacy ADMIN subscription management. Later stages added order-linked initial entitlements. Do not start a duplicate Phase 2 task or restore the former suspension/resumption states.
 
 - ADMIN creates independent subscriptions for active or pending customers, with frozen product/form snapshots.
 - Direct renewal changes the existing unexpired subscription using an explicit expiry, without orders/payments or guessed durations.
 - Version checks, persistent idempotency, event/audit history and automatic expiry termination protect state changes.
-- ADMIN/SYSTEM sources and ACTIVE/TERMINATED states are the current contract. Preserve old event rows and legacy source-order references.
+- ADMIN/SYSTEM sources and ACTIVE/TERMINATED states describe the Phase 2 direct-management compatibility contract; later order fulfillment also creates ORDER subscriptions. Preserve old event rows and legacy source-order references.
 - Development migration still requires separate operator authorization after PR review. See [Phase 2 operation and verification guide](14-user-subscription-core.md).
 
 #### Task 1.2.6 — Dashboard and customer read-only portal
+
+**Historical combined plan:** The own-order and subscription views are implemented in later milestones, and T22 opened storefront purchasing. The dashboard portion remains future work; the checkout-disabled line below no longer describes the current application.
 
 - Replace overview Mock metrics with database-backed metrics.
 - Customer can activate/login and view only their own orders/subscriptions.
@@ -343,7 +361,7 @@ Acceptance:
 
 ## Future phases — not authorized by Task 1.2
 
-These remain future work and must not be pulled into Task 1.2:
+The following were excluded from the original Task 1.2 scope. Later milestones implemented storefront checkout and self-service; remaining capabilities are tracked in the status index. This historical list neither revokes later authorization nor authorizes deployment:
 
 - Public online checkout and payment provider integration.
 - Supplier email/API and automated fulfillment.
@@ -353,9 +371,9 @@ These remain future work and must not be pulled into Task 1.2:
 
 ## Current review boundary
 
-Tasks 1.2.1–1.2.3, Phase 2, order foundation/read/create/edit/cancel/payment/refund/fulfillment, T20 and T21 are merged. T22 is complete. T22.1, T22.2, T22.3A and T22.3B are merged in PRs #33, #34, #35 and #36 respectively. The T23.0 design awaits review in PR #37. T23.1, T23.5 production rollout, renewal and payment-provider integration require separate authorization.
+Use the [project status index](00-project-status.md) for current merged work and remaining tasks. PR #37's deployment design and subsequent storefront changes through PR #46 are merged. Future implementation work and operational changes still require their applicable task scope and review; this documentation update does not authorize a new feature or a server change.
 
-T19 supersedes the earlier generic Task 1.2.4 fulfillment placeholder below: use the merged D24-D32/D37/D52/D59/D64/D83-D88 contract in [docs/24-manual-fulfillment-api.md](24-manual-fulfillment-api.md). In particular, NOT_REQUIRED zero-price orders are fulfillable, and renewal/SYSTEM_RENEWAL are excluded.
+T19 supersedes the original Task 1.2.4 fulfillment placeholder: use the merged D24-D32/D37/D52/D59/D64/D83-D88 contract in [manual-fulfillment contract](24-manual-fulfillment-api.md). In particular, NOT_REQUIRED zero-price orders are fulfillable, and renewal/SYSTEM_RENEWAL are excluded from that fulfillment service.
 
 
 ## T19 — Manual fulfillment and first ORDER entitlement
@@ -365,7 +383,9 @@ T19 supersedes the earlier generic Task 1.2.4 fulfillment placeholder below: use
 - [x] Unique ORDER Subscription from frozen Order snapshots; locked fulfillment-time settings and D86 arithmetic.
 - [x] Atomic Order/version/Revision/Event, optional Subscription/Event, one/two audits and original idempotency response.
 - [x] Isolated HTTP/SQL-fault/calendar/concurrency tests and desktop/mobile browser acceptance added.
-- [ ] Implementation PR review and separately authorized deployment.
+- [x] Implementation PR reviewed and merged in PR #26.
+
+Deployment is a separately authorized operational action; current server state is not established by this historical checklist.
 
 No Migration, development database operation, renewal, provider integration, email or frontend page. Actual validation is recorded in docs/24.
 
