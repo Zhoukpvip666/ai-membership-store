@@ -66,6 +66,14 @@ If supplier says one of these secrets is required, do not add a generic form fie
 - Avoid leaking stack traces/secrets in production errors.
 - Keep dependencies patched and run dependency audits.
 
+### T24.4B.2 registration limits
+
+Public registration creates an active customer immediately. An unverified email can be used to reserve another person's address or to create fake accounts from a distributed set of IPs. The email conflict response also reveals that an address is already in use without identifying the account's role or status.
+
+The API allows five registration attempts in 15 minutes per Express connection IP. Its in-memory counters reset on restart and are separate per process. The server currently listens on loopback and Express leaves trust proxy disabled. Requests through the local Vite proxy share its loopback bucket. Requests through any future shared reverse proxy would share that proxy's bucket. Only a verified proxy topology should supply the client address. An untrusted forwarded header must not determine the limit.
+
+A future multi-process deployment can use a shared store such as Redis with atomic counters and expiry. Apply budgets to the trusted client IP and normalized email separately. Email ownership verification can address address squatting. Neither step requires logging passwords or cookies.
+
 ## 6. Data protection and retention
 
 - Mask customer account identifiers in list views where practical.

@@ -20,6 +20,14 @@ window.addEventListener('membership:unauthenticated', () => {
   state.error = ''
 })
 
+function acceptSession(user: Account) {
+  cancelAccountRead()
+  state.user = user
+  state.checked = true
+  state.error = ''
+  return user
+}
+
 async function readAccount(signal: AbortSignal) {
   try {
     const { user } = await api<{ user: Account }>(
@@ -62,11 +70,14 @@ export const auth = {
       email,
       password,
     })
-    cancelAccountRead()
-    state.user = user
-    state.checked = true
-    state.error = ''
-    return user
+    return acceptSession(user)
+  },
+  async register(email: string, password: string) {
+    const { user } = await api<{ user: Account }>('/auth/register', 'POST', {
+      email,
+      password,
+    })
+    return acceptSession(user)
   },
   async logout() {
     await api('/auth/logout', 'POST', {})

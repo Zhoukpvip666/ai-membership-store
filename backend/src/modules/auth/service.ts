@@ -11,6 +11,13 @@ import {
   verifyPassword,
 } from './security.ts'
 
+const sessionData = (userId: string, token: string, now: Date) => ({
+  userId,
+  tokenHash: tokenHash(token),
+  expiresAt: new Date(now.getTime() + SESSION_MS),
+  lastSeenAt: now,
+})
+
 const invalidInvitation = () =>
   new ApiError(
     409,
@@ -21,6 +28,28 @@ const invalidInvitation = () =>
 export function authService(database: PrismaClient) {
   let dummyHash: Promise<string> | undefined
   return {
+    async register(email: string, password: string) {
+      const passwordHash = await hashPassword(password)
+      const token = newToken()
+      const user = await transaction(database, async (tx) => {
+        const now = new Date()
+        // Insert only. The database's unique loginEmail constraint also protects invited accounts.
+        const created = await tx.user.create({
+          data: {
+            loginEmail: email,
+            passwordHash,
+            role: 'CUSTOMER',
+            status: 'ACTIVE',
+            activatedAt: now,
+            createdByAdminId: null,
+          },
+          select: publicUserSelect,
+        })
+        await tx.session.create({ data: sessionData(created.id, token, now) })
+        return created
+      })
+      return { token, user }
+    },
     async login(email: string, password: string, requestId: string) {
       const user = await database.user.findUnique({
         where: { loginEmail: email },
@@ -53,14 +82,7 @@ export function authService(database: PrismaClient) {
             '邮箱或密码错误，或账户尚不可用',
           )
         const now = new Date()
-        await tx.session.create({
-          data: {
-            userId: user.id,
-            tokenHash: tokenHash(token),
-            expiresAt: new Date(now.getTime() + SESSION_MS),
-            lastSeenAt: now,
-          },
-        })
+        await tx.session.create({ data: sessionData(user.id, token, now) })
         if (current.role === 'ADMIN')
           await tx.adminAuditLog.create({
             data: {

@@ -227,7 +227,7 @@ The original Task 1.1 prototype uses Mock data. T20 supersedes that baseline for
 ### Task 1.2.2 persistent slice
 
 - Keep the visual style and the separate `/admin/login`, `/login` and `/activate` routes. Guard admin routes with the backend-checked session and role.
-- The customer login page links back to the store. The separate administrator login page also links to customer login. The store link to the console follows the signed-in role. Direct access still requires ADMIN authorization.
+- Customer login links to registration and the store. Registration asks for email, password and confirmation. A successful registration immediately signs in the new customer and returns to a validated storefront destination or the catalog. The separate administrator login links to customer login. The store link to the console follows the signed-in role. Direct access still requires ADMIN authorization.
 - User management now shows real CUSTOMER rows, status filters, paging, profile-only add/edit forms, disable/restore with reason, real counts and invitation metadata. It never asks the administrator to set a customer password.
 - Show a copyable invitation only after issuance; closing the detail clears it. Reissue/revoke are explicit actions. Show the 7-day, one-use, local-machine-only and no-email limits.
 - Customer activation asks for a new password and confirmation. Expired/revoked/used tokens share a clear failure message. Customer login/profile/logout uses the real account.
