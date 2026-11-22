@@ -12,7 +12,7 @@ const featured = {
   type: 'SUBSCRIPTION',
   priceFen: 1200,
   renewalPriceFen: 900,
-  termLabel: '按月服务',
+  termLabel: '1个月',
   servicePeriodUnit: 'MONTH',
   servicePeriodCount: 1,
   listed: true,
@@ -180,6 +180,17 @@ test('guest product detail displays public data and defers the form until purcha
     page.getByRole('heading', { name: featured.name, exact: true }),
   ).toBeVisible()
   const detail = page.locator('.catalog-detail')
+  const productNav = page.getByRole('navigation', {
+    name: /^(移动端)?用户导航$/,
+  })
+  await expect(
+    productNav.getByRole('link', { name: '商品', exact: true }),
+  ).toHaveAttribute('aria-current', 'location')
+  const information = detail.getByRole('region', { name: '商品信息' })
+  await expect(information.locator('.detail-facts dd').first()).toHaveText(
+    '1 个月',
+  )
+  await expect(information.getByText('周期说明')).toHaveCount(0)
   await expect(detail).toContainText(featured.description)
   await expect(detail.locator('.product-description b')).toHaveCount(0)
   await expect(detail).toContainText('1 个月')

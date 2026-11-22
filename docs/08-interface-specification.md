@@ -43,20 +43,17 @@ The same Vue application may serve both surfaces with route-level layouts and au
 - Navigation items: 商品, 我的订阅, 我的订单, 个人中心. ACTIVE administrators use the same storefront to purchase at the listed price, manage their own eligible orders, submit payment claims and view their own subscriptions. The management console retains its separate controls.
 - Product catalog is the default page.
 - Category filters: 全部, 订阅服务, 一次性服务.
-- Product cards in a three-column grid on typical desktop widths.
-- Each card shows only:
-  - Product type badge.
-  - Product name.
-  - Selling price.
-  - Renewal price/period for subscriptions, or one-time payment note.
-  - Primary button: 立即购买.
+- Product cards use three columns on typical desktop widths, two columns on tablets and one column on mobile.
+- A card shows the product type, name, a short description, initial price, service period, renewal price when configured and the 查看详情 link.
+- The current navigation item is visible in the header or mobile bar. On product detail and purchase routes, the catalog remains the current section.
+- Storefront colors, type, spacing, borders and focus styles use variables scoped to the storefront. A compact 预览环境 label identifies the local preview in the footer.
 - Do not add a large marketing banner or verbose introductory copy.
 
 ### 3.2 Mobile layout
 
 - Compact top header with logo/site name and account/avatar entry.
 - Fixed bottom navigation with four items: 商品, 订阅, 订单, 我的.
-- Product cards become a single-column compact list. Each card keeps product type, name, price, short renewal/one-time note, and purchase button visible without excessive vertical padding.
+- Product cards become a compact single-column list with the same information and details link as desktop.
 - Bottom navigation must respect iOS safe-area insets and must not cover page content.
 - Checkout should use a mobile-friendly bottom sheet or full-width dialog.
 - On desktop, use the top navigation and do not show the mobile bottom bar.
@@ -64,7 +61,7 @@ The same Vue application may serve both surfaces with route-level layouts and au
 ### 3.3 Customer pages
 
 **商品**
-- Show only listed=true and archivedAt=null products with simple category filters. T22.1 opens the catalog to guests and keeps 暂未开放线上购买 disabled on product detail.
+- Only listed=true and archivedAt=null products appear in the public catalog. Product detail provides 立即购买, which opens the protected purchase route.
 - Subscription and one-time products are visually distinguishable.
 - Product prices and terms come from product configuration.
 
@@ -110,8 +107,10 @@ The same Vue application may serve both surfaces with route-level layouts and au
 - Do not load or expose formSchema, default values, targetField, archive/listing internals, or administrator fields.
 
 **商品详情 /products/:slug**
-- Show customer-facing product information. 立即购买 opens the protected purchase route.
-- Do not render dynamic fields or request the purchase form schema on this page.
+- Desktop uses a two-column layout. Product identity, description and service facts are on the left. A price and purchase card on the right shows the initial price, service period, the configured renewal price and 立即购买.
+- Mobile puts the price and purchase card after the product title and before the longer description, so purchase remains accessible without scrolling through the description.
+- The structured period takes precedence. Keep a different configured period note and suppress equivalent duplicate labels such as 1 个月 and 1个月. Use the configured label alone when no structured period exists.
+- 立即购买 opens the existing protected purchase route. Product detail neither renders dynamic fields nor fetches the purchase form schema. The purchase page retains its compact summary and existing checks.
 
 **购买 /purchase/:slug（T22.2、T22.3B）**
 - Route requires an ACTIVE CUSTOMER Session. The page fetches the customer-safe form projection when the guard accepts navigation.

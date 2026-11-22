@@ -1,0 +1,293 @@
+.store-shell {
+  --store-font: Inter, 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
+  --store-text: #132039;
+  --store-secondary: #50617b;
+  --store-canvas: #f5f7fb;
+  --store-surface: #fff;
+  --store-line: #dce4ef;
+  --store-blue: #2456d6;
+  --store-blue-hover: #1a45b8;
+  --store-blue-wash: #eef3ff;
+  --store-focus: #2258db;
+  --store-purple: #654694;
+  --store-purple-wash: #f3eefb;
+  --store-danger: #a62322;
+  --store-danger-wash: #fef1ef;
+  --store-radius-sm: 8px;
+  --store-radius-md: 12px;
+  --store-radius-lg: 16px;
+  --store-shadow: 0 2px 4px #162d5210;
+  --store-shadow-hover: 0 7px 18px #162d5214;
+  --store-space-1: 4px;
+  --store-space-2: 8px;
+  --store-space-3: 12px;
+  --store-space-4: 16px;
+  --store-space-5: 20px;
+  --store-space-6: 24px;
+  --store-space-8: 32px;
+  --store-width: 1200px;
+  --store-gutter: clamp(18px, 3vw, 32px);
+  --store-motion: 150ms;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--store-canvas);
+  color: var(--store-text);
+  font-family: var(--store-font);
+}
+.store-shell .store-container {
+  width: 100%;
+  max-width: var(--store-width);
+  margin-inline: auto;
+  padding-inline: var(--store-gutter);
+  min-width: 0;
+}
+.store-shell :is(a, button):focus-visible {
+  outline: 2px solid var(--store-focus);
+  outline-offset: 3px;
+}
+.store-shell .store-topbar {
+  border-bottom: 1px solid var(--store-line);
+  background: var(--store-surface);
+}
+.store-shell .store-header {
+  display: flex;
+  align-items: center;
+  gap: clamp(16px, 3vw, 44px);
+  min-height: 69px;
+}
+.store-shell .store-header .brand {
+  min-width: 0;
+  letter-spacing: -0.35px;
+}
+.store-shell .store-header .brand > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.store-shell .store-header .brand-icon {
+  flex: none;
+  background: var(--store-blue);
+  box-shadow: none;
+}
+.store-shell .store-desktop-nav {
+  display: flex;
+  align-self: stretch;
+  gap: clamp(4px, 1.3vw, 20px);
+}
+.store-shell :is(.store-desktop-nav, .store-bottom-nav) a {
+  color: var(--store-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.store-shell .store-desktop-nav a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-inline: var(--store-space-3);
+}
+.store-shell
+  :is(.store-desktop-nav, .store-bottom-nav)
+  a:is(:hover, [aria-current]) {
+  color: var(--store-blue);
+}
+.store-shell .store-desktop-nav a[aria-current]::after {
+  position: absolute;
+  content: '';
+  inset: auto 12px -1px;
+  height: 3px;
+  border-radius: 4px 4px 0 0;
+  background: var(--store-blue);
+}
+.store-shell .store-desktop-nav a:focus-visible {
+  outline-offset: -5px;
+  border-radius: var(--store-radius-md);
+}
+.store-shell .store-header-actions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--store-space-3);
+  align-items: center;
+  flex: none;
+}
+.store-shell :is(.store-account-link, .store-console-link) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--store-space-2);
+  min-height: 40px;
+  white-space: nowrap;
+  font-weight: 600;
+  border-radius: var(--store-radius-sm);
+}
+.store-shell .store-account-link {
+  min-width: 40px;
+  padding-inline: var(--store-space-3);
+  border: 1px solid var(--store-line);
+  color: var(--store-text);
+}
+.store-shell .store-console-link {
+  color: var(--store-blue);
+  padding-inline: var(--store-space-2);
+  font-size: 13px;
+}
+.store-shell :is(.store-account-link, .store-console-link):hover {
+  background: var(--store-blue-wash);
+  color: var(--store-blue-hover);
+}
+.store-shell .store-main {
+  flex: 1;
+  padding-block: clamp(22px, 3vw, 36px) var(--store-space-8);
+}
+.store-shell .store-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--store-space-3);
+  padding-block: var(--store-space-5);
+  color: var(--store-secondary);
+  font-size: 12px;
+  border-top: 1px solid var(--store-line);
+  overflow-wrap: anywhere;
+}
+.store-shell .store-preview-label {
+  flex: none;
+  border: 1px solid var(--store-line);
+  border-radius: var(--store-radius-sm);
+  padding: var(--store-space-1) var(--store-space-2);
+  background: var(--store-surface);
+}
+.store-shell .store-bottom-nav {
+  display: none;
+}
+.store-shell .store-surface {
+  min-width: 0;
+  border: 1px solid var(--store-line);
+  border-radius: var(--store-radius-lg);
+  background: var(--store-surface);
+  box-shadow: var(--store-shadow);
+}
+.store-shell .store-type {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--store-space-1) var(--store-space-2);
+  border-radius: var(--store-radius-sm);
+  background: var(--store-blue-wash);
+  color: var(--store-blue-hover);
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.store-shell .store-type[data-type='ONE_TIME'] {
+  background: var(--store-purple-wash);
+  color: var(--store-purple);
+}
+.store-shell .store-product-icon,
+.store-shell .store-state-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--store-radius-md);
+  background: var(--store-blue-wash);
+  color: var(--store-blue);
+}
+.store-shell .store-product-icon[data-type='ONE_TIME'] {
+  background: var(--store-purple-wash);
+  color: var(--store-purple);
+}
+.store-shell .store-state {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: var(--store-space-3);
+  min-height: 178px;
+  padding: var(--store-space-6);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.store-shell .store-state :is(p, h2) {
+  margin: 0;
+}
+.store-shell .store-state p {
+  color: var(--store-secondary);
+}
+.store-shell .store-state[role='alert'] .store-state-icon {
+  color: var(--store-danger);
+  background: var(--store-danger-wash);
+}
+.store-shell .store-spinner {
+  animation: store-spin 1s linear infinite;
+}
+@keyframes store-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (max-width: 767px) {
+  .store-shell {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+  .store-shell .store-header {
+    gap: var(--store-space-2);
+    min-height: 60px;
+  }
+  .store-shell .store-header-actions {
+    gap: var(--store-space-1);
+  }
+  .store-shell .store-console-link {
+    font-size: 12px;
+  }
+  .store-shell .store-account-link {
+    min-width: 44px;
+    min-height: 44px;
+    padding-inline: var(--store-space-2);
+  }
+  .store-shell .store-desktop-nav {
+    display: none;
+  }
+  .store-shell .store-bottom-nav {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 100;
+    min-height: calc(64px + env(safe-area-inset-bottom));
+    padding: 5px max(8px, env(safe-area-inset-right))
+      calc(5px + env(safe-area-inset-bottom))
+      max(8px, env(safe-area-inset-left));
+    background: var(--store-surface);
+    border-top: 1px solid var(--store-line);
+  }
+  .store-shell .store-bottom-nav a {
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: var(--store-space-1);
+    min-height: 48px;
+    font-size: 12px;
+    border-radius: var(--store-radius-sm);
+  }
+  .store-shell .store-bottom-nav a[aria-current] {
+    background: var(--store-blue-wash);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .store-shell {
+    --store-motion: 0ms;
+  }
+  .store-shell .store-spinner {
+    animation: none;
+  }
+}
+
+.store-shell .store-primary-button.el-button {
+  --el-button-bg-color: var(--store-blue);
+  --el-button-border-color: var(--store-blue);
+  --el-button-hover-bg-color: var(--store-blue-hover);
+  --el-button-hover-border-color: var(--store-blue-hover);
+  --el-button-active-bg-color: var(--store-blue-hover);
+  --el-button-active-border-color: var(--store-blue-hover);
+  border-radius: var(--store-radius-sm);
+}
