@@ -17,7 +17,10 @@ import {
   productSettingsRoutes,
   publicCatalogRoutes,
 } from '../modules/products/routes.ts'
-import { subscriptionRoutes } from '../modules/subscriptions/routes.ts'
+import {
+  customerSubscriptionRoutes,
+  subscriptionRoutes,
+} from '../modules/subscriptions/routes.ts'
 import {
   adminOrderRoutes,
   customerOrderRoutes,
@@ -87,6 +90,7 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
     },
     customerOrderRoutes(database, env.WECHAT_QR_STORAGE_DIR),
     customerPurchaseRoutes(database),
+    customerSubscriptionRoutes(database),
   )
   // This guard covers implemented and future admin routes, including unknown paths.
   router.use(

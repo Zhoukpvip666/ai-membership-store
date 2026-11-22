@@ -76,9 +76,10 @@ The same Vue application may serve both surfaces with route-level layouts and au
 - The first UI prototype uses mock data and must not claim a real payment was processed.
 
 **我的订阅**
-- Show subscription product, masked target identifier, status, expiry date, renewal price, and renewal action when allowed.
-- A product being delisted does not itself terminate an existing subscription.
-- Archived products retain current entitlements/expiry and historical details, but cannot start new renewals. In Task 1.2.3 all renewal creation remains unavailable with a short explanation; no separate renewal switch exists.
+- `/subscriptions` shows the signed-in ACTIVE customer's subscriptions. Cards show the frozen product name and term, the subscription status, expiry date and renewal price.
+- Filter by all, active, expired or terminated. Support server-side pagination, a loading state, an empty state and a retry action after a failed request.
+- Details show the start and expiry times in the business timezone and link to the source order when it belongs to the customer and is visible. Historical subscriptions can have no source order.
+- Product delisting and archival leave the subscription's frozen display data and expiry intact. Keep subscription form values and internal notes private. Renewal actions are out of scope.
 
 **我的订单（T21 CUSTOMER 真实订单中心）**
 - `/account/orders` 从 Mock 改为真实 CUSTOMER API，只读取当前 ACTIVE Session 用户自己的 `hidden=false` 订单；列表、详情、修改、取消复用现有 customer order API。
@@ -94,7 +95,7 @@ The same Vue application may serve both surfaces with route-level layouts and au
 - T24.2 的正金额、未过期 UNPAID + NOT_STARTED 订单显示「微信扫码付款」，包括应付金额、订单号、保存二维码入口和倒计时。二维码未启用或不可用时显示联系商家的提示，「我已付款」仍可申报。
 - 「我已付款」打开确认步骤，成功后进入付款待核实并隐藏扫码入口。提醒勿重复转账，满 24 小时仍未核实可能自动取消，已转账的顾客应联系商家线下处理。
 - 「商家备注」来自原 CUSTOMER order-guidance API，所有订单状态都可显示非空纯文本备注。
-- 不提供客户创建订单/商城结账、在线支付、付款凭证上传、订阅中心改造或邮件通知；客户购买流程仍未开放。
+- 客户可从商城购买页提交订单，并进入本页查看订单详情。「我的订阅」提供本人订阅的只读列表和详情。在线支付、付款凭证上传及邮件通知仍不在本阶段范围内。
 
 **个人中心**
 - Show login email, notification email, password/security entry, and logout.

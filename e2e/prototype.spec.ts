@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
             id: '00000000-0000-4000-8000-000000000001',
             username: 'Prototype admin',
             loginEmail: 'owner@example.com',
-            role: ['/orders', '/account/orders'].includes(
+            role: ['/orders', '/account/orders', '/subscriptions'].includes(
               new URL(route.request().frame().url()).pathname,
             )
               ? 'CUSTOMER'
@@ -53,6 +53,16 @@ test.beforeEach(async ({ page }) => {
           storeName: 'Prototype store',
           businessTimezone: 'Asia/Shanghai',
           paymentInstructions: '',
+        },
+      })
+    if (path === '/api/v1/customer/subscriptions')
+      return route.fulfill({
+        json: {
+          items: [],
+          total: 0,
+          page: 1,
+          pageSize: 20,
+          businessTimezone: 'Asia/Shanghai',
         },
       })
     throw new Error(
@@ -107,19 +117,15 @@ test('Mock overview retains independent waiting-fulfillment metric', async ({
   ).toBeVisible()
   await expect(page.getByText('模拟确认已完成')).toHaveCount(0)
 })
-test('subscription history details remain available without creating renewal orders', async ({
+test('subscription navigation can show an empty result without a renewal action', async ({
   page,
 }) => {
   await page.goto('/subscriptions')
   await page.getByRole('button', { name: '有效', exact: true }).click()
-  await expect(page.locator('.subscription-card')).toHaveCount(3)
-  const card = page
-    .locator('.subscription-card')
-    .filter({ hasText: 'AI 阅读助手' })
-  await card.getByRole('button', { name: '详情', exact: true }).click()
-  await expect(page.getByRole('dialog', { name: '订阅详情' })).toContainText(
-    'MOCK-1002',
-  )
+  await expect(
+    page.getByText('暂无符合条件的订阅', { exact: true }),
+  ).toBeVisible()
+  await expect(page.locator('.subscription-card')).toHaveCount(0)
   await expect(
     page.getByRole('button', { name: '续费', exact: true }),
   ).toHaveCount(0)

@@ -44,7 +44,7 @@ export const router = createRouter({
         },
         {
           path: 'subscriptions',
-          meta: { authenticated: true },
+          meta: { authenticated: true, customerSubscriptions: true },
           component: () => import('../views/account/Subscriptions.vue'),
         },
         {
@@ -101,7 +101,10 @@ router.beforeEach(async (to) => {
     return { path: '/login', query: { redirect: to.fullPath } }
   if (to.meta.customerPurchase && auth.state.user?.role !== 'CUSTOMER')
     return '/admin/orders'
-  if (to.meta.customerOrders && auth.state.user?.role !== 'CUSTOMER')
+  if (
+    (to.meta.customerOrders || to.meta.customerSubscriptions) &&
+    auth.state.user?.role !== 'CUSTOMER'
+  )
     return '/profile'
 })
 window.addEventListener('membership:unauthenticated', () => {
@@ -114,6 +117,11 @@ window.addEventListener('membership:unauthenticated', () => {
     void router.replace({
       path: '/login',
       query: { redirect: '/account/orders' },
+    })
+  else if (router.currentRoute.value.meta.customerSubscriptions)
+    void router.replace({
+      path: '/login',
+      query: { redirect: '/subscriptions' },
     })
   else if (router.currentRoute.value.meta.customerPurchase)
     void router.replace({

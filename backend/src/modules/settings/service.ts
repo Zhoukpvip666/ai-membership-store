@@ -13,7 +13,7 @@ const adminSettingsSelect = {
   updatedAt: true,
 } as const
 
-const timezone = z
+export const timezone = z
   .string()
   .min(1)
   .max(64)

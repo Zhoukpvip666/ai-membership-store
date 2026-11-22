@@ -10,7 +10,7 @@ Base path: /api/v1. All payloads are JSON. Timestamps are UTC ISO-8601. Money is
 
 **Order creation stage — implemented (PR #11):** [Order creation API contract](19-order-creation-api.md) defines POST `/customer/orders` for ACTIVE CUSTOMER self-order and POST `/admin/orders` for ADMIN-created orders. Both use server-derived source/actor, strict role-specific DTOs, full form validation, frozen Product snapshots, required Idempotency-Key, atomic Order + V1 Revision + Event + applicable Audit + idempotency response. ADMIN may select ACTIVE or PENDING_ACTIVATION customers and unlisted/unarchived Products; CUSTOMER must be ACTIVE and may select listed/unarchived Products. Creation returns the complete role-safe order DTO with HTTP 201 (D58). Merged in PR #11; migration is included in main but development deployment requires separate authorization. Zero amount uses NOT_REQUIRED/PROCESSING without PaymentTransaction or payment times; positive amount uses UNPAID/NOT_STARTED. Responses are `{order}` and exact persisted role-specific DTOs are replayed for the same actor/key/input. See the contract for strict request/error definitions and isolated verification.
 
-`GET /api/v1/health` and its `/health` alias retain their database-readiness behavior. Each request probes MySQL through Prisma. Successful connectivity returns HTTP 200 with `{"status":"ok","database":"ready"}`. Connection/query failure returns HTTP 503 with `{"status":"degraded","database":"unavailable"}`; driver errors and credentials are never returned. This does not verify migration currency: use the local `db:status` command. Authentication, customer/invitation, product/settings, Phase 2 subscription and the existing order list/detail GETs are implemented; the additional ADMIN event GET is implemented and merged in T20 (PR #29). Order creation, edit, cancellation, T17 payment, T18 refund and T19 fulfillment mutations are implemented; renewal, dashboard and customer subscription APIs remain future work. All /admin routes, including unimplemented paths, first require a valid ADMIN session.
+`GET /api/v1/health` and its `/health` alias retain their database-readiness behavior. Each request probes MySQL through Prisma. Successful connectivity returns HTTP 200 with `{"status":"ok","database":"ready"}`. Connection/query failure returns HTTP 503 with `{"status":"degraded","database":"unavailable"}`; driver errors and credentials are never returned. This does not verify migration currency: use the local `db:status` command. Authentication, customer/invitation, product/settings, Phase 2 subscription and the existing order list/detail GETs are implemented; the additional ADMIN event GET is implemented and merged in T20 (PR #29). Order creation, edit, cancellation, T17 payment, T18 refund and T19 fulfillment mutations are implemented; customer subscription list and detail GETs are implemented. Renewal and dashboard APIs remain future work. All /admin routes, including unimplemented paths, first require a valid ADMIN session.
 
 ## T21 customer order center — implemented and merged in PR #31
 
@@ -106,7 +106,7 @@ Creating a user and creating a subscription are independent. A pending customer 
 - Revoke: JSON `{}`; HTTP 204. Already used/revoked invitations return 409. The UI retains no recoverable URL after closing the detail.
 - Customer creation/edit/disable/restore, invitation issue/revoke and administrator login/logout append sanitized audit records transactionally. Audit snapshots omit names/emails, raw tokens and password/token hashes; edit logs name changed fields only.
 
-Customer order reads are implemented at `/customer/orders` as documented above; customer subscription reads remain future work. The T21 review branch connects the CUSTOMER order UI to those existing endpoints. Administrator products/subscriptions, order GETs, order creation/edit/cancel, offline payment/refund and manual fulfillment APIs are implemented; frontend order management and renewal APIs remain future work.
+Customer order reads are implemented at `/customer/orders` as documented above; customer subscription reads are available at `/customer/subscriptions`. The T21 review branch connects the CUSTOMER order UI to those existing endpoints. Administrator products/subscriptions, order GETs, order creation/edit/cancel, offline payment/refund and manual fulfillment APIs are implemented; frontend order management and renewal APIs remain future work.
 
 ## 4. Admin products and settings
 
@@ -208,12 +208,19 @@ The customer login/me projection includes username but never adminLabel; adminis
 | GET | /customer/orders/:id/wechat-qr | T24.2: current enabled QR PNG for the customer's own eligible order |
 | POST | /customer/orders/:id/payment-claim | T24.2: submit a manual verification claim with `{expectedVersion}` and `Idempotency-Key` |
 | GET | /customer/products/:slug | T22.2 ACTIVE CUSTOMER purchase projection with safe formSchema and updatedAt |
-
 | PATCH | /customer/orders/:id | Implemented T15: own eligible ordinary-order full form replacement |
-| GET | /me/subscriptions | Current customer's own subscriptions |
-| GET | /me/subscriptions/:id | Own subscription detail and renewal history |
+| GET | /customer/subscriptions | Implemented: own subscriptions with status filtering and pagination |
+| GET | /customer/subscriptions/:id | Implemented: own frozen subscription details and visible source order |
 
-No customer subscription read or renewal endpoint is implemented. T22.1 provides public catalog reads. T22.2 provides the ACTIVE-CUSTOMER purchase-product read. T22.3B uses the existing customer order POST and opens /account/orders?orderId=:id on success. The order dialog independently loads the customer order detail GET, with the existing own-order and hidden-order 404 rules.
+### Customer subscription reads
+
+Both endpoints require an ACTIVE CUSTOMER session and derive ownership from that session. Guest requests receive HTTP 401 and ADMIN sessions receive HTTP 403. Missing and foreign subscription IDs both receive HTTP 404 `NOT_FOUND`. Query validation rejects unknown parameters, including `userId`. The detail endpoint accepts no query parameters.
+
+- `GET /api/v1/customer/subscriptions` accepts an optional `status` of `ACTIVE`, `EXPIRED` or `TERMINATED`. `page` defaults to 1 and accepts integers from 1 through 10,000. `pageSize` defaults to 20 and accepts integers from 1 through 100. It returns `{items,total,page,pageSize,businessTimezone}` sorted by start time descending and ID ascending.
+- `GET /api/v1/customer/subscriptions/:id` returns `{subscription,businessTimezone}`. Each subscription in either response contains exactly `id`, `productNameSnapshot`, `termSnapshot`, `status`, `startedAt`, `expiresAt`, `renewalPriceFen` and `sourceOrder`. Times are ISO UTC strings. The price is in CNY fen. `sourceOrder` is `{id,orderNo}` for an order owned by the same customer with `hidden=false` and null otherwise.
+- A stored `ACTIVE` subscription with `expiresAt` at or before the database clock appears as `EXPIRED`. A stored `TERMINATED` subscription retains that status. These reads leave the subscription unchanged. Product details come from frozen snapshots and responses exclude form data, internal notes and audit history.
+
+Renewal endpoints remain out of scope. T22.1 provides public catalog reads. T22.2 provides the ACTIVE-CUSTOMER purchase-product read. T22.3B uses the existing customer order POST and opens /account/orders?orderId=:id on success. The order dialog independently loads the customer order detail GET, with the existing own-order and hidden-order 404 rules.
 
 ## 8. Dashboard
 
