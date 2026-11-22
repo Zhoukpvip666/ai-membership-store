@@ -25,9 +25,10 @@ async function submit() {
     const target =
       typeof route.query.redirect === 'string' ? route.query.redirect : ''
     const allowed =
-      user.role === 'ADMIN'
-        ? target.startsWith('/admin') && !target.startsWith('/admin/login')
-        : isCustomerRedirect(target)
+      isCustomerRedirect(target) ||
+      (user.role === 'ADMIN' &&
+        target.startsWith('/admin') &&
+        !target.startsWith('/admin/login'))
     await router.replace(
       allowed ? target : user.role === 'ADMIN' ? '/admin/users' : '/profile',
     )

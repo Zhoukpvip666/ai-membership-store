@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '../../generated/prisma/client.ts'
+import type { UserRole } from '../../generated/prisma/enums.ts'
 import { transaction } from '../../db/transaction.ts'
 import { ApiError } from '../../http/errors.ts'
 import { wechatPaymentService } from '../settings/wechat-payment.ts'
@@ -43,12 +44,19 @@ export function customerWechatPayment(
       userId: string,
       expectedVersion: number,
       key: string,
+      role: UserRole,
+      requestId: string,
     ) {
+      const admin = role === 'ADMIN'
+      const actorType = admin ? 'ADMIN' : 'USER'
+      const operation = admin
+        ? 'ADMIN_SELF_PAYMENT_CLAIMED'
+        : 'CUSTOMER_PAYMENT_CLAIMED'
       return mutation(
         db,
         userId,
         key,
-        'CUSTOMER_PAYMENT_CLAIMED',
+        operation,
         { orderId, expectedVersion },
         async (tx) => {
           const [order] = await tx.$queryRaw<{ version: number }[]>`
@@ -84,26 +92,41 @@ export function customerWechatPayment(
               version: saved.version,
               snapshotSchemaVersion: 1,
               snapshotJson: buildOrderSnapshot(saved),
-              actorType: 'USER',
+              actorType,
               actorUserId: userId,
             },
           })
           const state = (version: number, paymentStatus: string) => ({
-            operation: 'CUSTOMER_PAYMENT_CLAIMED',
+            operation,
             version,
             paymentStatus,
             fulfillmentStatus: saved.fulfillmentStatus,
           })
+          const before = state(order.version, 'UNPAID')
+          const after = state(saved.version, saved.paymentStatus)
           await tx.orderEvent.create({
             data: {
               orderId,
               eventType: 'NOTE',
-              actorType: 'USER',
-              actorUserId: userId,
-              fromStateJson: state(order.version, 'UNPAID'),
-              toStateJson: state(saved.version, saved.paymentStatus),
+              actorType,
+              actorAdminId: admin ? userId : null,
+              actorUserId: admin ? null : userId,
+              fromStateJson: before,
+              toStateJson: after,
             },
           })
+          if (admin)
+            await tx.adminAuditLog.create({
+              data: {
+                actorAdminId: userId,
+                action: operation,
+                entityType: 'Order',
+                entityId: orderId,
+                requestId,
+                beforeJson: before,
+                afterJson: after,
+              },
+            })
           return { order: customerOrderDto(saved) }
         },
       )

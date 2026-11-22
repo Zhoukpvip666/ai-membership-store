@@ -4,6 +4,7 @@ import { mutation } from '../subscriptions/idempotency.ts'
 import { adminOrderDto, adminOrderSelect, customerOrderDto } from './dto.ts'
 import { buildOrderSnapshot, orderRevisionSelect } from './revisions.ts'
 import type { CancellationInput } from './cancel-schemas.ts'
+import { orderActorType, orderOperation, type OrderScope } from './actor.ts'
 
 export const cancellationSelect = {
   ...orderRevisionSelect,
@@ -12,8 +13,10 @@ export const cancellationSelect = {
 type CancellationOrder = Prisma.OrderGetPayload<{
   select: typeof cancellationSelect
 }>
-type Actor = {
-  type: 'USER' | 'ADMIN' | 'SYSTEM'
+type Actor = (
+  | { type: 'USER' | 'ADMIN'; scope: OrderScope['scope'] }
+  | { type: 'SYSTEM'; scope?: never }
+) & {
   id: string | null
   reason: string | null
   requestId?: string
@@ -54,8 +57,10 @@ export async function cancelLockedOrder(
     noPaidFacts &&
     (order.paymentStatus === 'UNPAID' ||
       order.paymentStatus === 'PENDING_VERIFICATION')
+  const canCancelProcessing =
+    actor.type === 'ADMIN' && actor.scope === 'management'
   const zero =
-    actor.type === 'ADMIN' &&
+    canCancelProcessing &&
     order.paymentStatus === 'NOT_REQUIRED' &&
     order.fulfillmentStatus === 'PROCESSING' &&
     order.amountFen === 0 &&
@@ -63,7 +68,7 @@ export async function cancelLockedOrder(
     payments.length === 0
   const receipt = confirmed[0]
   const paid =
-    actor.type === 'ADMIN' &&
+    canCancelProcessing &&
     order.paymentStatus === 'PAID' &&
     order.fulfillmentStatus === 'PROCESSING' &&
     order.amountFen > 0 &&
@@ -155,7 +160,7 @@ export async function cancelLockedOrder(
 
 export function orderCancellationService(database: PrismaClient) {
   return async (
-    role: 'CUSTOMER' | 'ADMIN',
+    access: OrderScope,
     input: CancellationInput,
     orderId: string,
     actorId: string,
@@ -166,17 +171,19 @@ export function orderCancellationService(database: PrismaClient) {
       database,
       actorId,
       key,
-      role === 'ADMIN' ? 'ADMIN_ORDER_CANCEL' : 'CUSTOMER_ORDER_CANCEL',
+      orderOperation(access, 'CANCEL'),
       { orderId, ...input },
       async (tx) => {
-        if (role === 'CUSTOMER')
+        if (access.scope === 'storefront')
           await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND userId = ${actorId} AND hidden = FALSE FOR UPDATE`
         else
           await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`
         const order = await tx.order.findFirst({
           where: {
             id: orderId,
-            ...(role === 'CUSTOMER' ? { userId: actorId, hidden: false } : {}),
+            ...(access.scope === 'storefront'
+              ? { userId: actorId, hidden: false }
+              : {}),
           },
           select: cancellationSelect,
         })
@@ -188,14 +195,15 @@ export function orderCancellationService(database: PrismaClient) {
             '订单版本已变化，请重新读取',
           )
         const updated = await cancelLockedOrder(tx, order, {
-          type: role === 'ADMIN' ? 'ADMIN' : 'USER',
+          type: orderActorType(access),
+          scope: access.scope,
           id: actorId,
           reason: input.reason,
           requestId,
         })
         return {
           order:
-            role === 'ADMIN'
+            access.scope === 'management'
               ? adminOrderDto(updated)
               : customerOrderDto(updated),
         }

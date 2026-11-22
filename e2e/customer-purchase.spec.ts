@@ -1,5 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import sharp from 'sharp'
 import type { Prisma } from '../backend/src/generated/prisma/client.ts'
 import { createDatabase } from '../backend/src/db/client.ts'
 import {
@@ -85,9 +86,9 @@ async function expectLogin(page: Page, destination: string) {
   )
 }
 
-async function logIn(page: Page, email: string) {
+async function logIn(page: Page, email: string, password = fixturePassword) {
   await page.getByLabel('登录邮箱', { exact: true }).fill(email)
-  await page.getByLabel('密码', { exact: true }).fill(fixturePassword)
+  await page.getByLabel('密码', { exact: true }).fill(password)
   await page.getByRole('button', { name: '登录', exact: true }).click()
 }
 
@@ -123,13 +124,13 @@ test('guest buys from detail and returns to the same product after real login', 
   expect(reads).toEqual([purchaseApi + item.slug])
 })
 
-test('direct purchase requires a customer Session and sends ADMIN to order management', async ({
+test('ADMIN storefront login resumes the destination, including after expiry and logout', async ({
   page,
   context,
 }) => {
   const [item, admin] = await Promise.all([
     product(),
-    db.user.findFirstOrThrow({ where: { role: 'ADMIN' } }),
+    db.user.findUniqueOrThrow({ where: { loginEmail: env.ADMIN_EMAIL } }),
   ])
   const destination = '/purchase/' + item.slug
   const reads: string[] = []
@@ -139,10 +140,27 @@ test('direct purchase requires a customer Session and sends ADMIN to order manag
   })
   await page.goto(destination)
   await expectLogin(page, destination)
-  await signInSession(context, admin.id)
-  await page.goto(destination)
-  await expect(page).toHaveURL('/admin/orders')
-  expect(reads).toEqual([])
+  await logIn(page, admin.loginEmail, env.ADMIN_PASSWORD)
+  await expect(page).toHaveURL(destination)
+  await expect(input(page, '账号标识')).toBeVisible()
+  expect(reads).toEqual([purchaseApi + item.slug])
+  await expect(page.getByRole('link', { name: /管理控制台/ })).toBeVisible()
+  const activeCookie = (await context.cookies()).find(
+    (entry) => entry.name === COOKIE_NAME,
+  )
+  await db.session.update({
+    where: { tokenHash: tokenHash(activeCookie!.value) },
+    data: { expiresAt: new Date(Date.now() - 1000) },
+  })
+  await page.goto('/subscriptions')
+  await expectLogin(page, '/subscriptions')
+  await logIn(page, admin.loginEmail, env.ADMIN_PASSWORD)
+  await expect(page).toHaveURL('/subscriptions')
+  await page.goto('/profile')
+  await page.getByRole('button', { name: '退出登录', exact: true }).click()
+  await expect(page).toHaveURL('/login')
+  await page.goto('/account/orders')
+  await expectLogin(page, '/account/orders')
 })
 
 test('login rejects external, traversal and encoded redirect destinations', async ({
@@ -664,6 +682,139 @@ test('retry after the response is lost replays the same committed order', async 
   expect(
     (await expectPersistedOrder(user.id, item.priceFen, attempts[0]!.key)).id,
   ).toBe(original.id)
+})
+
+test('ADMIN retries a lost storefront order response, claims payment, and sees the fulfilled subscription', async ({
+  page,
+  context,
+}) => {
+  const [item, admin] = await Promise.all([
+    product(),
+    db.user.findUniqueOrThrow({ where: { loginEmail: env.ADMIN_EMAIL } }),
+  ])
+  await signInSession(context, admin.id)
+  const adminRequest = (path: string, method: string, data: object | Buffer) =>
+    page.request.fetch('/api/v1/admin' + path, {
+      method,
+      data,
+      headers: {
+        Origin: env.APP_BASE_URL,
+        'X-Requested-With': 'MembershipStore',
+        'Idempotency-Key': randomUUID(),
+        'Content-Type': Buffer.isBuffer(data)
+          ? 'application/octet-stream'
+          : 'application/json',
+      },
+    })
+  const qr = await sharp({
+    create: { width: 128, height: 128, channels: 3, background: 'white' },
+  })
+    .png()
+    .toBuffer()
+  expect((await adminRequest('/settings/wechat-qr', 'PUT', qr)).status()).toBe(
+    200,
+  )
+  expect(
+    (
+      await adminRequest('/settings/wechat-payment', 'PATCH', { enabled: true })
+    ).status(),
+  ).toBe(200)
+  const attempts: { body: string | null; key: string }[] = []
+  await page.route(
+    (url) => url.pathname === ordersApi,
+    async (route) => {
+      const request = route.request()
+      if (request.method() !== 'POST') return route.continue()
+      attempts.push({
+        body: request.postData(),
+        key: request.headers()['idempotency-key']!,
+      })
+      if (attempts.length !== 1) return route.continue()
+      const accepted = await route.fetch()
+      expect(accepted.status()).toBe(201)
+      await route.abort()
+    },
+  )
+
+  await page.goto('/products/' + item.slug)
+  await buy(page).click()
+  await expect(page).toHaveURL('/purchase/' + item.slug)
+  await review(page)
+  await confirmOrder(page).click()
+  await expect(page.getByRole('alert')).toContainText('订单结果尚未确认')
+  await page.getByRole('button', { name: '重试原请求' }).click()
+  const order = await db.order.findFirstOrThrow({
+    where: { userId: admin.id, productId: item.id },
+  })
+  await expectCreatedDetail(page, order)
+  await expectNoOverflow(page)
+  expect(attempts).toHaveLength(2)
+  expect(attempts[1]).toEqual(attempts[0])
+  expect(attempts[0]!.key).not.toBe('')
+  expect(await db.order.count({ where: { productId: item.id } })).toBe(1)
+  expect(order).toMatchObject({
+    userId: admin.id,
+    source: 'ADMIN',
+    createdByAdminId: admin.id,
+    createdByUserId: null,
+    amountFen: item.priceFen,
+  })
+  await expect(
+    detail(page).getByRole('img', { name: '微信收款二维码' }),
+  ).toBeVisible()
+  await detail(page)
+    .getByRole('button', { name: '我已付款', exact: true })
+    .click()
+  await page.getByRole('button', { name: '提交付款核实', exact: true }).click()
+  await expect(detail(page)).toContainText('已提交付款核实')
+
+  const receipt = await adminRequest(
+    '/orders/' + order.id + '/payment-transactions',
+    'POST',
+    {
+      expectedVersion: 2,
+      amountFen: item.priceFen,
+      channel: 'WECHAT',
+      occurredAt: new Date(Date.now() - 1000).toISOString(),
+    },
+  )
+  expect(receipt.status()).toBe(201)
+  const { paymentTransaction } = await receipt.json()
+  const confirmed = await adminRequest(
+    '/payment-transactions/' + paymentTransaction.id + '/confirm',
+    'POST',
+    {
+      expectedVersion: 3,
+    },
+  )
+  expect(confirmed.status()).toBe(200)
+  const fulfilled = await adminRequest(
+    '/orders/' + order.id + '/fulfill',
+    'POST',
+    { expectedVersion: 4 },
+  )
+  expect(fulfilled.status()).toBe(200)
+  const { subscription } = await fulfilled.json()
+
+  await page.goto('/account/orders')
+  await expect(page.getByRole('heading', { name: '我的订单' })).toBeVisible()
+  await page.getByRole('link', { name: /^(我的订阅|订阅)$/ }).click()
+  await expect(page).toHaveURL('/subscriptions')
+  const card = page.locator('.subscription-card').filter({ hasText: item.name })
+  await card.getByRole('button', { name: '详情', exact: true }).click()
+  await expect(
+    page
+      .getByRole('dialog', { name: '订阅详情' })
+      .getByRole('link', { name: order.orderNo }),
+  ).toHaveAttribute('href', '/account/orders?orderId=' + order.id)
+  expect(
+    (
+      await db.subscription.findUniqueOrThrow({
+        where: { id: subscription.id },
+      })
+    ).userId,
+  ).toBe(admin.id)
+  await expectNoOverflow(page)
 })
 
 async function createHiddenOrder(

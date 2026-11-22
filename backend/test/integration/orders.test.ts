@@ -338,11 +338,8 @@ after(async () => {
   await db.$disconnect()
 })
 
-test('all four routes require a live Session and the correct ADMIN/CUSTOMER role', async () => {
-  for (const [prefix, wrongRole] of [
-    ['/admin', cookies.alice],
-    ['/customer', cookies.admin],
-  ]) {
+test('all order reads require a live Session and the admin routes require ADMIN', async () => {
+  for (const prefix of ['/admin', '/customer']) {
     for (const suffix of ['/orders', '/orders/' + orders[0].id]) {
       for (const cookie of [
         '',
@@ -352,7 +349,11 @@ test('all four routes require a live Session and the correct ADMIN/CUSTOMER role
         cookies.disabled,
       ])
         assert.equal((await request(prefix + suffix, cookie)).status, 401)
-      assert.equal((await request(prefix + suffix, wrongRole)).status, 403)
+      if (prefix === '/admin')
+        assert.equal(
+          (await request(prefix + suffix, cookies.alice)).status,
+          403,
+        )
     }
   }
 })

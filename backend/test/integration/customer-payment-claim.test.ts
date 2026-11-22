@@ -161,11 +161,11 @@ const image = (order: Order, cookie = owner) =>
 const stored = (order: Order) =>
   db.order.findUniqueOrThrow({ where: { id: order.id } })
 
-test('image and claim require ACTIVE CUSTOMER and conceal other or missing orders', async () => {
+test('image and claim require an ACTIVE storefront session and conceal other or missing orders', async () => {
   const order = await fixture()
   for (const [cookie, status] of [
     ['', 401],
-    [admin, 403],
+    [admin, 404],
     [pending, 401],
     [stranger, 404],
   ] as const) {

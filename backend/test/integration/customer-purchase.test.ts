@@ -128,10 +128,9 @@ async function read(slug: string, cookie = active) {
   }
 }
 
-test('purchase access requires an ACTIVE CUSTOMER with a valid Session', async () => {
+test('purchase access requires an ACTIVE account with a valid Session', async () => {
   for (const [label, cookie, status] of [
     ['guest', '', 401],
-    ['admin', admin, 403],
     ['pending', pending, 401],
     ['disabled', disabled, 401],
     ['expired', expired, 401],
@@ -139,12 +138,11 @@ test('purchase access requires an ACTIVE CUSTOMER with a valid Session', async (
   ] as const) {
     const result = await read(display.slug, cookie)
     assert.equal(result.status, status, label)
-    assert.equal(
-      result.body.error.code,
-      status === 403 ? 'FORBIDDEN' : 'UNAUTHENTICATED',
-      label,
-    )
+    assert.equal(result.body.error.code, 'UNAUTHENTICATED', label)
   }
+  const result = await read(display.slug, admin)
+  assert.equal(result.status, 200)
+  assert.deepEqual(result.body, (await read(display.slug)).body)
 })
 
 test('purchase reads the exact fields, strips defaults and preserves the eight ordered field types', async () => {

@@ -280,7 +280,7 @@ test('PATCH requires persisted active role-specific Sessions and existing CSRF p
           randomUUID(),
           cookies[role === 'admin' ? 'customer' : 'admin'],
         ),
-      403,
+      role === 'admin' ? 403 : 404,
     )
   }
   const before = await snapshot()

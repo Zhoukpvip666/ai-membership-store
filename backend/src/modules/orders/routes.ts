@@ -76,7 +76,7 @@ export function adminOrderRoutes(database: PrismaClient) {
   router.post('/orders/:id/cancel', async (request, response) => {
     response.json(
       await cancel(
-        'ADMIN',
+        { scope: 'management' },
         cancelAdminOrder.parse(request.body),
         id.parse(request.params.id),
         response.locals.principal.user.id,
@@ -88,7 +88,7 @@ export function adminOrderRoutes(database: PrismaClient) {
   router.patch('/orders/:id', async (request, response) => {
     response.json(
       await edit(
-        { role: 'ADMIN', input: editAdminOrder.parse(request.body) },
+        { scope: 'management', input: editAdminOrder.parse(request.body) },
         id.parse(request.params.id),
         response.locals.principal.user.id,
         creationKey(request.get('Idempotency-Key')),
@@ -101,7 +101,7 @@ export function adminOrderRoutes(database: PrismaClient) {
       .status(201)
       .json(
         await create(
-          { role: 'ADMIN', input: createAdminOrder.parse(request.body) },
+          { scope: 'management', input: createAdminOrder.parse(request.body) },
           response.locals.principal.user.id,
           creationKey(request.get('Idempotency-Key')),
           response.locals.requestId,
@@ -148,6 +148,8 @@ export function customerOrderRoutes(
         response.locals.principal.user.id,
         expectedVersion,
         creationKey(request.get('Idempotency-Key')),
+        response.locals.principal.user.role,
+        response.locals.requestId,
       ),
     )
   })
@@ -158,7 +160,7 @@ export function customerOrderRoutes(
   router.post('/orders/:id/cancel', async (request, response) => {
     response.json(
       await cancel(
-        'CUSTOMER',
+        { scope: 'storefront', actorRole: response.locals.principal.user.role },
         cancelCustomerOrder.parse(request.body),
         id.parse(request.params.id),
         response.locals.principal.user.id,
@@ -170,7 +172,11 @@ export function customerOrderRoutes(
   router.patch('/orders/:id', async (request, response) => {
     response.json(
       await edit(
-        { role: 'CUSTOMER', input: editCustomerOrder.parse(request.body) },
+        {
+          scope: 'storefront',
+          actorRole: response.locals.principal.user.role,
+          input: editCustomerOrder.parse(request.body),
+        },
         id.parse(request.params.id),
         response.locals.principal.user.id,
         creationKey(request.get('Idempotency-Key')),
@@ -180,18 +186,21 @@ export function customerOrderRoutes(
   })
   router.post('/orders', async (request, response) => {
     const user = response.locals.principal.user
+    orderDetailQuery.parse(request.query)
     if (user.status !== 'ACTIVE')
       throw new ApiError(403, 'ACCOUNT_NOT_ELIGIBLE', '账户尚不可下单')
-    response
-      .status(201)
-      .json(
-        await create(
-          { role: 'CUSTOMER', input: createCustomerOrder.parse(request.body) },
-          user.id,
-          creationKey(request.get('Idempotency-Key')),
-          response.locals.requestId,
-        ),
-      )
+    response.status(201).json(
+      await create(
+        {
+          scope: 'storefront',
+          actorRole: user.role,
+          input: createCustomerOrder.parse(request.body),
+        },
+        user.id,
+        creationKey(request.get('Idempotency-Key')),
+        response.locals.requestId,
+      ),
+    )
   })
   router.get('/orders', async (request, response) => {
     response.json(

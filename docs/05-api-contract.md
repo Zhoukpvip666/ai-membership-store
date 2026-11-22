@@ -198,23 +198,27 @@ Every minute (also startup) the worker conditionally terminates ACTIVE rows with
 
 The customer login/me projection includes username but never adminLabel; administrator customer APIs include both. No new username-setting, verification-code or activation workflow is added. Full snapshot/migration/privacy contract: [Phase 2 guide](14-user-subscription-core.md).
 
-## 7. Customer read-only APIs
+## 7. Storefront APIs
+
+**T24.4B.1:** An ACTIVE CUSTOMER or ADMIN uses the existing /customer routes for storefront self-service. Orders, payment QR and claims, and subscriptions are scoped to the Session user and use the customer-safe projections. The /admin routes retain their separate ADMIN guard and management scope.
+
+For ADMIN self-purchase, POST /customer/orders uses the current listed, unarchived product price and checks its version and form. It records source ADMIN, with userId and createdByAdminId equal to the Session user and createdByUserId null. The same version and idempotency rules apply. Self-service never accepts owner or price overrides and uses the customer cancellation rules. Administrator self-service writes record ADMIN revisions, events and audits. In particular, ADMIN_SELF_PAYMENT_CLAIMED records a request for verification without confirming payment.
 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | /customer/orders | Implemented: current customer's own visible ordinary orders |
 | GET | /customer/orders/:id | Implemented: own ordinary order snapshot; no internal timeline |
-| GET | /customer/order-guidance | Implemented T21: ACTIVE CUSTOMER only; safe `{storeName,businessTimezone,paymentInstructions}` allowlist |
+| GET | /customer/order-guidance | Implemented T21: ACTIVE storefront session; safe `{storeName,businessTimezone,paymentInstructions}` allowlist |
 | GET | /customer/orders/:id/wechat-qr | T24.2: current enabled QR PNG for the customer's own eligible order |
 | POST | /customer/orders/:id/payment-claim | T24.2: submit a manual verification claim with `{expectedVersion}` and `Idempotency-Key` |
-| GET | /customer/products/:slug | T22.2 ACTIVE CUSTOMER purchase projection with safe formSchema and updatedAt |
+| GET | /customer/products/:slug | T22.2 ACTIVE storefront purchase projection with safe formSchema and updatedAt |
 | PATCH | /customer/orders/:id | Implemented T15: own eligible ordinary-order full form replacement |
 | GET | /customer/subscriptions | Implemented: own subscriptions with status filtering and pagination |
 | GET | /customer/subscriptions/:id | Implemented: own frozen subscription details and visible source order |
 
 ### Customer subscription reads
 
-Both endpoints require an ACTIVE CUSTOMER session and derive ownership from that session. Guest requests receive HTTP 401 and ADMIN sessions receive HTTP 403. Missing and foreign subscription IDs both receive HTTP 404 `NOT_FOUND`. Query validation rejects unknown parameters, including `userId`. The detail endpoint accepts no query parameters.
+Both endpoints require an ACTIVE storefront session and derive ownership from that session. Guest requests receive HTTP 401. Missing and foreign subscription IDs both receive HTTP 404 `NOT_FOUND`. Query validation rejects unknown parameters, including `userId`. The detail endpoint accepts no query parameters.
 
 - `GET /api/v1/customer/subscriptions` accepts an optional `status` of `ACTIVE`, `EXPIRED` or `TERMINATED`. `page` defaults to 1 and accepts integers from 1 through 10,000. `pageSize` defaults to 20 and accepts integers from 1 through 100. It returns `{items,total,page,pageSize,businessTimezone}` sorted by start time descending and ID ascending.
 - `GET /api/v1/customer/subscriptions/:id` returns `{subscription,businessTimezone}`. Each subscription in either response contains exactly `id`, `productNameSnapshot`, `termSnapshot`, `status`, `startedAt`, `expiresAt`, `renewalPriceFen` and `sourceOrder`. Times are ISO UTC strings. The price is in CNY fen. `sourceOrder` is `{id,orderNo}` for an order owned by the same customer with `hidden=false` and null otherwise.

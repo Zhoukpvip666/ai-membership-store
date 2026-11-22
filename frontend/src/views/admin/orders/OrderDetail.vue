@@ -89,6 +89,7 @@ const operationLabels: Record<string, string> = {
   ORDER_INTERNAL_NOTE_UPDATED: '更新内部备注',
   PAYMENT_RECORDED: '登记付款',
   CUSTOMER_PAYMENT_CLAIMED: '客户提交付款核实',
+  ADMIN_SELF_PAYMENT_CLAIMED: '管理员申请本人订单核实',
   PAYMENT_CONFIRMED: '确认收款',
   PAYMENT_FAILED: '付款失败',
   REFUND_RECORDED: '登记退款',
