@@ -2,6 +2,9 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import express from 'express'
+import { createApp } from '../src/app.ts'
+import { parseEnvironment } from '../src/config/env.ts'
+import type { PrismaClient } from '../src/generated/prisma/client.ts'
 import {
   COOKIE_NAME,
   newToken,
@@ -13,6 +16,71 @@ import {
 import * as schemas from '../src/modules/users/schemas.ts'
 import { csrf, rateLimit } from '../src/http/security.ts'
 import { errors } from '../src/http/errors.ts'
+
+test('admin settings require a current ADMIN session regardless of storefront navigation', async () => {
+  const adminToken = newToken()
+  const customerToken = newToken()
+  const expiredToken = newToken()
+  const fixtures = [
+    [adminToken, 'ADMIN', 60_000],
+    [customerToken, 'CUSTOMER', 60_000],
+    [expiredToken, 'ADMIN', -60_000],
+  ] as const
+  const sessions = new Map(
+    fixtures.map(([token, role, offset]) => [
+      tokenHash(token),
+      {
+        user: { role, status: 'ACTIVE' },
+        expiresAt: new Date(Date.now() + offset),
+      },
+    ]),
+  )
+  let settingsReads = 0
+  const database = {
+    session: {
+      findUnique: async ({ where }: { where: { tokenHash: string } }) =>
+        sessions.get(where.tokenHash) ?? null,
+    },
+    appSettings: {
+      findUnique: async () => {
+        settingsReads++
+        return { id: 1 }
+      },
+    },
+  } as unknown as PrismaClient
+  const env = parseEnvironment({
+    APP_BASE_URL: 'http://localhost:5173',
+    ADMIN_EMAIL: 'owner@example.test',
+    ADMIN_PASSWORD: 'FictionalTestPassword2468!',
+    DATABASE_URL: 'mysql://test:unused@127.0.0.1:1/unused',
+  })
+  const server = createApp(async () => {}, { database, env }).listen(
+    0,
+    '127.0.0.1',
+  )
+  await once(server, 'listening')
+  const address = server.address()
+  assert(address && typeof address !== 'string')
+  const url = 'http://127.0.0.1:' + address.port + '/api/v1/admin/settings'
+  try {
+    assert.equal((await fetch(url)).status, 401)
+    for (const [token, status] of [
+      [customerToken, 403],
+      [expiredToken, 401],
+      [adminToken, 200],
+    ] as const) {
+      const response = await fetch(url, {
+        headers: { Cookie: COOKIE_NAME + '=' + token },
+      })
+      assert.equal(response.status, status)
+    }
+    assert.equal(settingsReads, 1)
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    )
+  }
+})
 
 test('opaque tokens, hash-only lookup and strict cookie parsing', () => {
   const token = newToken()

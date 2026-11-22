@@ -39,6 +39,7 @@ The same Vue application may serve both surfaces with route-level layouts and au
 ### 3.1 Desktop layout
 
 - Top header with compact logo/site name, navigation, and signed-in account/avatar.
+- On desktop and mobile, show 管理控制台 only for a confirmed ADMIN session. Restore the role from the server on load and refresh. While the ADMIN storefront is open, recheck the session when the window regains focus or the tab becomes visible and every 30 seconds while visible.
 - Navigation items: 商品, 我的订阅, 我的订单, 个人中心.
 - Product catalog is the default page.
 - Category filters: 全部, 订阅服务, 一次性服务.
@@ -224,7 +225,8 @@ The original Task 1.1 prototype uses Mock data. T20 supersedes that baseline for
 
 ### Task 1.2.2 persistent slice
 
-- Keep the visual style and all navigation. Add /admin/login, /login and /activate; guard admin routes by a real backend-checked session and role.
+- Keep the visual style and the separate `/admin/login`, `/login` and `/activate` routes. Guard admin routes with the backend-checked session and role.
+- The customer login page links back to the store. The separate administrator login page also links to customer login. The store link to the console follows the signed-in role. Direct access still requires ADMIN authorization.
 - User management now shows real CUSTOMER rows, status filters, paging, profile-only add/edit forms, disable/restore with reason, real counts and invitation metadata. It never asks the administrator to set a customer password.
 - Show a copyable invitation only after issuance; closing the detail clears it. Reissue/revoke are explicit actions. Show the 7-day, one-use, local-machine-only and no-email limits.
 - Customer activation asks for a new password and confirmation. Expired/revoked/used tokens share a clear failure message. Customer login/profile/logout uses the real account.
