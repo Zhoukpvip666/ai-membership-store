@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { isCustomerRedirect } from './customer-redirect'
+import { customerRedirect } from './customer-redirect'
 
 it('preserves customer destinations and accepts strict purchase paths', () => {
   for (const path of [
@@ -10,7 +10,7 @@ it('preserves customer destinations and accepts strict purchase paths', () => {
     '/purchase/product-ABC_123',
     '/purchase/' + 'a'.repeat(100),
   ])
-    expect(isCustomerRedirect(path)).toBe(true)
+    expect(customerRedirect(path)).toBe(path)
 })
 
 it('rejects external, malformed and noncanonical redirect paths', () => {
@@ -29,6 +29,9 @@ it('rejects external, malformed and noncanonical redirect paths', () => {
     '/purchase/_a',
     '/purchase/' + 'a'.repeat(101),
     '/admin/orders',
+    ['/purchase/valid-slug', '/admin/orders'],
+    null,
+    undefined,
   ])
-    expect(isCustomerRedirect(path)).toBe(false)
+    expect(customerRedirect(path)).toBeUndefined()
 })

@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Brand from '../../components/Brand.vue'
 import { auth } from '../../stores/auth'
-import { isCustomerRedirect } from '../../router/customer-redirect'
+import { customerRedirect } from '../../router/customer-redirect'
 const props = defineProps<{ admin?: boolean }>()
 const route = useRoute()
 const router = useRouter()
+const registerRoute = computed(() => {
+  const redirect = customerRedirect(route.query.redirect)
+  return {
+    path: '/register',
+    query: redirect ? { redirect } : {},
+  }
+})
 const email = ref('')
 const password = ref('')
 const busy = ref(false)
@@ -25,7 +32,7 @@ async function submit() {
     const target =
       typeof route.query.redirect === 'string' ? route.query.redirect : ''
     const allowed =
-      isCustomerRedirect(target) ||
+      customerRedirect(target) !== undefined ||
       (user.role === 'ADMIN' &&
         target.startsWith('/admin') &&
         !target.startsWith('/admin/login'))
@@ -78,7 +85,7 @@ async function submit() {
         <RouterLink to="/">返回商店</RouterLink>
       </div>
       <p v-if="!admin" class="muted">
-        客户账户由管理员创建，请先通过邀请链接激活。本站不提供公开注册。
+        还没有账号？<RouterLink :to="registerRoute">立即注册</RouterLink>
       </p>
     </div>
   </main>

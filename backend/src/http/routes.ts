@@ -36,6 +36,7 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
     secure: new URL(env.APP_BASE_URL).protocol === 'https:',
     path: '/',
   }
+  const sessionCookieOptions = { ...cookieOptions, maxAge: SESSION_MS }
   router.use(csrf(env.APP_BASE_URL))
   router.use('/catalog', publicCatalogRoutes(database))
   const authenticate: RequestHandler = async (request, response, next) => {
@@ -51,6 +52,18 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
     response.locals.principal = principal
     next()
   }
+  router.post('/auth/register', rateLimit(5), async (request, response) => {
+    if (await auth.resolve(sessionCookie(request.headers.cookie)))
+      throw new ApiError(
+        409,
+        'ALREADY_AUTHENTICATED',
+        '当前已登录，请先退出再注册',
+      )
+    const input = schemas.register.parse(request.body)
+    const { token, user } = await auth.register(input.email, input.password)
+    response.cookie(COOKIE_NAME, token, sessionCookieOptions)
+    response.status(201).json({ user })
+  })
   router.post('/auth/login', rateLimit(30), async (request, response) => {
     const input = schemas.login.parse(request.body)
     const result = await auth.login(
@@ -58,10 +71,7 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
       input.password,
       response.locals.requestId,
     )
-    response.cookie(COOKIE_NAME, result.token, {
-      ...cookieOptions,
-      maxAge: SESSION_MS,
-    })
+    response.cookie(COOKIE_NAME, result.token, sessionCookieOptions)
     response.json({ user: result.user })
   })
   router.get('/auth/me', authenticate, (_request, response) => {

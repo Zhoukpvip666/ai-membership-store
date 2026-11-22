@@ -52,7 +52,7 @@ The final model supports only USER/ADMIN/SYSTEM_RENEWAL. Migration ten removes t
 - All /admin routes require server-side ADMIN authorization.
 - Customer routes require an authenticated CUSTOMER and enforce ownership.
 - Customers may be PENDING_ACTIVATION and still have admin-managed orders/subscriptions.
-- No public registration, online checkout, payment-provider API, supplier API, SMTP, settlement, or withdrawal endpoints.
+- T24.4B.2 adds public CUSTOMER registration to the authentication API. Existing offline checkout uses the order APIs below. Payment-provider API, supplier API, SMTP, settlement and withdrawal endpoints are out of scope.
 - Stable error shape with code, message, and requestId.
 - Server generates IDs/order numbers and calculates/defaults prices. Never trust browser-supplied payment status, role, or transaction confirmation.
 - Store money in integer fen. Store timestamps in UTC.
@@ -62,12 +62,13 @@ The final model supports only USER/ADMIN/SYSTEM_RENEWAL. Migration ten removes t
 
 | Method | Path | Purpose |
 |---|---|---|
+| POST | /auth/register | Create an ACTIVE CUSTOMER and sign in with the existing Session cookie |
 | POST | /auth/login | Admin/customer login |
 | POST | /auth/logout | Revoke current session |
 | GET | /auth/me | Current account and role |
 | POST | /auth/activate | Consume one-time invitation token and set customer password |
 
-No public /auth/register route. Admin is seeded from local environment configuration. Customer activation requires a valid, unused, unexpired invitation token. The raw invitation token is never returned by a read endpoint and is never emailed.
+Admin is seeded from local environment configuration. Accounts provisioned by an administrator require a valid, unused, unexpired invitation token to activate. The raw invitation token is never returned by a read endpoint and is never emailed.
 
 ### Implemented request/response and session rules
 
@@ -80,6 +81,12 @@ No public /auth/register route. Admin is seeded from local environment configura
 - All JSON mutation requests require an Origin exactly matching APP_BASE_URL, `X-Requested-With: MembershipStore` and Content-Type application/json. No permissive CORS is enabled. Browser fetch uses the same-origin Vite proxy; open the exact configured frontend origin.
 - Login and activation each allow 30 requests per 15 minutes per source IP. Admin mutations allow 120 per 15 minutes per IP. Limits are bounded and local to the API process; a restart clears them.
 - Error shape: `{error:{code,message,requestId}}`. Request IDs are server-generated. Responses are no-store; validation/database failures do not expose input, credentials, driver messages or hashes.
+
+### Storefront registration (T24.4B.2)
+
+POST /auth/register accepts exactly email and password. It reuses the email normalization and password validation used by login. The account starts as ACTIVE CUSTOMER, sets activatedAt on registration and has a null createdByAdminId. Registration returns HTTP 201 with the same safe user projection and 12-hour cookie used by login. One transaction inserts both the account and its Session.
+
+HTTP 409 EMAIL_EXISTS applies to any existing normalized email, including pending invitations and administrator accounts. HTTP 409 ALREADY_AUTHENTICATED rejects a request with a valid active Session. Malformed input returns 400, CSRF failures return 403 and a separate five-attempt registration window returns 429 with Retry-After on the sixth attempt from the same connection IP within 15 minutes. If the response is lost, the user can sign in using the same credentials.
 
 ## 3. Admin customers and invitations
 

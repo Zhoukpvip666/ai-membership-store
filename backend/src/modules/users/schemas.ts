@@ -32,6 +32,7 @@ export const listCustomers = z.strictObject({
 })
 export const emptyBody = z.strictObject({})
 export const login = z.strictObject({ email, password })
+export const register = z.strictObject({ email, password })
 export const activation = z.strictObject({
   token: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
   password,
