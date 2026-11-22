@@ -119,9 +119,13 @@ test('guest catalog loads, then searches, filters and paginates using the public
   expect((await initial).status()).toBe(200)
   const cards = page.locator('.product-card')
   const card = cards.filter({ hasText: featured.name })
-  await expect(card).toContainText('订阅服务')
-  await expect(card).toContainText('12.00')
-  await expect(card).toContainText(featured.description)
+  await expect(page.getByRole('region', { name: '商品目录' })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: '商品', exact: true }),
+  ).toHaveCount(0)
+  await expect(card).toHaveText(
+    new RegExp('^' + featured.name + '\\s*[¥￥]12\\.00$'),
+  )
   await expect(cards).toHaveCount(20)
   const grid = page.locator('.product-grid')
   expect(

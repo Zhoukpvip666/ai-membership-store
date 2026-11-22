@@ -41,10 +41,10 @@ The same Vue application may serve both surfaces with route-level layouts and au
 - Top header with compact logo/site name, navigation, and signed-in account/avatar.
 - On desktop and mobile, show 管理控制台 only for a confirmed ADMIN session. Restore the role from the server on load and refresh. While the ADMIN storefront is open, recheck the session when the window regains focus or the tab becomes visible and every 30 seconds while visible.
 - Navigation items: 商品, 我的订阅, 我的订单, 个人中心. ACTIVE administrators use the same storefront to purchase at the listed price, manage their own eligible orders, submit payment claims and view their own subscriptions. The management console retains its separate controls.
-- Product catalog is the default page.
+- Product catalog is the default page. Search and filters sit directly below the navigation.
 - Category filters: 全部, 订阅服务, 一次性服务.
 - Product cards use three columns on typical desktop widths, two columns on tablets and one column on mobile.
-- A card shows the product type, name, a short description, initial price, service period, renewal price when configured and the 查看详情 link.
+- A card shows the product name and initial price. The whole card links to the detail page.
 - The current navigation item is visible in the header or mobile bar. On product detail and purchase routes, the catalog remains the current section.
 - Storefront colors, type, spacing, borders and focus styles use variables scoped to the storefront. A compact 预览环境 label identifies the local preview in the footer.
 - Do not add a large marketing banner or verbose introductory copy.
@@ -62,8 +62,7 @@ The same Vue application may serve both surfaces with route-level layouts and au
 
 **商品**
 - Only listed=true and archivedAt=null products appear in the public catalog. Product detail provides 立即购买, which opens the protected purchase route.
-- Subscription and one-time products are visually distinguishable.
-- Product prices and terms come from product configuration.
+- Use the category filters to distinguish subscription and one-time products. The detail page shows the type and configured service information.
 
 **购买**
 - Show product name, price, and term.
@@ -102,7 +101,7 @@ The same Vue application may serve both surfaces with route-level layouts and au
 
 **商品目录 /**
 - Visitors and customers can browse listed, unarchived products without signing in.
-- Show product name, description, type, initial price, service term, and renewal price for subscription products.
+- List product names and initial prices. Show the description, type, service term and any configured renewal price on the detail page.
 - Use public server-side search, category filters, and pagination.
 - Do not load or expose formSchema, default values, targetField, archive/listing internals, or administrator fields.
 

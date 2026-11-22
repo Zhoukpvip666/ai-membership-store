@@ -3,13 +3,10 @@ import { onMounted, ref } from 'vue'
 import {
   ArrowRight,
   CircleAlert,
-  Layers2,
   LoaderCircle,
-  Package,
   PackageOpen,
   Search,
 } from '@lucide/vue'
-import { productPeriod } from '../../components/product-period'
 import { money } from '../../stores/format'
 import { readCatalog, type PublicProduct } from '../../api/catalog'
 
@@ -70,12 +67,7 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="catalog">
-    <header class="catalog-heading">
-      <h1>商品</h1>
-      <p>浏览订阅与一次性服务，查看价格和服务周期。</p>
-    </header>
-
+  <section class="catalog" aria-label="商品目录">
     <div class="catalog-toolbar store-surface">
       <div class="catalog-filters" role="group" aria-label="商品分类">
         <button
@@ -130,48 +122,19 @@ onMounted(load)
             :key="product.slug"
             class="product-card store-surface"
           >
-            <div class="catalog-card-meta">
-              <span class="store-product-icon" :data-type="product.type">
-                <Layers2
-                  v-if="product.type === 'SUBSCRIPTION'"
-                  :size="22"
-                  aria-hidden="true"
-                />
-                <Package v-else :size="22" aria-hidden="true" />
-              </span>
-              <span class="store-type" :data-type="product.type">
-                {{
-                  product.type === 'SUBSCRIPTION' ? '订阅服务' : '一次性服务'
-                }}
-              </span>
-            </div>
-            <div class="catalog-card-info">
-              <h2>{{ product.name }}</h2>
-              <p v-if="product.description" class="product-description">
-                {{ product.description }}
-              </p>
-            </div>
-            <div class="catalog-pricing">
-              <div class="catalog-price">
-                <strong>{{ money(product.priceFen) }}</strong>
-                <span>{{ productPeriod(product).text }}</span>
-              </div>
-              <p
-                v-if="
-                  product.type === 'SUBSCRIPTION' &&
-                  product.renewalPriceFen !== null
-                "
-                class="catalog-renewal"
-              >
-                续费 {{ money(product.renewalPriceFen) }}
-              </p>
-            </div>
             <RouterLink
               :to="{ name: 'catalog-product', params: { slug: product.slug } }"
               class="catalog-product-link"
               :aria-label="'查看详情：' + product.name"
+              :aria-describedby="'catalog-price-' + product.slug"
             >
-              查看详情 <ArrowRight :size="16" aria-hidden="true" />
+              <h2>{{ product.name }}</h2>
+              <strong
+                :id="'catalog-price-' + product.slug"
+                class="catalog-price"
+                >{{ money(product.priceFen) }}</strong
+              >
+              <ArrowRight :size="18" aria-hidden="true" />
             </RouterLink>
           </article>
         </div>
@@ -196,20 +159,6 @@ onMounted(load)
 </template>
 
 <style scoped>
-.catalog-heading {
-  margin-bottom: var(--store-space-6);
-}
-.catalog-heading h1 {
-  margin: 0;
-  font-size: clamp(28px, 3.25vw, 40px);
-  font-weight: 720;
-  line-height: 1.18;
-}
-.catalog-heading p {
-  margin: var(--store-space-2) 0 0;
-  color: var(--store-secondary);
-  line-height: 1.6;
-}
 .catalog-toolbar {
   display: flex;
   align-items: center;
@@ -271,10 +220,6 @@ onMounted(load)
   gap: var(--store-space-5);
 }
 .product-card {
-  display: grid;
-  grid-template-rows: auto 1fr auto auto;
-  gap: var(--store-space-4);
-  padding: clamp(var(--store-space-4), 2vw, var(--store-space-6));
   overflow-wrap: anywhere;
   transition:
     border-color var(--store-motion),
@@ -285,69 +230,36 @@ onMounted(load)
   border-color: #bacbf0;
   box-shadow: var(--store-shadow-hover);
 }
-.catalog-card-meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.catalog-product-link {
+  position: relative;
+  display: grid;
+  grid-template-rows: 1fr auto;
   gap: var(--store-space-2);
+  min-height: 110px;
+  height: 100%;
+  padding: var(--store-space-5) 50px var(--store-space-5) var(--store-space-5);
+  border-radius: inherit;
 }
-.catalog-card-info h2 {
+.catalog-product-link h2 {
   margin: 0;
   font-size: 19px;
   font-weight: 700;
   line-height: 1.35;
 }
-.catalog-card-info .product-description {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  margin: var(--store-space-2) 0 0;
-  color: var(--store-secondary);
-  font-size: 13px;
-  line-height: 1.6;
-}
-.catalog-pricing {
-  min-height: 61px;
-}
 .catalog-price {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  column-gap: var(--store-space-2);
   color: var(--store-text);
+  font-size: clamp(23px, 2.5vw, 27px);
   font-variant-numeric: tabular-nums;
-}
-.catalog-price strong {
-  font-size: clamp(24px, 2.5vw, 29px);
+  font-weight: 740;
   line-height: 1.2;
   letter-spacing: -0.025em;
-  font-weight: 740;
 }
-.catalog-price span,
-.catalog-renewal {
-  color: var(--store-secondary);
-  font-size: 13px;
-  line-height: 1.5;
-}
-.catalog-renewal {
-  margin: var(--store-space-1) 0 0;
-}
-.catalog-product-link {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 44px;
-  border-top: 1px solid var(--store-line);
-  padding-top: var(--store-space-2);
+.catalog-product-link svg {
+  position: absolute;
+  inset-inline-end: var(--store-space-5);
+  top: 50%;
+  transform: translateY(-50%);
   color: var(--store-blue);
-  font-weight: 650;
-  transition: color var(--store-motion);
-}
-.catalog-product-link:hover {
-  color: var(--store-blue-hover);
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }
 .catalog-pagination {
   justify-content: center;
@@ -359,9 +271,6 @@ onMounted(load)
   }
 }
 @media (max-width: 767px) {
-  .catalog-heading {
-    margin-bottom: var(--store-space-4);
-  }
   .catalog-toolbar {
     align-items: stretch;
     flex-direction: column;
@@ -377,12 +286,6 @@ onMounted(load)
   .product-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--store-space-3);
-  }
-  .product-card {
-    gap: var(--store-space-3);
-  }
-  .catalog-pricing {
-    min-height: 0;
   }
 }
 </style>
