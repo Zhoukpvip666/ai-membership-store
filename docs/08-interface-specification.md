@@ -44,7 +44,7 @@ The same Vue application may serve both surfaces with route-level layouts and au
 - Product catalog is the default page. Search and filters sit directly below the navigation.
 - Category filters: 全部, 订阅服务, 一次性服务.
 - Product cards use three columns on typical desktop widths, two columns on tablets and one column on mobile.
-- A card shows the product name and initial price. The whole card links to the detail page.
+- A card shows a centered 4:3 cover, the product name and the initial price. Use the shared placeholder when the cover is absent or fails to load. The whole card links to the detail page.
 - The current navigation item is visible in the header or mobile bar. On product detail and purchase routes, the catalog remains the current section.
 - Storefront colors, type, spacing, borders and focus styles use variables scoped to the storefront. A compact 预览环境 label identifies the local preview in the footer.
 - Do not add a large marketing banner or verbose introductory copy.
@@ -101,13 +101,13 @@ The same Vue application may serve both surfaces with route-level layouts and au
 
 **商品目录 /**
 - Visitors and customers can browse listed, unarchived products without signing in.
-- List product names and initial prices. Show the description, type, service term and any configured renewal price on the detail page.
+- List covers, product names and initial prices. The detail page uses the same cover and shows the description, type, service term and any configured renewal price.
 - Use public server-side search, category filters, and pagination.
 - Do not load or expose formSchema, default values, targetField, archive/listing internals, or administrator fields.
 
 **商品详情 /products/:slug**
-- Desktop uses a two-column layout. Product identity, description and service facts are on the left. A price and purchase card on the right shows the initial price, service period, the configured renewal price and 立即购买.
-- Mobile puts the price and purchase card after the product title and before the longer description, so purchase remains accessible without scrolling through the description.
+- Desktop shows the 4:3 cover on the left and a purchase card on the right with the product name, initial price, service period, configured renewal price and 立即购买. Product description and service facts sit below the cover.
+- Mobile stacks the cover, purchase card, description and service facts in that order.
 - The structured period takes precedence. Keep a different configured period note and suppress equivalent duplicate labels such as 1 个月 and 1个月. Use the configured label alone when no structured period exists.
 - 立即购买 opens the existing protected purchase route. Product detail neither renders dynamic fields nor fetches the purchase form schema. The purchase page retains its compact summary and existing checks.
 
@@ -213,6 +213,7 @@ The original Task 1.1 prototype uses Mock data. T20 supersedes that baseline for
 - Mock confirmation/refund actions must not appear in the real ADMIN order workspace.
 - The operating overview retains its Mock behavior.
 - Product filters and product add/edit/listing/archive continue to use the existing local ADMIN APIs.
+- The editor previews the current cover and supports upload, replacement and removal. During creation, a selected image uploads only after the product saves.
 - Unlisted/unarchived products remain manageable; archived products are unlisted, cannot be edited/relisted, and retain readable details. Product changes never rewrite historical orders or current entitlement dates. Dynamic form configuration and preview remain available.
 - T22.1 provides public catalog and product details. T22.2 provides the protected purchase form and local checks.
 - Mock data and simulated actions outside the T20 ADMIN order page must be clearly labelled.

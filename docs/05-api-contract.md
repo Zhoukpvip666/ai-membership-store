@@ -24,6 +24,7 @@ See [the T22 design baseline](27-customer-storefront-and-order-placement.md) and
 |---|---|---|---|
 | GET | /catalog/products | Public | T22.1, listed and unarchived product list with public display fields |
 | GET | /catalog/products/:slug | Public | T22.1, single public product object, 404 for all unavailable slugs |
+| GET | /catalog/products/:slug/cover-image | Public | T24.5B, current WebP cover for a listed, unarchived product |
 | GET | /customer/products/:slug | ACTIVE CUSTOMER | T22.2, read-only purchase projection with safe formSchema and Product.updatedAt |
 
 Both public reads expose only slug, name, description, type, priceFen, renewalPriceFen, termLabel, servicePeriodUnit, and servicePeriodCount. The list accepts only search (trimmed, up to 120 characters, literal product-name match), type (SUBSCRIPTION or ONE_TIME), page (1–10000, default 1), and pageSize (1–100, default 20). Filters are AND-combined. Results are ordered by sortOrder, createdAt, then id, all ascending. The list returns `{items,total,page,pageSize}`. Invalid queries return 400 INVALID_INPUT. Missing, unlisted, and archived slugs return 404 NOT_FOUND.
@@ -124,6 +125,9 @@ Customer order reads are implemented at `/customer/orders` as documented above; 
 | GET | /admin/products/:id | Read product and versioned form configuration |
 | PATCH | /admin/products/:id | Edit unarchived product and catalog listing |
 | POST | /admin/products/:id/archive | Irreversibly archive and unlist product |
+| GET | /admin/products/:id/cover-image | Read the current WebP cover behind the ADMIN guard |
+| PUT | /admin/products/:id/cover-image | Upload or replace a cover, 4 MiB octet-stream |
+| DELETE | /admin/products/:id/cover-image | Clear the cover reference with a JSON {} body |
 | GET | /admin/settings | Read ADMIN settings including store name, owner email, timezone and paymentInstructions |
 | PATCH | /admin/settings | Update store name, owner email and timezone; T21 accepts optional plain-text paymentInstructions (max 4000) |
 | GET | /admin/settings/wechat-payment | Read `{enabled,imageUrl}`; imageUrl is null when no QR has been uploaded |
@@ -143,9 +147,16 @@ Product list query: search (name, max 120), type SUBSCRIPTION/ONE_TIME, archived
 
 Create accepts name (1–120), description (nullable, max 2000), type, priceFen, renewalPriceFen, termLabel (1–40), servicePeriodUnit/servicePeriodCount as specified above, optional listed (default false), sortOrder (default 0), formSchema (default v1 empty). Fen and sortOrder are integers 0–2147483647. SUBSCRIPTION requires a renewal price; ONE_TIME requires null renewal price. PATCH is nonempty and validates the complete merged record. Switching to SUBSCRIPTION requires compatible renewal/period values in the same request; switching to ONE_TIME clears obsolete subscription values. Only listed and archivedAt represent product state; archivedAt is server-managed. Removed purchase/renewal permission properties are rejected as unknown inputs. Unlisted/unarchived products remain in ADMIN lists and details. Public catalog selection must require listed=true AND archivedAt=null. Future offline orders may select any unarchived product; new subscription orders additionally require a complete structured period. Future manual subscription grants/imports must select an unarchived SUBSCRIPTION product. Neither ADMIN selection requires listed=true. Archived products cannot be used for new orders, renewals or new subscriptions; these write flows remain future tasks. Slug, targetField, IDs and timestamps cannot be supplied. Description/schema strings are plain text, never executable markup.
 
-Archive POST accepts `{}`, sets listed=false and archivedAt together once, retains the row and historical references, and writes one audit record even on retry. Archived products remain readable in ADMIN lists/details but every valid PATCH, including listed=true, returns 409 PRODUCT_ARCHIVED. The archive timestamp is stable on retry, and archivedAt cannot be supplied or cleared by clients. Missing product returns 404. No DELETE/restore route exists. All mutations and their sanitized audit records commit in one transaction; audit failures roll back changes. Audit records contain changed keys and operational flags/prices/counts, never form defaults or contact values.
+Archive POST accepts `{}`, sets listed=false and archivedAt together once, retains the row and historical references, and writes one audit record even on retry. Archived products remain readable in ADMIN lists/details but every valid PATCH, including listed=true, returns 409 PRODUCT_ARCHIVED. The archive timestamp is stable on retry, and archivedAt cannot be supplied or cleared by clients. Missing product returns 404. There is no DELETE/restore route for the product itself. All mutations and their sanitized audit records commit in one transaction; audit failures roll back changes. Audit records contain changed keys and operational flags/prices/counts, never form defaults or contact values.
 
 Settings PATCH is nonempty and accepts only storeName (1–80), ownerEmail (normalized valid email, max 254) and timezone (valid IANA identifier, max 64; numeric offsets rejected). Existing singleton id=1 is updated, never an account/password. Missing initialization returns 503 SETTINGS_UNAVAILABLE. Validation returns sanitized 400 INVALID_INPUT; no request values are echoed. Full schema contract, limits and examples: [13-products-settings-forms.md](13-products-settings-forms.md).
+
+### 商品主图（T24.5B）
+
+ADMIN 商品响应、公开目录与详情、购买表单商品响应增加 coverImageUrl，未设置时为 null。公开 DTO 其余字段不变。URL 由服务器按商品 ID 或 slug 生成，不包含文件名或存储 Key，可附十六位十六进制 v 参数。GET 每次查当前引用，返回 image/webp 和 private, no-store。公开读取对下架、归档、不存在或无可用图片返回 404 NOT_FOUND。后台读取可查看未上架及已归档商品；图片存储异常返回 503 PRODUCT_COVER_STORAGE_UNAVAILABLE。
+
+PUT 仅接受未压缩的 application/octet-stream。管理员会话、Origin、自定义 CSRF 头和管理员变更限流全部适用。无效图片返回 400 PRODUCT_COVER_INVALID，超限返回 413。DELETE 使用 JSON {}。两种写操作成功返回 200 和 {coverImageUrl, updatedAt}。归档商品返回 409 PRODUCT_ARCHIVED。更新与审计原子提交，图片变更使旧购买表单版本失效。文件目录与迁移说明见 [实现报告](29-product-cover-images.md)。
+
 
 ## 5. Admin offline orders and payment transactions
 

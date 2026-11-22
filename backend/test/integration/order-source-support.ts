@@ -32,7 +32,9 @@ export async function businessSnapshot(db: Reader) {
             ...row,
             wechatPayEnabled: Number(row.wechatPayEnabled ?? 0),
           }))
-        : rows
+        : table === 'Product'
+          ? rows.map((row) => ({ coverImageKey: null, ...row }))
+          : rows
   }
   return result
 }

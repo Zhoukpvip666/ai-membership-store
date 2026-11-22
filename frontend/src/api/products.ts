@@ -10,6 +10,7 @@ export interface Product {
   slug: string
   name: string
   description: string | null
+  coverImageUrl: string | null
   type: 'SUBSCRIPTION' | 'ONE_TIME'
   priceFen: number
   renewalPriceFen: number | null
@@ -40,3 +41,12 @@ export interface AppSettings {
 }
 export const readProducts = (query: URLSearchParams) =>
   api<ProductList>('/admin/products?' + query)
+
+type ProductCoverResult = Pick<Product, 'coverImageUrl' | 'updatedAt'>
+const coverPath = (id: string) =>
+  '/admin/products/' + encodeURIComponent(id) + '/cover-image'
+
+export const uploadProductCover = (id: string, file: File) =>
+  api<ProductCoverResult>(coverPath(id), 'PUT', file)
+export const removeProductCover = (id: string) =>
+  api<ProductCoverResult>(coverPath(id), 'DELETE', {})

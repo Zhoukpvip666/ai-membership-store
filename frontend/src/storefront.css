@@ -182,7 +182,6 @@
   background: var(--store-purple-wash);
   color: var(--store-purple);
 }
-.store-shell .store-product-icon,
 .store-shell .store-state-icon {
   display: grid;
   place-items: center;
@@ -192,10 +191,6 @@
   border-radius: var(--store-radius-md);
   background: var(--store-blue-wash);
   color: var(--store-blue);
-}
-.store-shell .store-product-icon[data-type='ONE_TIME'] {
-  background: var(--store-purple-wash);
-  color: var(--store-purple);
 }
 .store-shell .store-state {
   display: grid;

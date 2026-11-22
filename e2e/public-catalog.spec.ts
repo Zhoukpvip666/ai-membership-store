@@ -172,7 +172,14 @@ test('guest product detail displays public data and defers the form until purcha
   const calls: string[] = []
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname
-    if (path.startsWith('/api/v1/') && path !== '/api/v1/auth/me')
+    const publicCover =
+      request.method() === 'GET' &&
+      /^\/api\/v1\/catalog\/products\/[^/]+\/cover-image$/.test(path)
+    if (
+      path.startsWith('/api/v1/') &&
+      path !== '/api/v1/auth/me' &&
+      !publicCover
+    )
       calls.push(path)
   })
   await page.goto('/')

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { Prisma, PrismaClient } from '../../generated/prisma/client.ts'
 import { ApiError } from '../../http/errors.ts'
+import { publicCoverUrl } from './cover-image.ts'
 import { hasCredentialFields } from '../../contracts/credential-fields.ts'
 import {
   productFormSchema,
@@ -26,6 +27,7 @@ const publicProductSelect = {
   slug: true,
   name: true,
   description: true,
+  coverImageKey: true,
   type: true,
   priceFen: true,
   renewalPriceFen: true,
@@ -33,6 +35,16 @@ const publicProductSelect = {
   servicePeriodUnit: true,
   servicePeriodCount: true,
 } as const satisfies Prisma.ProductSelect
+
+function publicProduct({
+  coverImageKey,
+  ...product
+}: Prisma.ProductGetPayload<{ select: typeof publicProductSelect }>) {
+  return {
+    ...product,
+    coverImageUrl: publicCoverUrl(product.slug, coverImageKey),
+  }
+}
 
 const publicListing = { listed: true, archivedAt: null } as const
 const missing = () => new ApiError(404, 'NOT_FOUND', '商品不存在')
@@ -73,7 +85,7 @@ export function publicCatalog(database: PrismaClient) {
         }),
         database.product.count({ where }),
       ])
-      return { items, total, page, pageSize }
+      return { items: items.map(publicProduct), total, page, pageSize }
     },
     async detail(slug: string) {
       if (!slug || slug.length > 100) throw missing()
@@ -82,7 +94,7 @@ export function publicCatalog(database: PrismaClient) {
         select: publicProductSelect,
       })
       if (!product) throw missing()
-      return product
+      return publicProduct(product)
     },
     async purchase(slug: string) {
       if (!slug || slug.length > 100) throw missing()
@@ -96,9 +108,10 @@ export function publicCatalog(database: PrismaClient) {
         },
       })
       if (!product) throw missing()
-      const { formSchema, updatedAt, ...display } = product
+      const { formSchema, updatedAt, id, ...display } = product
       return {
-        ...display,
+        ...publicProduct(display),
+        id,
         updatedAt: updatedAt.toISOString(),
         formSchema: purchaseForm(formSchema),
       }

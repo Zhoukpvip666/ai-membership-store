@@ -155,6 +155,7 @@ test('purchase reads the exact fields, strips defaults and preserves the eight o
   })
   assert.deepEqual(result.body, {
     ...display,
+    coverImageUrl: null,
     id: productId,
     updatedAt: '2026-11-21T10:00:00.123Z',
     formSchema: { version: 1, fields },

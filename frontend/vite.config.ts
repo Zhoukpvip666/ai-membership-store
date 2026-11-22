@@ -24,7 +24,15 @@ export default defineConfig(({ mode }) => {
   const proxy = { '/api': { target, changeOrigin: false } }
   return {
     plugins: [vue()],
-    server: { host: '127.0.0.1', proxy },
+    server: {
+      host: '127.0.0.1',
+      proxy,
+      fs: {
+        allow: ['./', '../node_modules', '../backend/src/contracts'].map(
+          (path) => fileURLToPath(new URL(path, import.meta.url)),
+        ),
+      },
+    },
     preview: { host: '127.0.0.1', proxy },
   }
 })

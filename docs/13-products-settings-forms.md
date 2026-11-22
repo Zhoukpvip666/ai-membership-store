@@ -169,3 +169,7 @@ The complete Task 1.2.3 source/documentation change list, including PR #4 review
 - frontend/src/views/admin/Settings.vue
 - frontend/src/views/admin/Users.vue
 - frontend/src/views/storefront/Catalog.vue
+
+## T24.5B 商品主图
+
+每个商品可有一张主图。后台编辑界面可管理当前图片，新建商品保存后才上传所选文件。归档商品继续只读。存储、事务、运行配置和验证记录见 [商品主图实现报告](29-product-cover-images.md)。

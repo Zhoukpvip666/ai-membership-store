@@ -8,6 +8,7 @@ import {
   Search,
 } from '@lucide/vue'
 import { money } from '../../stores/format'
+import ProductCover from '../../components/ProductCover.vue'
 import { readCatalog, type PublicProduct } from '../../api/catalog'
 
 const filters = [
@@ -128,13 +129,17 @@ onMounted(load)
               :aria-label="'查看详情：' + product.name"
               :aria-describedby="'catalog-price-' + product.slug"
             >
-              <h2>{{ product.name }}</h2>
-              <strong
-                :id="'catalog-price-' + product.slug"
-                class="catalog-price"
-                >{{ money(product.priceFen) }}</strong
-              >
-              <ArrowRight :size="18" aria-hidden="true" />
+              <ProductCover :src="product.coverImageUrl ?? null" lazy />
+              <div class="catalog-card-copy">
+                <h2>{{ product.name }}</h2>
+                <strong
+                  :id="'catalog-price-' + product.slug"
+                  class="catalog-price"
+                >
+                  {{ money(product.priceFen) }}
+                </strong>
+                <ArrowRight :size="18" aria-hidden="true" />
+              </div>
             </RouterLink>
           </article>
         </div>
@@ -231,14 +236,23 @@ onMounted(load)
   box-shadow: var(--store-shadow-hover);
 }
 .catalog-product-link {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-radius: inherit;
+}
+.catalog-product-link .product-cover {
+  border-start-start-radius: inherit;
+  border-start-end-radius: inherit;
+}
+.catalog-card-copy {
   position: relative;
   display: grid;
+  flex: 1;
   grid-template-rows: 1fr auto;
   gap: var(--store-space-2);
   min-height: 110px;
-  height: 100%;
   padding: var(--store-space-5) 50px var(--store-space-5) var(--store-space-5);
-  border-radius: inherit;
 }
 .catalog-product-link h2 {
   margin: 0;
