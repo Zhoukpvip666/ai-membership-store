@@ -1,14 +1,18 @@
 # Customer order center — implementation contract
 
+> **Merged snapshot (2026-11-23, Asia/Shanghai):** Reconciled against `main` at `105e1514e6ce97853d5e83d0b5c131df6872551b`. See [project status](00-project-status.md) for the current implementation boundary. Milestone reports and test results below retain their original scope; this documentation update does not rerun tests or establish deployment status.
+
 T24.2 replaces the T21 payment guidance panel. The original guidance endpoint still supplies the business timezone and plain-text merchant remark. The T24.2 section below governs QR and payment claim behavior.
 
 - Document: CUSTOMER-ORDER-CENTER
 - Version: 1.0
-- Status: Implemented in codex/customer-order-center; pending PR review
+- Status: T21 merged in PR #31; T24.2 payment claims merged in PR #42; T24.4B.1 ADMIN storefront self-service merged in PR #43
 - Date: 2026-11-20
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [UI specification](08-interface-specification.md), [Order read API](16-order-read-api.md), [Order edit](20-order-edit-api.md), [Cancellation/timeout](21-order-cancellation-timeout.md), [Admin order center](25-admin-order-center.md), [Data model](04-data-model.md)
 
 T21 turns the existing CUSTOMER `/account/orders` page from Mock into a real API-backed view of the signed-in customer's own orders. It reuses the already implemented customer order read/edit/cancel APIs. It does not create orders or implement checkout. The only new backend read endpoint is the safe customer order-guidance endpoint; the existing ADMIN settings PATCH gains the already-persisted `paymentInstructions` field.
+
+Sections 1–17 preserve the original T21 contract and its historical verification. Their CUSTOMER-only role boundary is extended by T24.4B.1: ACTIVE CUSTOMER and ADMIN accounts may use the same /customer routes for their own orders, guidance, payment QR and claims. Ownership and customer-safe projections remain mandatory. ADMIN self-service uses the ADMIN actor, revision, event and audit rules in [API contract section 7](05-api-contract.md#7-storefront-apis); it does not gain management privileges on these routes. The T24.2 section below supersedes the original payment-panel behavior. Catalog checkout and read-only customer subscriptions were implemented in separate milestones; they remain outside the original T21 scope.
 
 ## 1. Decision reconciliation
 
@@ -354,6 +358,8 @@ Before the fix, `npm run test:e2e -w backend -- --customer-orders-only --project
 The browser runs used separate random MySQL 8.4 projects with no Seed. Their runner verified migration convergence and removed its own test containers and volumes. The development environment and data volume were outside the test runs.
 
 ## T24.2 WeChat QR and customer payment claim
+
+Merged in PR #42. T24.4B.1 (PR #43) extends these routes to ACTIVE ADMIN accounts acting on their own orders; the CUSTOMER behavior below remains unchanged. Administrator claims use ADMIN attribution and the ADMIN_SELF_PAYMENT_CLAIMED operation described in the API contract, without confirming payment.
 
 A payable order is an owned, visible ordinary INITIAL or ONE_TIME order with positive amount, UNPAID and NOT_STARTED, no cancellation, fulfillment, or verified payment facts, and a deadline later than the database clock. The original creation time plus 24 hours determines the deadline. A previously failed payment attempt does not prevent a new claim.
 

@@ -1,8 +1,10 @@
 # Admin order center — implementation contract
 
+> **Merged snapshot (2026-11-23, Asia/Shanghai):** Reconciled against `main` at `105e1514e6ce97853d5e83d0b5c131df6872551b`. See [project status](00-project-status.md) for the current implementation boundary. Milestone reports and test results below retain their original scope; this documentation update does not rerun tests or establish deployment status.
+
 - Document: ADMIN-ORDER-CENTER
 - Version: 1.0
-- Status: Merged in PR #29 (`6b1a30d361b463fcc2d8aac1b7cc4e38a91e30c0`); not deployed
+- Status: Merged in PR #29 (`6b1a30d361b463fcc2d8aac1b7cc4e38a91e30c0`); the original delivery did not include deployment
 - Date: 2026-11-20
 - Related: [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [UI specification](08-interface-specification.md), [Order read API](16-order-read-api.md), [Order creation](19-order-creation-api.md), [Order edit](20-order-edit-api.md), [Cancellation/timeout](21-order-cancellation-timeout.md), [Offline payment](22-offline-payment-api.md), [Offline refund](23-offline-refund-api.md), [Manual fulfillment](24-manual-fulfillment-api.md)
 

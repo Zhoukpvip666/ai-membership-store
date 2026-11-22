@@ -1,10 +1,12 @@
 # Local Operations Data Model (Task 1.2 and Phase 2)
 
+> **Document scope:** This is a staged data-model history with later overrides. The [current project status](00-project-status.md) identifies merged capabilities. Original table/migration counts and stage-specific statements that an API is absent apply only to the named stage. T24.1 WeChat settings and [T24.5B product covers](29-product-cover-images.md) are later additive schema changes; consult the committed schema/migrations and [current API contract](05-api-contract.md) rather than treating these earlier table lists as an exhaustive current inventory.
+
 This is the approved data model for the first persistent, local-only operating version. It supersedes the earlier conceptual model where it conflicts with this document. Full workflow and scope rules are in [10-local-operations-mvp.md](10-local-operations-mvp.md).
 
 Phase 2 user/subscription fields and migration rules below follow [14-user-subscription-core.md](14-user-subscription-core.md), which supersedes the earlier order-first subscription and suspension design. Other order/payment models remain reserved and their business APIs are not implemented in this phase.
 
-**Latest model override (2026-11-18):** [Stage 1 order/subscription foundation](15-order-subscription-foundation.md) adds the future order-first workflow to this schema. All Phase 2 services remain compatible; new workflow constraints require the next separately authorized service stage. This migration does not convert Phase 2 history or implement order APIs.
+**Historical model-only stage (2026-11-18):** [Stage 1 order/subscription foundation](15-order-subscription-foundation.md) added the order-first model while preserving Phase 2 services and history. That migration stage itself did not implement order APIs; later merged API stages are documented below and in the current project status.
 
 **Order revision foundation (2026-11-19):** [Revision/idempotency guide](18-order-revision-foundation.md) adds migration eleven, append-only OrderRevision, Order.version and generic actorUserId idempotency. That foundation stage itself adds no order write API.
 

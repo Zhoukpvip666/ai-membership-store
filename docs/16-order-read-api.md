@@ -1,5 +1,7 @@
 # Order API stage 1 — lists and details
 
+> **Current authorization extension:** T24.4B.1 (merged PR #43) allows ACTIVE ADMIN sessions to use the `/customer` self-service routes for their own orders, with the same ownership, visibility and customer-safe DTO restrictions as CUSTOMER sessions. The CUSTOMER-only role descriptions below retain the original stage contract and are superseded by that narrow extension. For current feature status, see the [project status](00-project-status.md) and [API contract](05-api-contract.md). Historical test counts and stage exclusions remain unchanged.
+
 Originally implemented four role-specific list/detail endpoints for owner acceptance after merged PR #6; T20 (merged PR #29) extends the ADMIN read surface with an event timeline and minimal linked-subscription summary. T20 contract: [admin order center](25-admin-order-center.md). CUSTOMER read ownership and DTO behavior remain unchanged.
 
 ## Access and responses
@@ -119,7 +121,7 @@ T20 adds `GET /api/v1/admin/orders/:id/events?page=1&pageSize=20`, requiring the
 The existing ADMIN detail response is extended with nullable `linkedSubscription` minimal summary (id/sourceType/status/version/productNameSnapshot/startedAt/expiresAt), resolved from `sourcedSubscription` for INITIAL or `subscription` for a renewal order. It does not include subscription formData or targetIdentifier. Existing payment and refund evidence remain separate T17/T18 endpoints. The ADMIN list adds optional `productType=SUBSCRIPTION|ONE_TIME` filtered against frozen productTypeSnapshot; customer list filters are unchanged. These changes add no schema or migration.
 
 
-## T21 CUSTOMER order center — implemented for review
+## T21 CUSTOMER order center — implemented and merged in PR #31
 
 T21 consumes the existing `GET /api/v1/customer/orders` and `GET /api/v1/customer/orders/:id` endpoints from the real `/account/orders` page, plus existing T15 customer edit and T16 customer cancellation. The exact CUSTOMER DTO keys and read predicates are unchanged. Unsafe legacy form snapshots and values are suppressed in CUSTOMER responses. The DTO continues to expose only the explicit customer allowlist; internalNote, creator/source, cancellationReason, payment/refund attempts, OrderEvent, OrderRevision and AdminAuditLog remain unavailable.
 

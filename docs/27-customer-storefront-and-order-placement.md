@@ -1,12 +1,16 @@
 # T22 — Customer storefront and offline order placement
 
+> **Merged snapshot (2026-11-23, Asia/Shanghai):** Reconciled against `main` at `105e1514e6ce97853d5e83d0b5c131df6872551b`. See [project status](00-project-status.md) for the current implementation boundary. Milestone reports and test results below retain their original scope; this documentation update does not rerun tests or establish deployment status.
+
 - Document: CUSTOMER-STOREFRONT-AND-ORDER-PLACEMENT
 - Version: 1.0
-- Status: Design approved in PR #32. T22.1 merged in PR #33. T22.2 merged in PR #34. T22.3A merged in PR #35. T22.3B implemented and awaiting review. T22 is complete after the final PR is merged and verified.
+- Status: Design approved in PR #32. T22.1, T22.2, T22.3A and T22.3B are merged in PRs #33, #34, #35 and #36 respectively. Recorded verification is retained below; merge status does not establish deployment status.
 - Date: 2026-11-20
 - Related: [Product requirements](01-product-requirements.md), [User and operations flows](02-user-and-operations-flows.md), [API contract](05-api-contract.md), [Interface specification](08-interface-specification.md), [Order lifecycle decisions](17-order-creation-and-lifecycle-design.md), [Order creation API](19-order-creation-api.md), [Customer order center](26-customer-order-center.md)
 
-> Sections 1–11 record the approved T22 design. Sections 12–14 record the public catalog, protected purchase form, and customer order API upgrade with their verification.
+> Sections 1–11 record the original approved T22 design and its milestone-specific exclusions. Sections 12–15 retain the implementation reports and their original verification. Later merged features extend this historical baseline as described below.
+
+**Current merged additions:** Read-only customer subscriptions are implemented. T24.2 (PR #42) adds owner-scoped WeChat QR reads and payment claims; these do not confirm payment. T24.4B.1 (PR #43) allows ACTIVE ADMIN accounts to use the same storefront for their own orders and subscriptions under customer-safe ownership rules. T24.4B.2 (PR #44) adds CUSTOMER self-registration and continuation to the validated purchase route. T24.5A (PR #45) refreshes the storefront UI, and [T24.5B (PR #46)](29-product-cover-images.md) adds optional product covers and the public coverImageUrl field. These additions supersede the corresponding original exclusions below, without adding online payment, customer renewal, supplier integration or email. Current contracts are in [the API specification](05-api-contract.md) and [the interface specification](08-interface-specification.md).
 
 ## 1. Goal and boundary
 
@@ -27,7 +31,7 @@ T22 is a storefront and offline-order-placement task. It reuses the existing pro
 - Navigation to the existing T21 order detail after successful creation.
 - Desktop/mobile browser and API regression coverage.
 
-### Explicit non-goals
+### Original T22 non-goals
 
 - Online payment, payment intents, provider SDKs, payment callbacks/webhooks, settlement, or money movement.
 - Payment proof upload or a customer "I have paid" mutation.

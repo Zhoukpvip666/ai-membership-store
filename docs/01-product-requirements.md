@@ -1,6 +1,8 @@
 # Product Requirements
 
-> **Current Phase 2 override (2026-11-17):** The owner separately authorized user-name refactoring and administrator-only subscription management before offline orders. `displayName` becomes nullable `username` (customer-owned, no new editing/activation flow yet) and `adminLabel` (admin-only). Admin naming is adminLabel → username → login-email prefix; customer responses exclude adminLabel. Subscription sources are ADMIN/SYSTEM, stored states ACTIVE/TERMINATED. Admin creates independent subscription records and directly edits/renews/terminates them without orders, payments, email or automatic duration arithmetic. Product/form snapshots are frozen; archived products block new subscriptions/renewals but allow maintenance of existing unexpired subscriptions. Expired ACTIVE rows grant no entitlement and cannot be edited/renewed, even before the minute worker terminates them. [Phase 2 details](14-user-subscription-core.md) supersede conflicting legacy subscription rules below. No development database migration is performed by implementation/tests.
+> **Document scope:** This document retains the original product goals and historical phase decisions. Use the [current project status](00-project-status.md) for merged capabilities and remaining work. Supplier email/outbox, supplier transfer tracking, reminders and order-based renewal below remain planned features; the public catalog, registration, purchasing and customer order/subscription reads have since been implemented.
+
+> **Historical Phase 2 override (2026-11-17):** The owner separately authorized user-name refactoring and administrator-only subscription management before offline orders. `displayName` becomes nullable `username` (customer-owned, no new editing/activation flow yet) and `adminLabel` (admin-only). Admin naming is adminLabel → username → login-email prefix; customer responses exclude adminLabel. Subscription sources are ADMIN/SYSTEM, stored states ACTIVE/TERMINATED. Admin creates independent subscription records and directly edits/renews/terminates them without orders, payments, email or automatic duration arithmetic. Product/form snapshots are frozen; archived products block new subscriptions/renewals but allow maintenance of existing unexpired subscriptions. Expired ACTIVE rows grant no entitlement and cannot be edited/renewed, even before the minute worker terminates them. [Phase 2 details](14-user-subscription-core.md) supersede conflicting legacy subscription rules below. No development database migration is performed by implementation/tests.
 
 
 ## 1. Product summary
@@ -19,9 +21,9 @@ The first release deliberately supports manual operations. It must be useful bef
 - If the selected provider offers a compliant order-level delayed-settlement, split, or refund-from-held-funds product, it may be integrated only after the owner confirms provider eligibility and contract terms. The application cannot freeze funds merely by keeping an order in a pending state.
 
 
-## 1.2 Current implementation milestone: local offline operations
+## 1.2 Historical Task 1.2 scope: local offline operations
 
-The owner has approved a local-only first operational version focused on existing customers and offline sales. The scope and data model are defined in [10-local-operations-mvp.md](10-local-operations-mvp.md).
+The owner approved this initial local-only milestone for existing customers and offline sales. The following restrictions describe that milestone, not the current feature inventory. Its historical scope and data model are defined in [10-local-operations-mvp.md](10-local-operations-mvp.md).
 
 - The owner manually creates customer accounts; customers are not publicly self-registered in this milestone.
 - Customers may remain PENDING_ACTIVATION while the administrator creates orders and subscriptions for them.
