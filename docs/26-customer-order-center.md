@@ -14,6 +14,14 @@ T21 turns the existing CUSTOMER `/account/orders` page from Mock into a real API
 
 Sections 1–17 preserve the original T21 contract and its historical verification. Their CUSTOMER-only role boundary is extended by T24.4B.1: ACTIVE CUSTOMER and ADMIN accounts may use the same /customer routes for their own orders, guidance, payment QR and claims. Ownership and customer-safe projections remain mandatory. ADMIN self-service uses the ADMIN actor, revision, event and audit rules in [API contract section 7](05-api-contract.md#7-storefront-apis); it does not gain management privileges on these routes. The T24.2 section below supersedes the original payment-panel behavior. Catalog checkout and read-only customer subscriptions were implemented in separate milestones; they remain outside the original T21 scope.
 
+
+## 客户订单详情版式更新
+
+- 订单号在各状态的详情和操作步骤中均可见，复制使用原始订单号。
+- 可付款订单的微信付款卡片在桌面并排显示二维码和付款摘要，手机端纵向显示。二维码缺失时可联系商家，既有付款核实申报仍可用。
+- 可付款时，商家备注卡片先显示系统付款提醒，再显示 `paymentInstructions` 中非空的商家自定义备注。已付款、待核实、终态、过期及无需付款的订单只显示非空商家备注。备注读取失败保留重试，加载失败不影响系统付款提醒。备注继续按纯文本渲染。
+- 商品及价格区使用订单的 `productDescriptionSnapshot`。绝对 HTTP/HTTPS URL 以新标签页链接呈现，保留原文和段落。其余内容按文本呈现。订单权限、状态、截止时间及操作继续遵循原有契约。
+
 ## 1. Decision reconciliation
 
 D98-D105 are additive CUSTOMER UI and public-facing guidance decisions. No existing ACTIVE lifecycle decision is superseded or revoked.

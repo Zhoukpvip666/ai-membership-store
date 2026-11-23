@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import LinkedText from './LinkedText.vue'
 import ProductCover from './ProductCover.vue'
 import type { PublicProduct } from '../api/catalog'
 import { money } from '../stores/format'
@@ -53,7 +54,9 @@ const renewalPrice = computed(() =>
     <section class="detail-information store-surface" aria-label="商品信息">
       <div v-if="product.description" class="detail-description">
         <h2>商品介绍</h2>
-        <p class="product-description">{{ product.description }}</p>
+        <p class="product-description">
+          <LinkedText :text="product.description" />
+        </p>
       </div>
       <h2>服务信息</h2>
       <dl class="detail-facts">
@@ -79,7 +82,7 @@ const renewalPrice = computed(() =>
     </span>
     <h1>{{ product.name }}</h1>
     <p v-if="product.description" class="product-description">
-      {{ product.description }}
+      <LinkedText :text="product.description" />
     </p>
     <dl class="compact-facts">
       <div>

@@ -1,6 +1,7 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
-import sharp from 'sharp'
+import { mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Prisma } from '../backend/src/generated/prisma/client.ts'
 import { createDatabase } from '../backend/src/db/client.ts'
@@ -19,6 +20,12 @@ const customerApi = '/api/v1/customer/orders'
 const password = 'FictionalT21BrowserPassword123!'
 const guidanceText =
   '线下转账请核对订单号\n<img src=x onerror="document.title=123">'
+const paymentReminder =
+  '请在微信付款页面填写正确的付款金额和商城订单号，避免无法核实到账。'
+const manualUrl = 'https://example.test/manual?version=2#start'
+const frozenDescription =
+  '安装指南：' + manualUrl + '。\n遇到问题时请联系商家。'
+const merchantRemark = '客服：测试商家\n咨询时间：周一至周五'
 const schema = {
   version: 1,
   fields: [
@@ -125,6 +132,18 @@ async function open(page: Page, orderNo: string) {
   await expect(dialog).toContainText(orderNo)
   return dialog
 }
+async function captureOrderDetail(page: Page, project: string, name: string) {
+  const output = process.env.ORDER_DETAIL_EVIDENCE_DIR
+  if (!output) return
+  await expect(page.locator('.el-message')).toHaveCount(0)
+  await mkdir(output, { recursive: true })
+  await page.screenshot({
+    path: join(output, project + '-' + name + '.png'),
+    animations: 'disabled',
+    scale: 'css',
+  })
+}
+
 const mutationHeaders = () => ({
   origin: env.APP_BASE_URL,
   'x-requested-with': 'MembershipStore',
@@ -158,7 +177,10 @@ test('numeric order numbers group and copy raw digits while legacy numbers still
     await expect(page.locator('.customer-order-card')).toHaveCount(1)
     await expect(row(page, display)).toBeVisible()
     const dialog = await open(page, display)
-    await dialog.getByRole('button', { name: '复制订单号' }).click()
+    await dialog
+      .getByRole('region', { name: '订单号', exact: true })
+      .getByRole('button', { name: '复制订单号' })
+      .click()
     await expect(page.locator('body')).toHaveAttribute(
       'data-copied-order-no',
       raw,
@@ -297,6 +319,11 @@ test('admin saves and clears the plain-text merchant remark without rendering ma
     await page.goto(ordersPath)
     const detail = await open(page, order.orderNo)
     const panel = detail.getByRole('region', { name: '商家备注' })
+    await expect(panel.locator('p').first()).toHaveText(paymentReminder)
+    await expect(panel.locator('.merchant-text')).toHaveJSProperty(
+      'textContent',
+      guidanceText,
+    )
     await expect(panel).toContainText('线下转账请核对订单号')
     await expect(panel).toContainText(
       '<img src=x onerror="document.title=123">',
@@ -342,9 +369,36 @@ test('admin saves and clears the plain-text merchant remark without rendering ma
     await expect(
       detail.getByRole('region', { name: '微信扫码付款' }),
     ).toContainText('商家暂未开放扫码收款，请联系商家')
-    await expect(detail.getByRole('region', { name: '商家备注' })).toHaveCount(
-      0,
+    await expect(panel.locator('p')).toHaveCount(1)
+    await expect(panel.locator('p')).toHaveText(paymentReminder)
+    const payment = detail.getByRole('region', { name: '微信扫码付款' })
+    await expect(payment).not.toContainText('填写正确')
+    await expect(payment.getByRole('img')).toHaveCount(0)
+    await expect(
+      payment.getByRole('button', { name: '我已付款' }),
+    ).toBeEnabled()
+
+    const guidancePath = '/api/v1/customer/order-guidance'
+    const isGuidance = (url: URL) => url.pathname === guidancePath
+    await page.route(isGuidance, (route) =>
+      route.fulfill({
+        status: 503,
+        json: { error: { code: 'UNAVAILABLE' } },
+      }),
     )
+    await page.reload()
+    await expect(panel.getByRole('alert')).toContainText('商家备注暂不可用')
+    await expect(panel.locator('p').first()).toHaveText(paymentReminder)
+    await page.unroute(isGuidance)
+    const [retryResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) => new URL(response.url()).pathname === guidancePath,
+      ),
+      panel.getByRole('button', { name: '重试读取' }).click(),
+    ])
+    expect(retryResponse.ok()).toBe(true)
+    await expect(panel.getByRole('alert')).toHaveCount(0)
+    await expect(panel.locator('p')).toHaveText(paymentReminder)
   } finally {
     await adminContext.close()
     await db.appSettings.update({
@@ -361,10 +415,11 @@ test('customer downloads QR, retries a lost claim, and sees real admin verificat
   browser,
   page,
   context,
-}) => {
+}, info) => {
   const { admin, createOrder } = await setup(context)
   const order = await createOrder({
     orderNo: '583024919',
+    productDescriptionSnapshot: frozenDescription,
     createdAt: new Date(Date.now() - 60_000),
   })
   const saved = await db.appSettings.findUniqueOrThrow({ where: { id: 1 } })
@@ -372,11 +427,11 @@ test('customer downloads QR, retries a lost claim, and sees real admin verificat
   try {
     await cookie(adminContext, admin.id)
     const adminPage = await adminContext.newPage()
-    const image = await sharp({
-      create: { width: 64, height: 64, channels: 3, background: '#007766' },
-    })
-      .png()
-      .toBuffer()
+    // A QR for the reserved example.test domain. It carries no payment details.
+    const image = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAJQAAACUAQAAAABdRz15AAABPklEQVR4nO1WQW4EMQgz0dzND/L/Z80PzAtckblt1aoVe1zmgiLFIsaGCeM1an07Aj5n+ImDiEhEJupJMeSKNiAo+aSY4F0AgigilOp0jgeAWc7K/91dv50Zot6DZyGrv5PO8MIIoFnrKIAa+ePqlwKVQoKP+dasvryxq0u8n0JrggdbltQKpCnTGuIR7O5Cp8Ge4Z3+Qqn0xv00Zs3qs9lOa7FQmr/XpGyBOuBv4E+UQTWNGNZ3AUWqwgWo1AyuGZ4rGgrZYDX3bx3tYZOI4nye7uRuDfbY2tP6LkB5E4lS9lid64/tDVstQXKulw7IbK20sDXkLyKyN5KMRE+GNcOjz0zNnVDtd/BHHrc9Lx77o2M3FGpX+C37su1xgwqmxnju1VHqXe5W4Br6LQJRWRLayeN99Br1+XfEn/X8BYBYuWuykyJBAAAAAElFTkSuQmCC',
+      'base64',
+    )
     expect(
       (
         await adminPage.request.put('/api/v1/admin/settings/wechat-qr', {
@@ -399,7 +454,7 @@ test('customer downloads QR, retries a lost claim, and sees real admin verificat
     expect(
       (
         await adminPage.request.patch('/api/v1/admin/settings', {
-          data: { paymentInstructions: '客服：测试商家' },
+          data: { paymentInstructions: merchantRemark },
           headers: mutationHeaders(),
         })
       ).status(),
@@ -422,11 +477,72 @@ test('customer downloads QR, retries a lost claim, and sees real admin verificat
       panel.getByRole('img', { name: '微信收款二维码' }),
     ).toBeVisible()
     await expect(detail.locator('.customer-countdown')).toBeVisible()
+    const reference = detail.getByRole('region', {
+      name: '订单号',
+      exact: true,
+    })
+    await expect(reference).toContainText('583 024 919')
+    await reference.getByRole('button', { name: '复制订单号' }).click()
+    await expect(page.locator('body')).toHaveAttribute(
+      'data-copied-order-no',
+      order.orderNo,
+    )
+    await page
+      .locator('body')
+      .evaluate((element) => element.removeAttribute('data-copied-order-no'))
     await panel.getByRole('button', { name: '复制订单号' }).click()
     await expect(page.locator('body')).toHaveAttribute(
       'data-copied-order-no',
       order.orderNo,
     )
+    const remarks = detail.getByRole('region', { name: '商家备注' })
+    await expect(remarks.locator('p').first()).toHaveText(paymentReminder)
+    await expect(remarks.locator('.merchant-text')).toHaveJSProperty(
+      'textContent',
+      merchantRemark,
+    )
+    await expect(panel).not.toContainText('填写正确')
+    const qrArea = (await panel.locator('.payment-code').boundingBox())!
+    const summary = (await panel.locator('.payment-summary').boundingBox())!
+    const mobile = info.project.name === 'mobile-edge'
+    if (mobile) {
+      expect(qrArea.y + qrArea.height).toBeLessThan(summary.y)
+      expect(Math.abs(qrArea.x - summary.x)).toBeLessThanOrEqual(1)
+    } else {
+      expect(qrArea.x + qrArea.width).toBeLessThan(summary.x)
+    }
+    expect(
+      await detail
+        .locator('.el-dialog')
+        .evaluate((el) => el.scrollWidth <= el.clientWidth),
+    ).toBe(true)
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true)
+    await detail
+      .getByRole('heading', { name: order.productNameSnapshot })
+      .scrollIntoViewIfNeeded()
+    await captureOrderDetail(page, info.project.name, 'awaiting-payment')
+    if (mobile && process.env.ORDER_DETAIL_EVIDENCE_DIR) {
+      await panel.evaluate((element) =>
+        element.scrollIntoView({ block: 'start' }),
+      )
+      await captureOrderDetail(page, info.project.name, 'payment-panel')
+    }
+    const description = detail.getByRole('region', { name: '商品及价格' })
+    await expect(description.locator('.linked-text')).toHaveJSProperty(
+      'textContent',
+      frozenDescription,
+    )
+    await expect(
+      description.getByRole('link', { name: manualUrl, exact: true }),
+    ).toBeVisible()
+    await remarks.evaluate((element) =>
+      element.scrollIntoView({ block: 'start' }),
+    )
+    await captureOrderDetail(page, info.project.name, 'remarks-and-links')
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       panel.getByRole('link', { name: '保存二维码' }).click(),
@@ -460,6 +576,8 @@ test('customer downloads QR, retries a lost claim, and sees real admin verificat
     await confirm.getByRole('button', { name: '重试原请求' }).click()
     await expect(detail).toContainText('已提交付款核实，请勿重复转账。')
     await expect(detail).toContainText('24 小时未核实可能自动取消')
+    await expect(reference).toContainText('583 024 919')
+    await expect(remarks).not.toContainText(paymentReminder)
     await expect(panel).toHaveCount(0)
     await expect(detail.getByRole('button', { name: '我已付款' })).toHaveCount(
       0,
@@ -512,6 +630,8 @@ test('customer downloads QR, retries a lost claim, and sees real admin verificat
     await expect(
       detail.getByRole('region', { name: '商家备注' }),
     ).toContainText('客服：测试商家')
+    await expect(reference).toContainText('583 024 919')
+    await expect(remarks).not.toContainText(paymentReminder)
     await expect(panel).toHaveCount(0)
     expect(
       await db.subscription.count({ where: { sourceOrderId: order.id } }),
@@ -532,34 +652,39 @@ test('customer downloads QR, retries a lost claim, and sees real admin verificat
 test('status presets and lifecycle timestamps show only customer-safe order facts', async ({
   page,
   context,
-}) => {
+}, info) => {
   const { createOrder } = await setup(context)
+  const createdAt = new Date(Date.now() - 60_000)
   const paidAt = new Date(Date.now() - 3000)
   const paymentConfirmedAt = new Date(Date.now() - 2000)
   const cancelledAt = new Date(Date.now() - 1000)
   const [pending, zero, paid, complete, cancelled, waitRefund, refunded] =
     await Promise.all([
-      createOrder({ paymentStatus: 'PENDING_VERIFICATION' }),
+      createOrder({ createdAt, paymentStatus: 'PENDING_VERIFICATION' }),
       createOrder({
+        createdAt,
         amountFen: 0,
         paymentStatus: 'NOT_REQUIRED',
         fulfillmentStatus: 'PROCESSING',
       }),
       createOrder({
+        createdAt,
         paymentStatus: 'PAID',
         fulfillmentStatus: 'PROCESSING',
         paidAt,
         paymentConfirmedAt,
       }),
       createOrder({
+        createdAt,
         paymentStatus: 'PAID',
         fulfillmentStatus: 'COMPLETED',
         paidAt,
         paymentConfirmedAt,
         fulfilledAt: cancelledAt,
       }),
-      createOrder({ fulfillmentStatus: 'CANCELLED', cancelledAt }),
+      createOrder({ createdAt, fulfillmentStatus: 'CANCELLED', cancelledAt }),
       createOrder({
+        createdAt,
         paymentStatus: 'REFUND_PENDING',
         fulfillmentStatus: 'CANCELLED',
         paidAt,
@@ -568,6 +693,7 @@ test('status presets and lifecycle timestamps show only customer-safe order fact
         cancellationReason: '专用内部取消原因',
       }),
       createOrder({
+        createdAt,
         paymentStatus: 'REFUNDED',
         fulfillmentStatus: 'CANCELLED',
         paidAt,
@@ -593,18 +719,45 @@ test('status presets and lifecycle timestamps show only customer-safe order fact
     await expect(
       row(page, order.orderNo).locator('.customer-order-status'),
     ).toHaveText(label)
-  await page.getByRole('button', { name: '处理中', exact: true }).click()
-  await expect(page.locator('.customer-order-card')).toHaveCount(2)
-  for (const order of [paid, zero]) {
+  for (const order of [
+    pending,
+    paid,
+    zero,
+    complete,
+    cancelled,
+    waitRefund,
+    refunded,
+  ]) {
     const detail = await open(page, order.orderNo)
+    const reference = detail.getByRole('region', {
+      name: '订单号',
+      exact: true,
+    })
+    await expect(reference).toContainText(order.orderNo)
+    await expect(
+      reference.getByRole('button', { name: '复制订单号' }),
+    ).toBeVisible()
     await expect(detail.getByRole('button', { name: '取消订单' })).toHaveCount(
+      order.id === pending.id ? 1 : 0,
+    )
+    await expect(detail.getByRole('button', { name: '修改订单' })).toHaveCount(
       0,
     )
     await expect(
       detail.getByRole('region', { name: '微信扫码付款' }),
     ).toHaveCount(0)
+    await expect(detail.getByRole('region', { name: '商家备注' })).toHaveCount(
+      0,
+    )
+    await expect(detail).not.toContainText(paymentReminder)
+    if (order.id === complete.id) {
+      await expect(detail.locator('.order-state')).toHaveText('已完成')
+      await captureOrderDetail(page, info.project.name, 'completed')
+    }
     await close()
   }
+  await page.getByRole('button', { name: '处理中', exact: true }).click()
+  await expect(page.locator('.customer-order-card')).toHaveCount(2)
   await page.getByRole('button', { name: '已取消', exact: true }).click()
   await expect(page.locator('.customer-order-card')).toHaveCount(3)
   await page.getByRole('button', { name: '待退款', exact: true }).click()
@@ -841,4 +994,97 @@ test('valid empty dynamic form keeps order details and cancellation without an e
   await expect(
     detail.getByRole('button', { name: '取消订单', exact: true }),
   ).toBeVisible()
+})
+
+test('product descriptions link safely and both order details use the frozen description', async ({
+  browser,
+  page,
+  context,
+}) => {
+  const { admin, createOrder, product } = await setup(context)
+  const order = await createOrder({
+    productDescriptionSnapshot: frozenDescription,
+  })
+  const currentUrl = 'http://example.test/current'
+  const currentDescription = '商品说明：' + currentUrl + '。\n保留这一行。'
+  await db.product.update({
+    where: { id: product.id },
+    data: { description: currentDescription, listed: true },
+  })
+
+  async function checkLinkedText(
+    pageOrDialog: Page | ReturnType<Page['getByRole']>,
+    url: string,
+    text: string,
+  ) {
+    const link = pageOrDialog.getByRole('link', { name: url, exact: true })
+    await expect(link).toHaveAttribute('href', url)
+    await expect(link).toHaveAttribute('target', '_blank')
+    await expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    await expect(link.locator('..')).toHaveJSProperty('textContent', text)
+    return link
+  }
+
+  await page.goto('/products/' + product.slug)
+  await checkLinkedText(page, currentUrl, currentDescription)
+  await page.goto('/purchase/' + product.slug)
+  await checkLinkedText(page, currentUrl, currentDescription)
+
+  await page.goto(ordersPath)
+  const detail = await open(page, order.orderNo)
+  const link = await checkLinkedText(detail, manualUrl, frozenDescription)
+  await expect(detail.getByRole('link', { name: currentUrl })).toHaveCount(0)
+  await context.route(
+    (url) =>
+      url.origin === 'https://example.test' &&
+      url.pathname === '/manual' &&
+      url.search === '?version=2',
+    (route) =>
+      route.fulfill({
+        contentType: 'text/html',
+        body: '<title>Test manual</title>',
+      }),
+  )
+  const [opened] = await Promise.all([
+    context.waitForEvent('page'),
+    link.click(),
+  ])
+  await expect(opened).toHaveURL(manualUrl)
+  await expect(opened).toHaveTitle('Test manual')
+  expect(await opened.evaluate(() => window.opener)).toBeNull()
+  await opened.close()
+
+  const adminContext = await browser.newContext({ baseURL: env.APP_BASE_URL })
+  try {
+    await cookie(adminContext, admin.id)
+    const adminPage = await adminContext.newPage()
+    await adminPage.goto('/admin/orders')
+    await adminPage
+      .getByRole('row')
+      .filter({ hasText: order.orderNo })
+      .getByRole('button', { name: '查看详情', exact: true })
+      .click()
+    const adminOrder = adminPage.getByRole('dialog', {
+      name: '订单详情',
+      exact: true,
+    })
+    await checkLinkedText(adminOrder, manualUrl, frozenDescription)
+    await expect(
+      adminOrder.getByRole('link', { name: currentUrl }),
+    ).toHaveCount(0)
+
+    await adminPage.goto('/admin/products')
+    await adminPage
+      .getByRole('row')
+      .filter({ hasText: product.name })
+      .getByRole('button', { name: '详情', exact: true })
+      .click()
+    await checkLinkedText(
+      adminPage.getByRole('dialog', { name: '商品详情', exact: true }),
+      currentUrl,
+      currentDescription,
+    )
+  } finally {
+    await adminContext.close()
+  }
 })

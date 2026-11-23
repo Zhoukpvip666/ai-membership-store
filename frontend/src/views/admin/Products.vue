@@ -13,6 +13,7 @@ import {
 import { money, parsePrice, date } from '../../stores/format'
 import { settings } from '../../stores/settings'
 import { productFormSchema } from '../../../../backend/src/contracts/product-form'
+import LinkedText from '../../components/LinkedText.vue'
 import ProductCover from '../../components/ProductCover.vue'
 import ProductFormEditor from '../../components/ProductFormEditor.vue'
 import ProductFormPreview from '../../components/ProductFormPreview.vue'
@@ -624,7 +625,7 @@ onMounted(load)
           :src="detail.coverImageUrl"
           alt="当前商品主图" />
         <p class="product-description">
-          {{ detail.description || '暂无说明' }}
+          <LinkedText :text="detail.description || '暂无说明'" />
         </p>
         <dl class="detail-grid">
           <div>

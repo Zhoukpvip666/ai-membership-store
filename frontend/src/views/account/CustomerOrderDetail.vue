@@ -9,6 +9,7 @@ import {
   type OrderGuidance,
 } from '../../api/customer-orders'
 import type { FormData } from '../../api/subscriptions'
+import LinkedText from '../../components/LinkedText.vue'
 import OrderNumber from '../../components/OrderNumber.vue'
 import ProductFormInputs from '../../components/ProductFormInputs.vue'
 import CustomerWechatPayment from './CustomerWechatPayment.vue'
@@ -31,7 +32,11 @@ import {
   useOrderClock,
 } from './customer-order-state'
 
-const props = defineProps<{ id: string; guidance?: OrderGuidance }>()
+const props = defineProps<{
+  id: string
+  guidance?: OrderGuidance
+  guidanceFailed: boolean
+}>()
 const emit = defineEmits<{
   close: [id: string]
   changed: []
@@ -56,6 +61,10 @@ const snapshot = computed(() =>
 )
 const remaining = computed(() =>
   order.value ? paymentTimeLeft(order.value, receivedAt.value, clock.value) : 0,
+)
+const payable = computed(() => remaining.value > 0)
+const hasMerchantRemark = computed(() =>
+  Boolean(props.guidance?.paymentInstructions.trim()),
 )
 const date = (value: string) =>
   props.guidance ? businessDate(value, props.guidance.businessTimezone) : '—'
@@ -178,7 +187,7 @@ onMounted(load)
             ? '确认付款核实'
             : '订单详情'
     "
-    :width="mobile ? '100%' : 'min(720px, 92vw)'"
+    :width="mobile ? '100%' : 'min(960px, 92vw)'"
     :fullscreen="mobile"
     :show-close="!busy && !uncertain"
     :close-on-press-escape="!busy && !uncertain"
@@ -191,133 +200,168 @@ onMounted(load)
       {{ error }} <ElButton link @click="load">重试详情</ElButton>
     </p>
     <div v-else-if="order" class="customer-order-detail">
-      <h2>{{ order.productNameSnapshot }}</h2>
-      <p v-if="mode !== 'detail' || remaining === 0" class="muted">
-        <OrderNumber :order-no="order.orderNo" />
-      </p>
-      <template v-if="mode === 'detail'">
-        <div class="customer-order-summary">
-          <strong>{{ orderStatus(order) }}</strong>
-          <span>付款 · {{ customerPaymentLabels[order.paymentStatus] }}</span>
-          <span>履约 · {{ fulfillmentLabels[order.fulfillmentStatus] }}</span>
+      <header class="order-hero">
+        <div class="order-hero-main">
+          <strong
+            class="order-state"
+            :data-payment="order.paymentStatus"
+            :data-fulfillment="order.fulfillmentStatus"
+            >{{ orderStatus(order) }}</strong
+          >
+          <h2>{{ order.productNameSnapshot }}</h2>
+          <p class="order-state-details">
+            <span>付款 · {{ customerPaymentLabels[order.paymentStatus] }}</span>
+            <span>履约 · {{ fulfillmentLabels[order.fulfillmentStatus] }}</span>
+          </p>
         </div>
-        <p v-if="orderStatus(order) === '状态待确认'" class="muted">
+        <section class="order-reference" aria-label="订单号">
+          <span class="reference-label">商城订单号</span>
+          <OrderNumber :order-no="order.orderNo" />
+        </section>
+      </header>
+      <template v-if="mode === 'detail'">
+        <p v-if="orderStatus(order) === '状态待确认'" class="order-notice">
           请联系商家确认订单状态。
         </p>
-        <p v-if="order.productDescriptionSnapshot" class="plain">
-          {{ order.productDescriptionSnapshot }}
-        </p>
-        <dl class="customer-facts">
-          <div>
-            <dt>类型</dt>
-            <dd>
-              {{
-                order.productTypeSnapshot === 'SUBSCRIPTION'
-                  ? '订阅商品'
-                  : '一次性商品'
-              }}
-              · {{ kindLabels[order.kind] }}
-            </dd>
-          </div>
-          <div>
-            <dt>应付金额</dt>
-            <dd>{{ money(order.amountFen) }}</dd>
-          </div>
-          <div>
-            <dt>商品原价</dt>
-            <dd>
-              {{
-                order.priceSnapshotFen === null
-                  ? '暂无历史原价'
-                  : money(order.priceSnapshotFen)
-              }}
-            </dd>
-          </div>
-          <div>
-            <dt>服务周期</dt>
-            <dd>
-              {{ order.termSnapshot
-              }}<span
-                v-if="
-                  order.servicePeriodUnitSnapshot &&
-                  order.servicePeriodCountSnapshot
-                "
-              >
-                · {{ order.servicePeriodCountSnapshot }}
-                {{
-                  { DAY: '天', MONTH: '月', YEAR: '年' }[
-                    order.servicePeriodUnitSnapshot
-                  ]
-                }}</span
-              >
-            </dd>
-          </div>
-          <div>
-            <dt>联系人邮箱</dt>
-            <dd>{{ order.contactEmailSnapshot }}</dd>
-          </div>
-          <div>
-            <dt>原始付款截止</dt>
-            <dd>
-              <time :datetime="order.expiresAt">{{
-                date(order.expiresAt)
-              }}</time>
-            </dd>
-          </div>
-        </dl>
-        <CustomerWechatPayment
-          v-if="remaining > 0"
-          :order="order"
-          :remaining="remaining"
-          @claim="begin('claim')"
-        />
-        <section
-          v-if="guidance?.paymentInstructions.trim()"
-          aria-label="商家备注"
-        >
-          <h3>商家备注</h3>
-          <p class="plain">{{ guidance.paymentInstructions }}</p>
-        </section>
-        <p v-else-if="!guidance" class="muted">
-          商家备注暂不可用。<ElButton link @click="emit('retryGuidance')"
-            >重试读取</ElButton
-          >
-        </p>
-        <p v-if="orderStatus(order) === '付款待核实'" class="inline-note">
+        <p v-if="orderStatus(order) === '付款待核实'" class="order-notice">
           已提交付款核实，请勿重复转账。管理员确认实际到账后才会处理订单。
           订单创建满 24 小时未核实可能自动取消。如已转账，请联系商家线下处理。
         </p>
         <p
           v-if="order.fulfillmentStatus === 'CANCELLED' && order.amountFen > 0"
-          class="muted"
+          class="order-notice"
         >
           如已付款，请联系商家线下处理款项。
         </p>
+        <CustomerWechatPayment
+          v-if="payable"
+          :order="order"
+          :remaining="remaining"
+          @claim="begin('claim')"
+        />
         <section
-          v-if="snapshot?.schema.fields.length"
-          aria-labelledby="customer-service-label"
+          v-if="payable || hasMerchantRemark || guidanceFailed"
+          aria-label="商家备注"
+          class="merchant-remarks"
         >
-          <h3 id="customer-service-label">服务信息</h3>
-          <dl class="customer-facts">
-            <div v-for="field in snapshot.schema.fields" :key="field.id">
-              <dt>{{ field.label }}</dt>
-              <dd class="plain">
-                {{ formValueLabel(field, snapshot.data[field.id]) }}
-              </dd>
-            </div>
-          </dl>
+          <h3>商家备注</h3>
+          <p v-if="payable" class="payment-reminder">
+            请在微信付款页面填写正确的付款金额和商城订单号，避免无法核实到账。
+          </p>
+          <p v-if="hasMerchantRemark" class="merchant-text">
+            {{ guidance?.paymentInstructions }}
+          </p>
+          <p v-if="guidanceFailed" class="merchant-unavailable" role="alert">
+            商家备注暂不可用。<ElButton link @click="emit('retryGuidance')"
+              >重试读取</ElButton
+            >
+          </p>
         </section>
-        <p v-else-if="!snapshot" class="muted">此订单没有可显示的服务信息。</p>
-        <section aria-label="订单进度">
-          <h3>订单进度</h3>
-          <ol class="customer-timeline">
-            <li v-for="item in timeline(order)" :key="item.label">
-              <strong>{{ item.label }}</strong><time :datetime="item.at">{{
-                date(item.at)
-              }}</time>
-            </li>
-          </ol>
-        </section>
+        <div class="order-detail-columns">
+          <div class="order-detail-column">
+            <section class="order-detail-card" aria-label="商品及价格">
+              <h3>商品及价格</h3>
+              <p
+                v-if="order.productDescriptionSnapshot"
+                class="order-description"
+              >
+                <LinkedText :text="order.productDescriptionSnapshot" />
+              </p>
+              <dl class="customer-facts">
+                <div>
+                  <dt>类型</dt>
+                  <dd>
+                    {{
+                      order.productTypeSnapshot === 'SUBSCRIPTION'
+                        ? '订阅商品'
+                        : '一次性商品'
+                    }}
+                    · {{ kindLabels[order.kind] }}
+                  </dd>
+                </div>
+                <div>
+                  <dt>服务周期</dt>
+                  <dd>
+                    {{ order.termSnapshot
+                    }}<span
+                      v-if="
+                        order.servicePeriodUnitSnapshot &&
+                        order.servicePeriodCountSnapshot
+                      "
+                    >
+                      · {{ order.servicePeriodCountSnapshot }}
+                      {{
+                        { DAY: '天', MONTH: '月', YEAR: '年' }[
+                          order.servicePeriodUnitSnapshot
+                        ]
+                      }}</span
+                    >
+                  </dd>
+                </div>
+                <div>
+                  <dt>应付金额</dt>
+                  <dd class="order-price">{{ money(order.amountFen) }}</dd>
+                </div>
+                <div>
+                  <dt>商品原价</dt>
+                  <dd>
+                    {{
+                      order.priceSnapshotFen === null
+                        ? '暂无历史原价'
+                        : money(order.priceSnapshotFen)
+                    }}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+            <section
+              v-if="snapshot?.schema.fields.length || !snapshot"
+              class="order-detail-card"
+              aria-label="服务信息"
+            >
+              <h3>服务信息</h3>
+              <dl v-if="snapshot" class="customer-facts">
+                <div v-for="field in snapshot.schema.fields" :key="field.id">
+                  <dt>{{ field.label }}</dt>
+                  <dd class="plain">
+                    {{ formValueLabel(field, snapshot.data[field.id]) }}
+                  </dd>
+                </div>
+              </dl>
+              <p v-else class="muted">此订单没有可显示的服务信息。</p>
+            </section>
+          </div>
+          <div class="order-detail-column">
+            <section class="order-detail-card" aria-label="联系人信息">
+              <h3>联系人信息</h3>
+              <dl class="customer-facts contact-facts">
+                <div>
+                  <dt>联系人邮箱</dt>
+                  <dd>{{ order.contactEmailSnapshot }}</dd>
+                </div>
+              </dl>
+            </section>
+            <section class="order-detail-card" aria-label="订单进度">
+              <h3>订单进度</h3>
+              <ol class="customer-timeline">
+                <li v-for="item in timeline(order)" :key="item.label">
+                  <strong>{{ item.label }}</strong>
+                  <time :datetime="item.at">{{ date(item.at) }}</time>
+                </li>
+              </ol>
+              <dl class="customer-facts order-deadline">
+                <div>
+                  <dt>原始付款截止</dt>
+                  <dd>
+                    <time :datetime="order.expiresAt">{{
+                      date(order.expiresAt)
+                    }}</time>
+                  </dd>
+                </div>
+              </dl>
+            </section>
+          </div>
+        </div>
       </template>
       <template v-else>
         <p v-if="actionError" role="alert" class="form-error">
@@ -365,11 +409,18 @@ onMounted(load)
         </ElForm>
       </template>
     </div>
-    <template #footer>
+    <template
+      v-if="
+        mode !== 'detail' ||
+        (order &&
+          (canCancel(order) || (payable && snapshot?.schema.fields.length)))
+      "
+      #footer
+    >
       <div class="customer-order-actions">
         <template v-if="mode === 'detail'">
           <ElButton
-            v-if="order && remaining > 0 && snapshot?.schema.fields.length"
+            v-if="order && payable && snapshot?.schema.fields.length"
             :disabled="busy"
             type="primary"
             @click="begin('edit')"
@@ -408,57 +459,217 @@ onMounted(load)
 </template>
 <style scoped>
 .customer-order-detail {
+  --detail-text: #15233b;
+  --detail-secondary: #485b76;
+  --detail-border: #dce5f0;
+  display: grid;
+  gap: 16px;
   min-width: 0;
+  color: var(--detail-text);
   overflow-wrap: anywhere;
 }
-.customer-order-summary,
-.customer-order-actions {
+.order-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 248px);
+  align-items: center;
+  gap: 16px;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--detail-border);
+  border-radius: 16px;
+  background: #f8faff;
+}
+.order-hero h2 {
+  margin: 8px 0 10px;
+  color: var(--detail-text);
+  font-size: clamp(23px, 4vw, 30px);
+  line-height: 1.2;
+}
+.order-state {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 8px;
+  color: #254cab;
+  background: #e8efff;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.order-state[data-fulfillment='COMPLETED'] {
+  color: #116149;
+  background: #e4f4ec;
+}
+.order-state[data-fulfillment='CANCELLED'] {
+  color: #475569;
+  background: #e9eef3;
+}
+.order-state[data-payment='PENDING_VERIFICATION'],
+.order-state[data-payment='REFUND_PENDING'] {
+  color: #815016;
+  background: #fff1d8;
+}
+.order-state-details {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.65rem;
-  align-items: center;
-}
-.customer-order-summary {
-  padding-block: 0.75rem;
-}
-.customer-order-summary strong {
-  color: #284f9a;
-}
-.customer-order-actions {
-  justify-content: flex-end;
-}
-.customer-order-actions .el-button {
+  gap: 4px 12px;
   margin: 0;
+  color: var(--detail-secondary);
+  line-height: 1.55;
+}
+.order-reference {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--detail-border);
+  border-radius: 12px;
+  background: #fff;
+}
+.reference-label {
+  color: var(--detail-secondary);
+  font-size: 13px;
+}
+.order-reference :deep(.order-number > span) {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: clamp(16px, 3.8vw, 21px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.order-notice {
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid #eddbb2;
+  border-radius: 12px;
+  background: #fff8eb;
+  color: #73471a;
+  line-height: 1.65;
+}
+.merchant-remarks {
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid #d2e0fa;
+  border-inline-start: 4px solid #426ad1;
+  border-radius: 14px;
+  background: #f8faff;
+}
+.merchant-remarks h3,
+.order-detail-card h3 {
+  margin: 0 0 10px;
+  color: var(--detail-text);
+  font-size: 16px;
+}
+.merchant-remarks h3 {
+  font-size: 18px;
+}
+.merchant-remarks p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.75;
+}
+.merchant-remarks p + p {
+  margin-top: 8px;
+}
+.payment-reminder {
+  color: #24478e;
+  font-weight: 650;
+}
+.merchant-text,
+.plain {
+  white-space: pre-wrap;
+}
+.merchant-unavailable {
+  color: var(--detail-secondary);
+}
+.order-detail-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+.order-detail-column {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.order-detail-card {
+  padding: 16px;
+  border: 1px solid var(--detail-border);
+  border-radius: 14px;
+  background: #fff;
+}
+.order-description {
+  margin: 0 0 14px;
+  color: var(--detail-secondary);
+  line-height: 1.7;
 }
 .customer-facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: 12px;
+  margin: 0;
 }
-.customer-facts dt {
-  color: #60708a;
+.contact-facts,
+.order-deadline {
+  grid-template-columns: minmax(0, 1fr);
+}
+.customer-facts dt,
+.customer-timeline time {
+  color: var(--detail-secondary);
+  font-size: 13px;
 }
 .customer-facts dd {
-  margin: 0.25rem 0 0;
+  margin: 3px 0 0;
+  line-height: 1.5;
 }
-.plain {
-  white-space: pre-wrap;
+.order-price {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.order-deadline {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--detail-border);
 }
 .customer-timeline {
-  padding-inline-start: 1.25rem;
+  list-style: none;
+  margin: 0;
+  padding-inline-start: 12px;
+  border-inline-start: 2px solid #d6e2f8;
 }
 .customer-timeline li {
-  margin-top: 0.5rem;
+  position: relative;
+  display: grid;
+  gap: 3px;
 }
-.customer-timeline time {
-  margin-inline-start: 0.55rem;
+.customer-timeline li + li {
+  margin-top: 12px;
+}
+.customer-timeline li::before {
+  position: absolute;
+  inset-block-start: 6px;
+  inset-inline-start: -17px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #426ad1;
+  content: '';
+}
+.customer-order-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.customer-order-actions .el-button {
+  margin: 0;
 }
 @media (max-width: 640px) {
-  .customer-facts {
+  .order-hero,
+  .order-detail-columns {
     grid-template-columns: minmax(0, 1fr);
   }
   .customer-order-actions .el-button {
-    width: 100%;
+    flex: 1 1 10rem;
+    min-height: 40px;
   }
 }
 </style>

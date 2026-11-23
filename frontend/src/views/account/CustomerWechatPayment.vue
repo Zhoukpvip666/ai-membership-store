@@ -36,46 +36,145 @@ onUnmounted(() => {
 <template>
   <section aria-label="微信扫码付款" class="wechat-payment">
     <h3>微信扫码付款</h3>
-    <p>
-      应付金额 <strong>{{ money(order.amountFen) }}</strong>
-    </p>
-    <p>商城订单号 <OrderNumber :order-no="order.orderNo" /></p>
-    <p v-if="loading" role="status">正在读取微信收款码…</p>
-    <template v-else-if="qr">
-      <img :src="qr" alt="微信收款二维码" class="wechat-qr" />
-      <a :href="qr" download="wechat-payment-qr.png">保存二维码</a>
-      <p>
-        可在微信中扫码，或从相册识别已保存的图片。请在微信付款页面填写正确的金额和商城订单号。
-      </p>
-    </template>
-    <p v-else>商家暂未开放扫码收款，请联系商家。</p>
-    <p>
-      剩余付款时间
-      <strong class="customer-countdown">{{ countdown(remaining) }}</strong>
-    </p>
-    <p>
-      订单创建满 24
-      小时仍未核实，可能自动取消。已转账但订单取消时，请联系商家线下处理。
-    </p>
-    <ElButton type="primary" @click="emit('claim')">我已付款</ElButton>
+    <div class="payment-grid">
+      <div class="payment-code">
+        <p v-if="loading" role="status">正在读取微信收款码…</p>
+        <template v-else-if="qr">
+          <img :src="qr" alt="微信收款二维码" class="wechat-qr" />
+          <a :href="qr" download="wechat-payment-qr.png">保存二维码</a>
+          <p>可在微信中扫码，或从相册识别已保存的图片。</p>
+        </template>
+        <p v-else>商家暂未开放扫码收款，请联系商家。</p>
+      </div>
+      <div class="payment-summary">
+        <dl class="payment-facts">
+          <div>
+            <dt>应付金额</dt>
+            <dd class="payment-amount">{{ money(order.amountFen) }}</dd>
+          </div>
+          <div>
+            <dt>剩余付款时间</dt>
+            <dd class="customer-countdown">{{ countdown(remaining) }}</dd>
+          </div>
+          <div class="payment-order-number">
+            <dt>商城订单号</dt>
+            <dd><OrderNumber :order-no="order.orderNo" /></dd>
+          </div>
+        </dl>
+        <ElButton class="payment-claim" type="primary" @click="emit('claim')">
+          我已付款
+        </ElButton>
+        <p class="payment-expiry">
+          订单创建满 24
+          小时仍未核实，可能自动取消。已转账但订单取消时，请联系商家线下处理。
+        </p>
+      </div>
+    </div>
   </section>
 </template>
 
 <style scoped>
 .wechat-payment {
-  background: #f3f7ff;
-  border: 1px solid #d8e3ff;
+  min-width: 0;
+  border: 1px solid #cfdcf8;
+  border-radius: 16px;
+  background: #f4f7ff;
+  padding: clamp(16px, 3vw, 24px);
+}
+.wechat-payment h3 {
+  margin: 0 0 16px;
+  font-size: 18px;
+  color: #15233b;
+}
+.payment-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 230px) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(16px, 3vw, 28px);
+}
+.payment-code {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #d9e2f4;
   border-radius: 12px;
-  padding: 0.85rem;
-  margin-block: 1rem;
+  background: #fff;
+  text-align: center;
+}
+.payment-code p,
+.payment-expiry {
+  margin: 0;
+  color: #495b76;
+  line-height: 1.6;
+  font-size: 13px;
+}
+.payment-code a {
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  font-weight: 650;
 }
 .wechat-qr {
   display: block;
-  width: min(240px, 100%);
+  width: min(168px, 100%);
   height: auto;
-  margin-block: 0.75rem;
+}
+.payment-summary {
+  min-width: 0;
+}
+.payment-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px clamp(16px, 3vw, 32px);
+  margin: 0 0 16px;
+}
+.payment-facts dt {
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: #495b76;
+}
+.payment-facts dd {
+  margin: 0;
+}
+.payment-amount,
+.customer-countdown {
+  color: #15233b;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.payment-amount {
+  font-size: clamp(28px, 4vw, 38px);
 }
 .customer-countdown {
+  color: #254cab;
+  font-size: clamp(21px, 3vw, 26px);
+}
+.payment-order-number {
+  flex-basis: 100%;
+  min-width: 0;
+  color: #15233b;
+  font-size: 16px;
   font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+.payment-claim {
+  min-height: 44px;
+  min-width: min(176px, 100%);
+  font-weight: 650;
+}
+.payment-expiry {
+  margin-top: 10px;
+}
+@media (max-width: 640px) {
+  .payment-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .payment-claim {
+    width: 100%;
+  }
 }
 </style>

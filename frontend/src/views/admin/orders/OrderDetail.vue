@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LinkedText from '../../../components/LinkedText.vue'
 import { ElTag } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 import {
@@ -239,7 +240,9 @@ onMounted(load)
             <dt>客户登录邮箱</dt>
             <dd>{{ order.customer.loginEmail }}</dd>
             <dt>商品说明</dt>
-            <dd>{{ order.productDescriptionSnapshot || '—' }}</dd>
+            <dd>
+              <LinkedText :text="order.productDescriptionSnapshot || '—'" />
+            </dd>
             <dt>商品类型</dt>
             <dd>{{ order.productTypeSnapshot }}</dd>
             <dt>原价快照</dt>
