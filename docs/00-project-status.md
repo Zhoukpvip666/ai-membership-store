@@ -11,6 +11,10 @@ This index records implemented repository capabilities and outstanding boundarie
 - The [contributor instructions](../AGENTS.md) retain the security, privacy, data-preservation and task-scope rules. An unresolved business-rule conflict still requires a decision; this status reconciliation changes no product rules.
 - Product requirements and architecture describe some future capabilities. In particular, planned email, supplier and payment-provider flows are not evidence that those integrations exist.
 
+## Current work priority
+
+The owner's 2026-11-23 priority is to make the customer-facing storefront available as soon as practical. The operating overview remains deferred. The [storefront launch preparation draft](30-storefront-launch-preparation.md) defines the proposed next application task: formal storefront copy and public branding, existing purchase-flow acceptance, and T23.1 production configuration. Its implementation scope awaits feedback; no Codex task or server rollout is recorded by that draft. Existing purchase functionality stays in scope.
+
 ## Product and technical baseline
 
 The application is a single-merchant storefront and administrator console for subscription and one-time digital services. The implemented order flow uses offline customer payment, administrator verification and manual fulfillment. Money is stored in integer CNY fen; timestamps are stored in UTC and displayed using the configured business timezone.

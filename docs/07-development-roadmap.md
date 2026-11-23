@@ -6,6 +6,10 @@ Start with the [project status index](00-project-status.md) for the current impl
 
 The storefront has progressed through the merged T24 additions, including registration, ADMIN self-purchase, customer subscription reads, WeChat payment claims, storefront redesign and product covers. The operating overview remains Mock. Order-based renewal remains future work; the earlier ADMIN direct-renewal API is retained in compatibility mode. Production design is merged, but the currently deployed revision, applied migrations and server state were not inspected for this documentation update.
 
+## Current priority — customer-facing storefront launch
+
+Following the owner's 2026-11-23 direction, prioritize the customer-facing storefront over the Mock operating overview. The [next-task draft](30-storefront-launch-preparation.md) combines storefront release polish with T23.1 application readiness and preserves the existing browsing, registration and purchase flow. The draft awaits scope feedback before implementation is assigned. T23.2–T23.5 retain their deployment and verification boundaries; this priority update records no deployment or new test results.
+
 ## Order creation API — merged
 
 **Status: Merged in PR #11 (`b1f5d14`); historical and fresh isolated verification passed. That implementation did not migrate the development database.** [Implementation contract](19-order-creation-api.md).
