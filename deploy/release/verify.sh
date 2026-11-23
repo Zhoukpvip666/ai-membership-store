@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-[[ $# == 2 && -f /.dockerenv && $EUID == 0 ]] || {
-  printf '%s\n' 'Use a disposable verifier container: verify.sh ARTIFACT_DIR GIT_SHA' >&2
+[[ $# == 3 && -f /.dockerenv && $EUID == 0 ]] || {
+  printf '%s\n' 'Use a disposable verifier container: verify.sh ARTIFACT_DIR GIT_SHA COMPOSE_JSON' >&2
   exit 1
 }
 artifacts=$(realpath -e -- "$1")
@@ -55,10 +55,10 @@ root=/opt/ai-membership-store/current
 
 mkdir "$test_root/ops"
 tar -xzf "$operations" -C "$test_root/ops"
-node - "$sha" "$root/release.json" "$test_root/ops/release.json" <<'NODE'
+node - "$sha" "$root/release.json" "$test_root/ops/release.json" "$3" <<'NODE'
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
-const [sha, runtime, ops] = process.argv.slice(2)
+const [sha, runtime, ops, compose] = process.argv.slice(2)
 const read = (path) => JSON.parse(fs.readFileSync(path))
 const a = read(runtime)
 assert.equal(a.gitSha, sha)
@@ -66,6 +66,14 @@ assert.equal(a.kind, 'runtime')
 assert.equal(a.node, 'v24.13.0')
 assert.equal(a.prisma, '7.10.1')
 assert.deepEqual(read(ops), { ...a, kind: 'operations' })
+const mysql = read(compose).services.mysql
+assert.equal(mysql.image, a.mysqlImage)
+assert.equal(mysql.stop_grace_period, '1m30s')
+assert.equal(mysql.ports.length, 1)
+assert.equal(mysql.ports[0].host_ip, '127.0.0.1')
+assert.equal(String(mysql.ports[0].published), '3310')
+assert.equal(mysql.ports[0].target, 3306)
+console.log('Rendered Compose model: pinned image, loopback mapping and 90-second stop grace period.')
 NODE
 for bundle in "$root" "$test_root/ops"; do
   if [[ -n $(find "$bundle/" \( -name '.env' -o -name '.env.*' -o -name '.local-data' \) -print -quit) ]]; then
@@ -114,8 +122,41 @@ for directory in /srv/membership-data/wechat-qr /srv/membership-data/product-cov
   runuser -u membership-store -- test -w "$directory"
 done
 openssl genpkey -quiet -algorithm RSA -out "$test_root/private.pem"
-openssl pkey -in "$test_root/private.pem" -pubout -out /etc/ai-membership-store/mysql-auth-public.pem
-chmod 0644 /etc/ai-membership-store/mysql-auth-public.pem
+config=/etc/ai-membership-store
+key=$config/mysql-auth-public.pem
+printf 'MYSQL_AUTH_PUBLIC_KEY_FILE=%s\n' "$key" >"$config/runtime.env"
+check_key() { bash "$deploy/release/check-runtime-key.sh"; }
+reject check_key
+grep -q 'mode 0644 MySQL authentication public key' "$test_root/rejected.log"
+openssl pkey -in "$test_root/private.pem" -pubout -out "$test_root/rsa.pem"
+install -m 0600 "$test_root/rsa.pem" "$key"
+reject check_key
+grep -q 'mode 0644 MySQL authentication public key' "$test_root/rejected.log"
+chmod 0644 "$key"
+chmod 0700 "$config"
+reject check_key
+grep -q 'mode 0750 configuration directory' "$test_root/rejected.log"
+chmod 0750 "$config"
+printf 'MYSQL_AUTH_PUBLIC_KEY_FILE=%s\n' "$test_root/rsa.pem" >"$config/runtime.env"
+reject check_key
+grep -q 'MYSQL_AUTH_PUBLIC_KEY_FILE' "$test_root/rejected.log"
+printf 'MYSQL_AUTH_PUBLIC_KEY_FILE=%s\n' "$key" >"$config/runtime.env"
+mv "$key" "$config/fixture.pem"
+ln -s "$config/fixture.pem" "$key"
+reject check_key
+grep -q 'mode 0644 MySQL authentication public key' "$test_root/rejected.log"
+unlink "$key"
+mv "$config/fixture.pem" "$key"
+printf '%s\n' 'malformed PEM' >"$key"
+reject check_key
+grep -q 'valid RSA public key PEM' "$test_root/rejected.log"
+openssl genpkey -quiet -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$test_root/ec.pem"
+openssl pkey -in "$test_root/ec.pem" -pubout -out "$key"
+reject check_key
+grep -q 'valid RSA public key PEM' "$test_root/rejected.log"
+install -m 0644 "$test_root/rsa.pem" "$key"
+check_key
+printf '%s\n' 'Runtime key preflight: missing, permission, different path, symlink and malformed/non-RSA cases rejected.'
 
 (
   cd "$root/backend"
@@ -145,19 +186,71 @@ printf '%s\n' 'Runtime archive starts as the non-root user and drains on SIGTERM
 
 [[ $(caddy version) == v2.6.2* ]]
 caddy validate --adapter caddyfile --config "$deploy/caddy/ai-membership-store.caddy"
+openssl req -x509 -newkey rsa:2048 -noenc -days 1 -subj /CN=127.0.0.1 \
+  -addext subjectAltName=IP:127.0.0.1 -keyout "$test_root/caddy.key" \
+  -out "$test_root/caddy.pem" >"$test_root/openssl.log" 2>&1
 {
   printf '{\n admin off\n}\n'
-  sed 's/^shop\.example\.com {/http:\/\/127.0.0.1:18080 {/' \
+  sed "s@^shop\.example\.com {@https://127.0.0.1:18443 {\n tls $test_root/caddy.pem $test_root/caddy.key@" \
     "$deploy/caddy/ai-membership-store.caddy"
 } >"$test_root/Caddyfile"
 caddy run --adapter caddyfile --config "$test_root/Caddyfile" >"$test_root/caddy.log" 2>&1 &
 caddy_pid=$!
 
-node --input-type=module <<'NODE'
+# Build two later releases and a conflicting reuse of an existing asset name.
+fixture_archive() (
+  id=$1
+  asset=$2
+  fixture=$test_root/fixture-$id
+  mkdir -p "$fixture/backend/dist" "$fixture/frontend/dist/assets" "$fixture/node_modules"
+  printf '%s\n' 'synthetic compiled API' >"$fixture/backend/dist/server.js"
+  printf 'synthetic SPA %s\n' "$id" >"$fixture/frontend/dist/index.html"
+  printf 'release %s\n' "$id" >"$fixture/frontend/dist/assets/$asset"
+  printf '{"kind":"runtime","gitSha":"%s","checksums":"SHA256SUMS"}\n' "$id" >"$fixture/release.json"
+  cd "$fixture"
+  sha256sum release.json backend/dist/server.js frontend/dist/index.html "frontend/dist/assets/$asset" >SHA256SUMS
+  tar -czf "$test_root/$id.tar.gz" .
+)
+second=$(printf 'f%.0s' {1..40})
+third=$(printf 'e%.0s' {1..40})
+conflict=$(printf 'd%.0s' {1..40})
+[[ $sha != "$second" && $sha != "$third" && $sha != "$conflict" ]]
+second_asset=release-B709ax43.js
+third_asset=release-C709ax43.js
+fixture_archive "$second" "$second_asset"
+fixture_archive "$third" "$third_asset"
+fixture_archive "$conflict" "$second_asset"
+for id in "$second" "$third"; do
+  release install "$id" "$test_root/$id.tar.gz" "$(archive_sha "$test_root/$id.tar.gz")"
+done
+reject release install "$conflict" "$test_root/$conflict.tar.gz" "$(archive_sha "$test_root/$conflict.tar.gz")"
+grep -q 'Immutable asset name already has different content' "$test_root/rejected.log"
+[[ ! -e /opt/ai-membership-store/releases/$conflict ]]
+
+NODE_EXTRA_CA_CERTS="$test_root/caddy.pem" node --input-type=module - \
+  "$deploy/release/release.sh" "$sha" "$second" "$third" "$second_asset" "$third_asset" <<'NODE'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile, readdir, readlink } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
+
+const [release, first, second, third, secondAsset, thirdAsset] = process.argv.slice(2)
+const select = (...args) => execFileSync('bash', [release, ...args], { stdio: 'inherit' })
+const base = 'https://127.0.0.1:18443'
+function assertSecurity(response) {
+  assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff')
+  assert.equal(response.headers.get('X-Frame-Options'), 'DENY')
+  assert.equal(response.headers.get('Referrer-Policy'), 'no-referrer')
+  assert.equal(response.headers.get('Strict-Transport-Security'), 'max-age=31536000')
+}
+async function assertAsset(name, expected) {
+  const response = await fetch(base + '/assets/' + name)
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('Cache-Control'), 'public, max-age=31536000, immutable')
+  assertSecurity(response)
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), expected)
+}
 
 const server = createServer((req, res) => {
   if (req.url === '/api/missing') {
@@ -167,7 +260,6 @@ const server = createServer((req, res) => {
   }
 }).listen(3101, '127.0.0.1')
 try {
-  const base = 'http://127.0.0.1:18080'
   let ready = false
   for (let i = 0; i < 100; i++) {
     try { ready = (await fetch(base)).ok } catch {}
@@ -194,36 +286,31 @@ try {
   const history = await fetch(base + '/account/orders')
   assert.equal(history.status, 200)
   assert.equal(history.headers.get('Cache-Control'), 'no-cache')
+  assertSecurity(history)
   assert.equal(await history.text(), await readFile(dist + '/index.html', 'utf8'))
-  const hashed = (await readdir(dist + '/assets')).find((file) => file.endsWith('.js'))
-  assert.ok(hashed)
-  const asset = await fetch(base + '/assets/' + hashed)
-  assert.equal(asset.status, 200)
-  assert.equal(asset.headers.get('Cache-Control'), 'public, max-age=31536000, immutable')
+  const firstAsset = (await readdir(dist + '/assets')).find((file) => file.endsWith('.js'))
+  assert.ok(firstAsset)
+  const firstBytes = await readFile(dist + '/assets/' + firstAsset)
+  await assertAsset(firstAsset, firstBytes)
+  select('switch', second)
+  assert.equal(await readlink('/opt/ai-membership-store/previous'), 'releases/' + first)
+  assert.equal(await (await fetch(base + '/account/orders')).text(), 'synthetic SPA ' + second + '\n')
+  await assertAsset(firstAsset, firstBytes)
+  await assertAsset(secondAsset, Buffer.from('release ' + second + '\n'))
+  select('switch', third)
+  assert.equal(await readlink('/opt/ai-membership-store/previous'), 'releases/' + second)
+  await assertAsset(firstAsset, firstBytes)
+  await assertAsset(secondAsset, Buffer.from('release ' + second + '\n'))
+  await assertAsset(thirdAsset, Buffer.from('release ' + third + '\n'))
+  select('rollback')
+  assert.equal(await readlink('/opt/ai-membership-store/current'), 'releases/' + second)
+  await assertAsset(thirdAsset, Buffer.from('release ' + third + '\n'))
+  select('switch', first)
+  assert.equal(await readlink('/opt/ai-membership-store/current'), 'releases/' + first)
 } finally {
   server.close()
 }
 NODE
-printf '%s\n' 'Caddy 2.6.2 API, Origin, forwarded IP, SPA, missing asset and cache checks passed.'
-
-# Switch to a second synthetic release, then recover the intact real bundle.
-fixture=$test_root/fixture
-other=$(printf 'f%.0s' {1..40})
-[[ $other != "$sha" ]]
-mkdir -p "$fixture/backend/dist" "$fixture/frontend/dist" "$fixture/node_modules"
-printf '%s\n' 'synthetic compiled API' >"$fixture/backend/dist/server.js"
-printf '%s\n' 'synthetic SPA' >"$fixture/frontend/dist/index.html"
-printf '{"kind":"runtime","gitSha":"%s","checksums":"SHA256SUMS"}\n' "$other" >"$fixture/release.json"
-(
-  cd "$fixture"
-  sha256sum release.json backend/dist/server.js frontend/dist/index.html >SHA256SUMS
-  tar -czf "$test_root/next.tar.gz" .
-)
-release install "$other" "$test_root/next.tar.gz" "$(archive_sha "$test_root/next.tar.gz")"
-release switch "$other"
-[[ $(readlink -- "$root") == releases/"$other" ]]
-[[ $(readlink -- /opt/ai-membership-store/previous) == releases/"$sha" ]]
-release rollback
-[[ $(readlink -- "$root") == releases/"$sha" ]]
-[[ -d /opt/ai-membership-store/releases/$other ]]
-printf '%s\n' 'Checksum refusal, duplicate refusal, release switch and rollback passed.'
+printf '%s\n' \
+  'Caddy 2.6.2 HTTPS, response headers, routing, and cache checks passed.' \
+  'Checksum, duplicate and asset collision refusal, three-release retention and rollback passed.'

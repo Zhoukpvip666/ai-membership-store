@@ -35,6 +35,41 @@ PY
   sha256sum --check --strict --quiet SHA256SUMS
 )
 
+retain_assets() {
+  local source=$1/frontend/dist/assets directory asset name target
+  local store=$root/immutable/assets
+  local -a new_assets=()
+  if [[ ! -e $source && ! -L $source ]]; then return; fi
+  [[ -d $source && $(realpath -e -- "$source") == "$source" ]] ||
+    die 'Expected a real frontend assets directory.'
+  for directory in "$root/immutable" "$store"; do
+    if [[ ! -e $directory && ! -L $directory ]]; then
+      install -d -m 0755 -o root -g root -- "$directory"
+    fi
+    [[ -d $directory && ! -L $directory && $(stat -c %u:%g:%a -- "$directory") == 0:0:755 ]] ||
+      die 'The immutable asset directories must be root:root 0755.'
+  done
+
+  # Keep the filename rule in sync with the Caddy hashed-asset matcher.
+  for asset in "$source"/*; do
+    name=${asset##*/}
+    [[ $name =~ ^.+-[A-Za-z0-9_-]{8,}\..+$ ]] || continue
+    [[ -f $asset && ! -L $asset ]] || die "Invalid immutable asset: $name"
+    target=$store/$name
+    if [[ -e $target || -L $target ]]; then
+      [[ -f $target && ! -L $target ]] && cmp -s -- "$asset" "$target" ||
+        die "Immutable asset name already has different content: $name"
+    else
+      new_assets+=("$asset")
+    fi
+  done
+  # The verified source is read-only. Hard links publish each file atomically
+  # and retain its bytes after a release or current/previous link is retired.
+  for asset in "${new_assets[@]}"; do
+    ln -T -- "$asset" "$store/${asset##*/}"
+  done
+}
+
 install_release() {
   local sha=$1 archive=$2 digest=$3 dest=$root/releases/$1
   valid_sha "$sha" || die 'Use the full lowercase Git SHA.'
@@ -56,6 +91,7 @@ PY
   verify_tree "$stage/tree" "$sha"
   chown -hR root:root -- "$stage/tree"
   chmod -R a+rX,a-w -- "$stage/tree"
+  retain_assets "$stage/tree"
   mv -T -- "$stage/tree" "$dest"
   printf 'Installed %s\n' "$sha"
 }
@@ -81,6 +117,7 @@ switch_release() {
   read_ref previous >/dev/null
   [[ -d $root/$next && ! -L $root/$next ]] || die 'Install the release first.'
   verify_tree "$root/$next" "$1"
+  retain_assets "$root/$next"
   if [[ $old != "$next" ]]; then
     if [[ -n $old ]]; then replace_ref previous "$old"; fi
     replace_ref current "$next"
