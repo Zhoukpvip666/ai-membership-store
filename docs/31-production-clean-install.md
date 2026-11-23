@@ -4,6 +4,8 @@ This procedure prepares a new MySQL 8.4 schema for the reviewed application rele
 
 Keep the new site behind the maintenance gate through migration and first login verification. The commands below apply only to a separately approved installation target.
 
+The [T23.2 infrastructure guide](32-production-infrastructure.md) supplies the Linux artifact, Compose, systemd and Caddy configuration templates. It uses candidate loopback ports 3101 for the API and 3310 for MySQL. Reconfirm both before approving deployment. Run the commands from the matching private operations bundle and load only the named credential context.
+
 ## Database identities and contexts
 
 Use a fresh schema on the dedicated MySQL 8.4 instance. Pin the database name in each process with PRODUCTION_DATABASE_NAME and use the same name in its connection URL. All database connections originate on the server via loopback. Start independent shells or services with private, owner-readable-only environment files for the following contexts. Keep actual values out of command lines, shell history, releases, build inputs and access logs.

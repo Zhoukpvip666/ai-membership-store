@@ -1,6 +1,6 @@
 # Current Project Status
 
-**Verified repository snapshot:** 2026-11-23 (Asia/Shanghai), `main` at [`105e1514e6ce97853d5e83d0b5c131df6872551b`](https://github.com/lear111/ai-membership-store/commit/105e1514e6ce97853d5e83d0b5c131df6872551b), the merge of [PR #46](https://github.com/lear111/ai-membership-store/pull/46).
+**Verified repository snapshot** — `main` at [`8e568f512eb44a01ae7b395b519094b8e7b572fc`](https://github.com/lear111/ai-membership-store/commit/8e568f512eb44a01ae7b395b519094b8e7b572fc), the merge of [PR #50](https://github.com/lear111/ai-membership-store/pull/50).
 
 This index records implemented repository capabilities and outstanding boundaries. It is not a release record, a new test run, or evidence that a server or database has been upgraded. Check the current branch and relevant PR before starting another task.
 
@@ -11,11 +11,11 @@ This index records implemented repository capabilities and outstanding boundarie
 - The [contributor instructions](../AGENTS.md) retain the security, privacy, data-preservation and task-scope rules. An unresolved business-rule conflict still requires a decision; this status reconciliation changes no product rules.
 - Product requirements and architecture describe some future capabilities. In particular, planned email, supplier and payment-provider flows are not evidence that those integrations exist.
 
-The T23.1 development base is [09fcc26](https://github.com/lear111/ai-membership-store/commit/09fcc26a14afb4f7f47446ea60caf241e8a52c1b), including the [PR #49](https://github.com/lear111/ai-membership-store/pull/49) customer order detail and product description links.
+The current main includes the [PR #49](https://github.com/lear111/ai-membership-store/pull/49) customer order detail and product description links and the T23.1 production application profile. [T23.2 infrastructure](32-production-infrastructure.md) is the current review scope.
 
 ## Current work priority
 
-The owner's 2026-11-23 priority is to make the customer-facing storefront available as soon as practical. The operating overview remains deferred. The [storefront launch preparation draft](30-storefront-launch-preparation.md) defines the proposed next application task: formal storefront copy and public branding, existing purchase-flow acceptance, and T23.1 production configuration. The draft records the broader release work. T23.1 Clean Install is separately implemented for review. Existing purchase functionality stays in scope.
+The owner prioritizes the customer-facing storefront over the Mock operating overview. The [storefront launch preparation draft](30-storefront-launch-preparation.md) records that direction. T23.1 Clean Install is merged and T23.2 prepares the infrastructure templates, packaging and runbook for review.
 
 ## Product and technical baseline
 
@@ -32,6 +32,7 @@ The repository uses Vue 3, TypeScript, Vite and Element Plus, with Node.js 24, E
 | T20/T21 order centers | Real administrator order operations and customer-facing own-order list/detail/edit/cancel; later ADMIN self-service uses the same ownership boundary | [PR #29](https://github.com/lear111/ai-membership-store/pull/29), [PR #31](https://github.com/lear111/ai-membership-store/pull/31), [administrator center](25-admin-order-center.md), [customer center](26-customer-order-center.md) |
 | T22 storefront ordering | Guest catalog/detail, protected purchase form after the buy action, login continuation, product-version guard, confirmation and idempotent submission into order history | [PR #33](https://github.com/lear111/ai-membership-store/pull/33), [#34](https://github.com/lear111/ai-membership-store/pull/34), [#35](https://github.com/lear111/ai-membership-store/pull/35), [#36](https://github.com/lear111/ai-membership-store/pull/36), [storefront contract](27-customer-storefront-and-order-placement.md) |
 | T23.0 production design | Deployment design and historical Seoul VPS readiness audit are merged; runtime rollout is a separate status | [PR #37](https://github.com/lear111/ai-membership-store/pull/37), [production design](28-production-deployment-design.md) |
+| T23.1 production application readiness | HTTPS profile, isolated credential contexts, explicit one-time ADMIN bootstrap and graceful API/worker drain | [PR #50](https://github.com/lear111/ai-membership-store/pull/50), [Clean Install guide](31-production-clean-install.md) |
 | Customer subscription history | Paginated own-subscription list/detail with safe frozen fields and visible source-order links | [PR #38](https://github.com/lear111/ai-membership-store/pull/38), [API contract](05-api-contract.md) |
 | Storefront administrator navigation | Console entry is shown only for ADMIN sessions, with session revalidation | [PR #39](https://github.com/lear111/ai-membership-store/pull/39), [interface specification](08-interface-specification.md) |
 | T24.0 order numbers | New orders use nine-digit numbers with grouped display, raw copying and historical search compatibility; routes retain UUID identity | [PR #40](https://github.com/lear111/ai-membership-store/pull/40), [creation contract](19-order-creation-api.md) |
@@ -41,6 +42,7 @@ The repository uses Vue 3, TypeScript, Vite and Element Plus, with Node.js 24, E
 | T24.4B.2 self-registration | Email/password registration creates an ACTIVE CUSTOMER and Session; safe continuation returns the user to the purchase flow | [PR #44](https://github.com/lear111/ai-membership-store/pull/44), [API contract](05-api-contract.md) |
 | T24.5A storefront design | Storefront navigation, visual tokens, catalog cards and desktop/mobile product detail layout | [PR #45](https://github.com/lear111/ai-membership-store/pull/45), [interface specification](08-interface-specification.md) |
 | T24.5B product covers | One optional cover per product, administrator upload/replace/remove, normalized WebP storage, protected current-image reads, 4:3 display and a two-column mobile catalog | [PR #46](https://github.com/lear111/ai-membership-store/pull/46), [cover implementation and operation guide](29-product-cover-images.md) |
+| Customer order detail polish | Redesigned offline payment section, prominent order number and merchant remarks, and safe HTTP/HTTPS links in product descriptions | [PR #49](https://github.com/lear111/ai-membership-store/pull/49) |
 
 ## Current boundaries and unfinished work
 
@@ -53,7 +55,7 @@ The repository uses Vue 3, TypeScript, Vite and Element Plus, with Node.js 24, E
 | Registration and email ownership | Self-registration is implemented, but email ownership is unverified. The current duplicate-email response and per-process connection-IP limiter have the operating limits documented in [PR #44](https://github.com/lear111/ai-membership-store/pull/44). |
 | Email and supplier integration | No SMTP/outbox worker, supplier API, automatic supplier transfer or automated third-party activation. Planned supplier/customer email and expiry reminders remain future work. |
 | Other planned APIs | Notification, verification-code and API-key APIs remain absent. |
-| Production readiness | T23.0 is a merged design. T23.1 production profiles and explicit first administrator initialization are ready for review in the [Clean Install guide](31-production-clean-install.md). T23.2–T23.5 remain separate work in the [production plan](28-production-deployment-design.md). This reconciliation did not inspect a running server or its deployed commit, migration state or backups. |
+| Production readiness | T23.0 and T23.1 are merged. [T23.2 infrastructure](32-production-infrastructure.md) is awaiting review. T23.3 backup/monitoring, T23.4 rehearsal and T23.5 launch remain pending under the [production plan](28-production-deployment-design.md). The server audit remains historical. |
 
 ## Migrations, storage and release evidence
 

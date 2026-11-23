@@ -1,0 +1,51 @@
+name: ai-membership-store-production
+
+services:
+  mysql:
+    image: docker.io/library/mysql:8.4.13@sha256:72c368d898861f3b3a07af0e6d690400f44f048799ed46822783d9224cc2c86d
+    platform: linux/amd64
+    restart: unless-stopped
+    # Measure shutdown under write and backup load in T23.4.
+    stop_grace_period: 90s
+    environment:
+      TZ: UTC
+      MYSQL_ROOT_HOST: localhost
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
+      MYSQL_DATABASE: membership_production
+    command:
+      - --default-time-zone=+00:00
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      # Initial limits. Rehearse on the target capacity profile in T23.4.
+      - --innodb-buffer-pool-size=${MYSQL_INNODB_BUFFER_POOL_SIZE:-256M}
+      - --max-connections=${MYSQL_MAX_CONNECTIONS:-40}
+    mem_limit: ${MYSQL_MEMORY_LIMIT:-768m}
+    ports:
+      # Candidate. Reconfirm on the VPS before approving the first start.
+      - '127.0.0.1:3310:3306'
+    volumes:
+      - mysql-data:/var/lib/mysql
+    secrets:
+      - mysql_root_password
+    healthcheck:
+      # Server availability only. API readiness also checks authenticated SQL.
+      test:
+        [
+          'CMD',
+          'mysqladmin',
+          '--protocol=TCP',
+          '--host=127.0.0.1',
+          '--silent',
+          'ping',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+volumes:
+  mysql-data:
+
+secrets:
+  mysql_root_password:
+    file: /etc/ai-membership-store/mysql-root-password

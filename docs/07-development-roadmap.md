@@ -8,7 +8,7 @@ The storefront has progressed through the merged T24 additions, including regist
 
 ## Current priority — customer-facing storefront launch
 
-Following the owner's 2026-11-23 direction, prioritize the customer-facing storefront over the Mock operating overview. The [next-task draft](30-storefront-launch-preparation.md) combines storefront release polish with T23.1 application readiness and preserves the existing browsing, registration and purchase flow. The draft awaits scope feedback before implementation is assigned. T23.2–T23.5 retain their deployment and verification boundaries; this priority update records no deployment or new test results.
+Prioritize the customer-facing storefront over the Mock operating overview. The [launch preparation draft](30-storefront-launch-preparation.md) records the direction. Customer order detail polish and T23.1 application readiness are merged in PR #49 and #50. T23.2 infrastructure is awaiting review. Backup and monitoring, deployment rehearsal and controlled launch remain separately scoped.
 
 ## Order creation API — merged
 
@@ -133,10 +133,10 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 
 ## T23 — Production deployment readiness
 
-**Status: T23.0 production design and the historical Seoul VPS audit merged in PR #37.** [Production design and readiness audit](28-production-deployment-design.md). T23.1 application adaptation is ready for review. T23.2–T23.5 remain the planned deployment-readiness sequence. The original audit is a point-in-time observation; it does not establish current server capacity, configuration or deployment. See the [status index](00-project-status.md) for the evidence boundary.
+**Status** — T23.0 design merged in PR #37 and T23.1 application readiness merged in PR #50. T23.2 infrastructure is awaiting review. The [Seoul readiness audit](28-production-deployment-design.md) is historical. See the [status index](00-project-status.md) for the current repository snapshot.
 
 - T23.1 — Production configuration and first ADMIN. The [Clean Install guide](31-production-clean-install.md) covers the HTTPS profile, separate database accounts, proxy trust, explicit migration and bootstrap, and service drain.
-- T23.2 — Caddy, systemd and MySQL deployment definitions. Provide site/unit/Compose templates that preserve existing listeners and services.
+- T23.2 — Caddy, systemd and MySQL deployment definitions. The [infrastructure guide](32-production-infrastructure.md) records the templates, Linux release build, checksum/installation and rollback tooling, and candidate ports.
 - T23.3 — Backup, recovery, logging and monitoring. Demonstrate encrypted backup, isolated restore, log redaction and alerts.
 - T23.4 — Isolated deployment rehearsal and launch checklist. Verify shared-host capacity, prior-site health, application behavior and recovery before requesting T23.5 approval.
 - T23.5 — Controlled production launch. Under separate approvals, verify the recovery point, apply the approved Migration, configure DNS and firewall, start the dedicated services and reload Caddy. Verify smoke tests and existing-site health before opening traffic, with a rehearsed rollback ready.

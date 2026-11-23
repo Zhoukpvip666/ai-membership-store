@@ -1,0 +1,26 @@
+[Unit]
+Description=AI Membership Store API
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+User=membership-store
+Group=membership-store
+WorkingDirectory=/opt/ai-membership-store/current/backend
+EnvironmentFile=/etc/ai-membership-store/runtime.env
+ExecStart=/opt/node-v24.13.0-linux-x64/bin/node /opt/ai-membership-store/current/backend/dist/server.js --production
+StandardOutput=journal
+StandardError=journal
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=90s
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/srv/membership-data/wechat-qr /srv/membership-data/product-covers
+
+[Install]
+WantedBy=multi-user.target
