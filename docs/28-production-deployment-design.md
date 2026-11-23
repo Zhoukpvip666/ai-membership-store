@@ -47,17 +47,17 @@ Recommend reusing the host and aiming for at least **4 GiB RAM** before an appro
 ```text
 Browser -> https://shop.example.com -> existing host Caddy (80/443)
                                       |-- Vue SPA/static files from a dedicated release
-                                      `-- /api and /api/* -> 127.0.0.1:3100
+                                      `-- /api and /api/* -> 127.0.0.1:3101
                                                                |
                                                      Node.js 24 / Express
                                                      one dedicated systemd unit
                                                                |
-                                             127.0.0.1:3307 -> MySQL 8.4 container:3306
+                                             127.0.0.1:3310 -> MySQL 8.4 container:3306
                                                                |
                                                     dedicated persistent volume
 ```
 
-Use a separate exact-host Caddy site and a project-owned release directory. Keep the API and DB loopback-only. The website and API are same-origin and API requests remain relative. Create a dedicated Unix service identity and install Node 24 at an independent absolute path when approved. Give MySQL a production-specific Compose project, account set and volume. Keep other virtual hosts, the existing port 3000 listener, service units, binaries and data unchanged.
+Use a separate exact-host Caddy site and a project-owned release directory. Keep the API and DB loopback-only. The website and API are same-origin and API requests remain relative. The [T23.2 templates](32-production-infrastructure.md) use candidate ports 3101 and 3310, matching the production runtime example. Recheck both during the approved preflight. Give MySQL a production-specific Compose project, account set and volume. Keep other virtual hosts, the existing port 3000 listener, service units, binaries and data unchanged.
 
 | Option | Trade-off on this host |
 | --- | --- |
@@ -76,7 +76,7 @@ Prefer the hybrid layout for this shared VPS, conditional on capacity rehearsal.
 - Retain current rate limiters and `429` behavior. Test independent clients and prove forged forwarding headers cannot miskey the limiter. Measure catalog, authentication/Argon2 and customer-write traffic, then set ingress quotas and body/time bounds. Account for NAT, map bounds and counters resetting on restart. Use one API instance. Scaling would require shared quotas and a new worker coordination design.
 - Preserve `Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/` and no Domain attribute, with matching logout clearing attributes. Preserve the 12-hour hashed Session, revocation, role/ACTIVE checks and ownership isolation. Mutations continue to require exact Origin, `X-Requested-With: MembershipStore` and JSON. Test absent, null and foreign origins. Keep GET/HEAD read-only and avoid CORS exceptions.
 - Keep one-time seven-day invitations, manually shared using the approved origin and existing `/activate#…` form. The fragment stays out of HTTP request URLs and [the page](../frontend/src/views/auth/Activate.vue) clears it after capture. Test issuance and activation through Caddy. Revocations or reissues affecting actual users require operator authorization.
-- Permit public TCP 80/443 at provider and host firewalls. Keep UDP 443 only under the approved HTTP/3 and existing-site policy. Restrict SSH management paths where feasible with documented recovery access. Keep 2019, 3000, 3100, 3306, 3307, 33060 and dev/upstream ports off the Internet. Check IPv4 and IPv6. Docker publishing must explicitly bind loopback and use a supported security-patched engine. Older Docker releases had a same-L2 localhost publish caveat. [Docker port publishing](https://docs.docker.com/engine/network/port-publishing/)
+- Permit public TCP 80/443 at provider and host firewalls. Keep UDP 443 only under the approved HTTP/3 and existing-site policy. Restrict SSH management paths where feasible with documented recovery access. Keep 2019, 3000, the candidate API/DB ports 3101 and 3310, MySQL internal ports 3306 and 33060, and all dev/upstream ports off the Internet. Check IPv4 and IPv6. Docker publishing must explicitly bind loopback and use a supported security-patched engine. Older Docker releases had a same-L2 localhost publish caveat. [Docker port publishing](https://docs.docker.com/engine/network/port-publishing/)
 
 ### Build, process, routing and health
 
@@ -113,7 +113,7 @@ Each stage is its own PR. Design review authorizes only the design. A separate a
 | **T23.4 — Isolated rehearsal and launch checklist** | Rehearse fresh/upgrade deployment, rollback, restore and realistic coexistence before finalizing the shared-host release plan. | Prove headroom and existing-site health, one worker instance, app/API/DB readiness, protected workflows, failure recovery and capacity/RPO/RTO evidence. Use results for the T23.5 go/no-go review. | Writes limited to separately approved synthetic rehearsal data. A production rollout and database operations require independent approval. |
 | **T23.5 — Controlled production launch** | Apply the reviewed release to the approved server, database and domain in a change window. | Verify recovery points, approved migrations, runtime and ingress, protected smoke tests and existing-site health. Open customer traffic only after go/no-go sign-off. | Each real production operation needs separate authorization, including any backup, database write, Migration, DNS/firewall change, reload, start or rollback. |
 
-**Owner decisions before rollout** — Confirm the real domain, capacity target and maintenance window, credential owners, backup destination/retention and recovery objectives, and how to handle Mock surfaces in public navigation. Confirm existing supplier, payment-channel and manual-operation gates. T23.1 application implementation is ready for review. The [Clean Install guide](31-production-clean-install.md) records the supported production profiles and sequence.
+**Owner decisions before rollout** — Confirm the real domain, capacity target and maintenance window, credential owners, backup destination/retention and recovery objectives, and how to handle Mock surfaces in public navigation. Confirm existing supplier, payment-channel and manual-operation gates. T23.1 is merged in PR #50. Use the [Clean Install guide](31-production-clean-install.md) and [T23.2 infrastructure guide](32-production-infrastructure.md) to plan the later rehearsal.
 
 ## 7. T23.5 controlled production launch
 
