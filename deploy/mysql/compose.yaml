@@ -5,6 +5,11 @@ services:
     image: docker.io/library/mysql:8.4.13@sha256:72c368d898861f3b3a07af0e6d690400f44f048799ed46822783d9224cc2c86d
     platform: linux/amd64
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
     # Measure shutdown under write and backup load in T23.4.
     stop_grace_period: 90s
     environment:

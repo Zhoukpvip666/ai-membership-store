@@ -1,0 +1,9 @@
+[Unit]
+Description=AI Membership Store weekly full repository data check
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

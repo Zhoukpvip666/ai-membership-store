@@ -1,6 +1,6 @@
 # Current Project Status
 
-**Verified repository snapshot** — `main` at [`8e568f512eb44a01ae7b395b519094b8e7b572fc`](https://github.com/lear111/ai-membership-store/commit/8e568f512eb44a01ae7b395b519094b8e7b572fc), the merge of [PR #50](https://github.com/lear111/ai-membership-store/pull/50).
+**Verified repository snapshot** — `main` at [`b4b1c1824d18dea42eb4670cdb019b0b673947ed`](https://github.com/lear111/ai-membership-store/commit/b4b1c1824d18dea42eb4670cdb019b0b673947ed), the merge of [PR #51](https://github.com/lear111/ai-membership-store/pull/51).
 
 This index records implemented repository capabilities and outstanding boundaries. It is not a release record, a new test run, or evidence that a server or database has been upgraded. Check the current branch and relevant PR before starting another task.
 
@@ -11,11 +11,11 @@ This index records implemented repository capabilities and outstanding boundarie
 - The [contributor instructions](../AGENTS.md) retain the security, privacy, data-preservation and task-scope rules. An unresolved business-rule conflict still requires a decision; this status reconciliation changes no product rules.
 - Product requirements and architecture describe some future capabilities. In particular, planned email, supplier and payment-provider flows are not evidence that those integrations exist.
 
-The current main includes the [PR #49](https://github.com/lear111/ai-membership-store/pull/49) customer order detail and product description links and the T23.1 production application profile. [T23.2 infrastructure](32-production-infrastructure.md) is the current review scope.
+The current main includes the customer order detail and product description links, T23.1 production application profile and T23.2 infrastructure. [T23.3 backup and monitoring](33-production-backup-and-monitoring.md) is the current review scope.
 
 ## Current work priority
 
-The owner prioritizes the customer-facing storefront over the Mock operating overview. The [storefront launch preparation draft](30-storefront-launch-preparation.md) records that direction. T23.1 Clean Install is merged and T23.2 prepares the infrastructure templates, packaging and runbook for review.
+The owner prioritizes the customer-facing storefront over the Mock operating overview. The [storefront launch preparation draft](30-storefront-launch-preparation.md) records that direction. T23.1 Clean Install and T23.2 infrastructure are merged. T23.3 prepares data protection and observability before the separate rehearsal.
 
 ## Product and technical baseline
 
@@ -55,7 +55,7 @@ The repository uses Vue 3, TypeScript, Vite and Element Plus, with Node.js 24, E
 | Registration and email ownership | Self-registration is implemented, but email ownership is unverified. The current duplicate-email response and per-process connection-IP limiter have the operating limits documented in [PR #44](https://github.com/lear111/ai-membership-store/pull/44). |
 | Email and supplier integration | No SMTP/outbox worker, supplier API, automatic supplier transfer or automated third-party activation. Planned supplier/customer email and expiry reminders remain future work. |
 | Other planned APIs | Notification, verification-code and API-key APIs remain absent. |
-| Production readiness | T23.0 and T23.1 are merged. [T23.2 infrastructure](32-production-infrastructure.md) is awaiting review. T23.3 backup/monitoring, T23.4 rehearsal and T23.5 launch remain pending under the [production plan](28-production-deployment-design.md). The server audit remains historical. |
+| Production readiness | T23.0 through [T23.2 infrastructure](32-production-infrastructure.md) are merged. [T23.3 backup and monitoring](33-production-backup-and-monitoring.md) is under review. T23.4 rehearsal and T23.5 launch remain pending under the [production plan](28-production-deployment-design.md). The server audit remains historical. |
 
 ## Migrations, storage and release evidence
 

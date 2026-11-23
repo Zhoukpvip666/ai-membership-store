@@ -4,10 +4,12 @@ import type { PrismaClient } from './generated/prisma/client.ts'
 import type { Environment } from './config/env.ts'
 import { applicationRoutes } from './http/routes.ts'
 import { ApiError, errors } from './http/errors.ts'
+import type { operationalStatus } from './http/operational-status.ts'
 
 export function createApp(
   checkDatabase: () => Promise<void>,
   options?: { database: PrismaClient; env: Environment },
+  operations?: ReturnType<typeof operationalStatus>,
 ) {
   const app = express()
   app.disable('x-powered-by')
@@ -30,6 +32,10 @@ export function createApp(
     response.setHeader('X-Frame-Options', 'DENY')
     next()
   })
+  if (operations) {
+    app.use(operations.requests)
+    app.get('/internal/ops/metrics', operations.metrics)
+  }
 
   app.get(['/health', '/api/v1/health'], async (_request, response) => {
     try {

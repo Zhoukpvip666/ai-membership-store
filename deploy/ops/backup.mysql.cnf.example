@@ -1,0 +1,7 @@
+# Copy to /etc/ai-membership-store/backup.mysql.cnf, root:root 0600.
+[client]
+host=mysql
+protocol=TCP
+user=membership_backup
+password=REPLACE_USING_APPROVED_SECRET_STORE
+ssl-mode=REQUIRED

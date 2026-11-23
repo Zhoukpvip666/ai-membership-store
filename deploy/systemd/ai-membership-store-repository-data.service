@@ -1,0 +1,16 @@
+[Unit]
+Description=AI Membership Store full Restic repository data check
+After=network-online.target
+OnFailure=ai-membership-store-monitor.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/ai-membership-store/backup.env
+ExecStart=/usr/bin/python3 -B /opt/ai-membership-store/ops/deploy/ops/backup.py check-data
+StateDirectory=ai-membership-store/ops
+StateDirectoryMode=0700
+LogNamespace=ai-membership-store
+UMask=0077
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=2h

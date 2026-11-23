@@ -6,6 +6,7 @@ import {
 } from './config/env.ts'
 import { createDatabase, checkDatabase } from './db/client.ts'
 import { createGracefulShutdown } from './shutdown.ts'
+import { operationalStatus } from './http/operational-status.ts'
 import { subscriptionService } from './modules/subscriptions/service.ts'
 import { startExpiryScheduler } from './modules/subscriptions/scheduler.ts'
 import {
@@ -13,6 +14,7 @@ import {
   startOrderTimeoutScheduler,
 } from './modules/orders/timeout.ts'
 
+const operations = operationalStatus()
 try {
   if (process.argv.includes('--production')) requireProductionMode()
   const env = parseEnvironment()
@@ -23,22 +25,26 @@ try {
   let stopExpiry: () => Promise<void> = async () => {}
   let stopOrders: () => Promise<void> = async () => {}
   let shuttingDown = false
-  const server = createApp(() => checkDatabase(database), {
-    database,
-    env,
-  }).listen(env.API_PORT, '127.0.0.1', () => {
+  const server = createApp(
+    () => checkDatabase(database),
+    {
+      database,
+      env,
+    },
+    operations,
+  ).listen(env.API_PORT, '127.0.0.1', () => {
     if (shuttingDown) return
     stopExpiry = startExpiryScheduler(
       subscriptionService(database).autoTerminate,
-      () =>
-        console.error(
-          'Subscription expiry sweep failed; will retry next minute.',
-        ),
+      () => {},
+      operations.observe('subscriptionExpiry'),
     )
-    stopOrders = startOrderTimeoutScheduler(orderTimeoutService(database), () =>
-      console.error('Order timeout sweep failed; will retry next minute.'),
+    stopOrders = startOrderTimeoutScheduler(
+      orderTimeoutService(database),
+      () => {},
+      operations.observe('orderTimeout'),
     )
-    console.info('API listening on 127.0.0.1:' + env.API_PORT)
+    operations.log({ event: 'startup', result: 'listening' })
   })
   const drain = createGracefulShutdown(
     [
@@ -62,21 +68,36 @@ try {
   const shutdown = () => {
     if (shuttingDown) return
     shuttingDown = true
-    void drain().catch(() => {
-      console.error('API shutdown failed to close its resources cleanly.')
-      process.exitCode = 1
-    })
+    void drain()
+      .then(() => operations.log({ event: 'shutdown', result: 'stopped' }))
+      .catch(() => {
+        operations.log({
+          event: 'shutdown',
+          result: 'failed',
+          errorCode: 'DRAIN_FAILED',
+        })
+        process.exitCode = 1
+      })
   }
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)
   server.on('error', () => {
-    console.error('API could not start. Check API_PORT availability.')
+    operations.log({
+      event: 'startup',
+      result: 'failed',
+      errorCode: 'LISTEN_FAILED',
+    })
     process.exitCode = 1
     shutdown()
   })
 } catch (error) {
-  console.error(
-    error instanceof EnvironmentError ? error.message : 'API startup failed.',
-  )
+  operations.log({
+    event: 'startup',
+    result: 'failed',
+    errorCode:
+      error instanceof EnvironmentError
+        ? 'INVALID_ENVIRONMENT'
+        : 'STARTUP_FAILED',
+  })
   process.exitCode = 1
 }
