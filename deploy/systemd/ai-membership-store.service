@@ -12,6 +12,7 @@ EnvironmentFile=/etc/ai-membership-store/runtime.env
 ExecStart=/opt/node-v24.13.0-linux-x64/bin/node /opt/ai-membership-store/current/backend/dist/server.js --production
 StandardOutput=journal
 StandardError=journal
+LogNamespace=ai-membership-store
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=90s

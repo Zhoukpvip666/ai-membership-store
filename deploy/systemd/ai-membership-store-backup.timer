@@ -1,0 +1,10 @@
+[Unit]
+Description=AI Membership Store encrypted backup every six hours
+
+[Timer]
+OnCalendar=*-*-* 00,06,12,18:00:00 UTC
+Persistent=true
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

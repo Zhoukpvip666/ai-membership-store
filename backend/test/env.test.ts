@@ -173,7 +173,10 @@ test('server and seed exit before connecting on invalid env without leaking valu
       timeout: 15000,
     })
     assert.equal(result.status, 1)
-    assert.match(result.stderr, /Invalid environment: DATABASE_URL/)
+    if (script === 'src/server.ts')
+      assert.equal(JSON.parse(result.stdout).errorCode, 'INVALID_ENVIRONMENT')
+    else assert.match(result.stderr, /Invalid environment: DATABASE_URL/)
+    assert.ok(!result.stdout.includes('do-not-log-this'))
     assert.ok(!result.stderr.includes('do-not-log-this'))
     assert.ok(!result.stdout.includes('API listening'))
   }
@@ -431,7 +434,9 @@ test('invalid production origins and implicit bootstrap mode exit before connect
       timeout: 15000,
     })
     assert.equal(result.status, 1)
-    assert.ok(result.stderr.includes(field))
+    if (script === 'src/server.ts')
+      assert.equal(JSON.parse(result.stdout).errorCode, 'INVALID_ENVIRONMENT')
+    else assert.ok(result.stderr.includes(field))
     assert.ok(!result.stdout.includes('API listening'))
   }
 })

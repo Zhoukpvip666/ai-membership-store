@@ -1,0 +1,13 @@
+[Unit]
+Description=AI Membership Store bounded health and alerts
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/ai-membership-store/monitor.env
+ExecStart=/usr/bin/python3 -B /opt/ai-membership-store/ops/deploy/ops/monitor.py
+StateDirectory=ai-membership-store/ops
+StateDirectoryMode=0700
+LogNamespace=ai-membership-store
+UMask=0077
+TimeoutStartSec=2min

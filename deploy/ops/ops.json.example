@@ -1,0 +1,24 @@
+{
+  "minFreeBytes": 268435456,
+  "keepHourly": 24,
+  "keepDaily": 14,
+  "keepWeekly": 8,
+  "keepMonthly": 12,
+  "incompleteDays": 7,
+  "publicOrigin": "https://shop.example.com",
+  "existingSites": [],
+  "thresholds": {
+    "backupMaxAgeSeconds": 21600,
+    "repositoryCheckMaxAgeSeconds": 108000,
+    "repositoryDataMaxAgeSeconds": 777600,
+    "journalMaxMiB": 85,
+    "workerMaxAgeSeconds": 180,
+    "memoryAvailableMiB": 256,
+    "swapUsedMiB": 768,
+    "diskFreePercent": 15,
+    "inodeFreePercent": 10,
+    "certificateDays": 14,
+    "alertTimeoutSeconds": 5,
+    "alertCooldownSeconds": 1800
+  }
+}

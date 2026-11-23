@@ -1,0 +1,11 @@
+# Copy to /etc/ai-membership-store/backup-ssh.conf, root:root 0600.
+Host membership-offsite
+    HostName storage.example.com
+    User backup
+    IdentityFile /etc/ai-membership-store/backup-ssh-key
+    UserKnownHostsFile /etc/ai-membership-store/backup-known-hosts
+    GlobalKnownHostsFile /dev/null
+    IdentitiesOnly yes
+    BatchMode yes
+    StrictHostKeyChecking yes
+    ConnectTimeout 10

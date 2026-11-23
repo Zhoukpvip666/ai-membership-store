@@ -1,5 +1,6 @@
 import type { PrismaClient } from '../../generated/prisma/client.ts'
 import { transaction } from '../../db/transaction.ts'
+import type { SweepObserver } from '../../http/operational-status.ts'
 import { startExpiryScheduler } from '../subscriptions/scheduler.ts'
 import { cancelLockedOrder, cancellationSelect } from './cancel.ts'
 
@@ -56,10 +57,16 @@ export function orderTimeoutService(database: PrismaClient) {
 export function startOrderTimeoutScheduler(
   sweep: () => Promise<TimeoutResult>,
   onError: () => void,
+  observe?: SweepObserver,
 ) {
-  return startExpiryScheduler(async () => {
-    if ((await sweep()).failed > 0) onError()
-    // One bounded pass per minute; never spin on an oldest failing row.
-    return 0
-  }, onError)
+  return startExpiryScheduler(
+    async () => {
+      const result = await sweep()
+      if (result.failed > 0) throw new Error('Order sweep had failures')
+      return result.scanned
+    },
+    onError,
+    observe,
+    false,
+  )
 }

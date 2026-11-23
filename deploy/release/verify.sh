@@ -171,11 +171,11 @@ printf '%s\n' 'Runtime key preflight: missing, permission, different path, symli
 ) >"$test_root/runtime.log" 2>&1 &
 api_pid=$!
 for _ in {1..100}; do
-  if grep -q 'API listening on 127.0.0.1:3101' "$test_root/runtime.log"; then break; fi
+  if grep -q '"event":"startup","result":"listening"' "$test_root/runtime.log"; then break; fi
   kill -0 "$api_pid" || { cat "$test_root/runtime.log" >&2; exit 1; }
   sleep 0.1
 done
-grep -q 'API listening on 127.0.0.1:3101' "$test_root/runtime.log"
+grep -q '"event":"startup","result":"listening"' "$test_root/runtime.log"
 status=$(curl -sS -o "$test_root/health.json" -w '%{http_code}' --max-time 8 http://127.0.0.1:3101/api/v1/health)
 [[ $status == 503 ]]
 reject bash "$deploy/release/health.sh"
@@ -277,6 +277,8 @@ try {
   const missing = await fetch(base + '/api/missing')
   assert.equal(missing.status, 404)
   assert.deepEqual(await missing.json(), { error: 'upstream' })
+  const internal = await fetch(base + '/internal/ops/metrics')
+  assert.equal(internal.status, 404)
   for (const path of ['/missing.png', '/assets/missing-i8bDQvnC.js']) {
     const asset = await fetch(base + path)
     assert.equal(asset.status, 404)
