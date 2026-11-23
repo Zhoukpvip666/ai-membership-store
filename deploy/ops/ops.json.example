@@ -11,6 +11,7 @@
     "backupMaxAgeSeconds": 21600,
     "repositoryCheckMaxAgeSeconds": 108000,
     "repositoryDataMaxAgeSeconds": 777600,
+    "journalMaxMiB": 85,
     "workerMaxAgeSeconds": 180,
     "memoryAvailableMiB": 256,
     "swapUsedMiB": 768,

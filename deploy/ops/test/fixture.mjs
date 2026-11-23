@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
 import { readFile, writeFile } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -17,6 +18,78 @@ const db = createDatabase(
   process.env.DATABASE_URL,
   process.env.MYSQL_AUTH_PUBLIC_KEY_FILE,
 )
+
+async function verifyRestoredWrites(base, admin, original) {
+  async function request(path, method, body, status) {
+    const response = await fetch(base + '/api/v1/admin/orders' + path, {
+      method,
+      headers: {
+        Cookie: admin,
+        Origin: process.env.APP_BASE_URL,
+        'X-Requested-With': 'MembershipStore',
+        'Content-Type': 'application/json',
+        'Idempotency-Key': randomUUID(),
+      },
+      body: JSON.stringify(body),
+    })
+    assert.equal(response.status, status)
+    return (await response.json()).order
+  }
+
+  const created = await request(
+    '',
+    'POST',
+    {
+      productId: original.productId,
+      userId: original.userId,
+      amountFen: original.amountFen,
+      formData: {},
+    },
+    201,
+  )
+  assert.equal(created.version, 1)
+  const updated = await request(
+    '/' + created.id + '/internal-note',
+    'PATCH',
+    {
+      expectedVersion: created.version,
+      internalNote: privateMarker,
+    },
+    200,
+  )
+  assert.equal(updated.version, 2)
+
+  const revisions = () =>
+    db.orderRevision.findMany({
+      where: { orderId: created.id },
+      orderBy: { version: 'asc' },
+    })
+  const snapshots = await revisions()
+  assert.deepEqual(
+    snapshots.map((row) => row.version),
+    [1, 2],
+  )
+  assert.equal(snapshots[0].snapshotJson.order.internalNote, null)
+  assert.equal(snapshots[1].snapshotJson.order.internalNote, privateMarker)
+  await assert.rejects(
+    db.$executeRaw`UPDATE \`Order\` SET source = 'USER', version = version + 1 WHERE id = ${created.id}`,
+    /ORDER_SOURCE_IMMUTABLE/,
+  )
+  await assert.rejects(
+    db.$executeRaw`UPDATE OrderRevision SET reason = 'forbidden' WHERE id = ${snapshots[0].id}`,
+    /ORDER_REVISION_IMMUTABLE/,
+  )
+  assert.deepEqual(await revisions(), snapshots)
+  const stillStored = await db.order.findUniqueOrThrow({
+    where: { id: created.id },
+  })
+  assert.equal(stillStored.source, 'ADMIN')
+  assert.equal(stillStored.version, 2)
+  console.log(
+    'Restored Order and OrderRevision triggers allowed versioned API writes and rejected illegal history mutations.',
+  )
+}
+
 try {
   if (process.argv[2] === 'seed') {
     const now = new Date()
@@ -219,6 +292,7 @@ try {
           await readFile(directory + '/' + name),
         )
       }
+      await verifyRestoredWrites(base, admin, order)
       const metrics = await (await fetch(base + '/internal/ops/metrics')).json()
       assert.equal(metrics.workers.orderTimeout.lastResult, 'succeeded')
       assert.equal(metrics.workers.subscriptionExpiry.lastResult, 'succeeded')

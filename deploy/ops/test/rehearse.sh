@@ -39,6 +39,7 @@ install -m 0500 "$restic" "$root/restic"
 mkdir -p "$root/app" "$root/images/wechat-qr" "$root/images/product-covers" "$root/shims"
 tar -xzf "$archive" -C "$root/app"
 cmp <(tr -d '\r' <"$root/app/package-lock.json") <(tr -d '\r' <"$checkout/package-lock.json")
+diff -qr --strip-trailing-cr "$root/app/backend/prisma/migrations" "$checkout/backend/prisma/migrations"
 cp -a "$checkout/backend/dist" "$root/app/backend/"
 cp "$checkout/deploy/ops/test/fixture.mjs" "$root/app/backend/fixture.mjs"
 root_password=$(openssl rand -hex 28)
@@ -56,7 +57,7 @@ printf '{"gitSha":"%s"}\n' "$release" >"$root/release.json"
 printf '{"fixtureProject":"%s","keepHourly":0,"keepDaily":0,"keepWeekly":0,"keepMonthly":0}\n' \
   "$source" >"$root/ops.json"
 cp "$root/ops.json" "$root/ops-valid"
-cp "$root/release.json" "$root/app/release.json"
+printf '{"kind":"operations","gitSha":"%s"}\n' "$release" >"$root/app/release.json"
 cat >"$root/source.compose.yaml" <<YAML
 services:
   mysql:
@@ -164,16 +165,58 @@ sql "$source_id" -e 'SET GLOBAL log_bin_trust_function_creators=OFF'
 fixture_api "$source_id" "$root/source.pem" "$root/images" api fixture.mjs seed
 sql "$source_id" <<SQL
 CREATE USER 'fixture_backup'@'%' IDENTIFIED BY '$backup_password' REQUIRE SSL;
-GRANT SELECT,TRIGGER ON \`membership\\_production\`.* TO 'fixture_backup'@'%';
+GRANT SELECT ON \`membership\\_production\`.* TO 'fixture_backup'@'%';
+GRANT TRIGGER ON membership_production.\`Order\` TO 'fixture_backup'@'%';
+GRANT TRIGGER ON membership_production.OrderRevision TO 'fixture_backup'@'%';
 SQL
 client=("${source_compose[@]}" run --rm -T --no-deps backup-client mysql --defaults-file=/run/secrets/backup.mysql.cnf)
-if "${client[@]}" -e 'UPDATE Product SET sortOrder=sortOrder' membership_production >"$root/readonly.log" 2>&1; then
-  echo 'Backup account unexpectedly has UPDATE.' >&2
-  exit 1
-fi
-grep -q 'ERROR 1142' "$root/readonly.log"
-echo 'Synthetic backup account granted SELECT/TRIGGER and denied business UPDATE.'
+expected_failure 'ERROR 1142' "${client[@]}" -e 'UPDATE Product SET sortOrder=sortOrder' membership_production
+(
+  # Allow trigger setup globally on this disposable server so binlog trust cannot mask a missing table grant.
+  trap 'sql "$source_id" -e "DROP TRIGGER IF EXISTS FixtureProductTrigger; SET GLOBAL log_bin_trust_function_creators=OFF"' EXIT
+  sql "$source_id" -e 'SET GLOBAL log_bin_trust_function_creators=ON;
+    CREATE TRIGGER FixtureProductTrigger BEFORE UPDATE ON Product FOR EACH ROW SET @fixture_trigger = 1'
+  expected_failure 'ERROR 1142.*TRIGGER command denied' "${client[@]}" -e \
+    'CREATE TRIGGER FixtureDeniedTrigger BEFORE UPDATE ON Product FOR EACH ROW SET @fixture_trigger = 1' membership_production
+  expected_failure 'ERROR 1142.*TRIGGER command denied' "${client[@]}" -e \
+    'DROP TRIGGER FixtureProductTrigger' membership_production
+  [[ $(sql "$source_id" -e "SELECT COUNT(*) FROM information_schema.TRIGGERS
+    WHERE TRIGGER_SCHEMA=DATABASE() AND TRIGGER_NAME='FixtureProductTrigger'") == 1 ]]
+)
+echo 'Scoped backup account denied UPDATE, CREATE TRIGGER and DROP TRIGGER on Product.'
 operate init
+
+history=20261122000000_product_cover_image
+original_checksum=$(sql "$source_id" -e "SELECT checksum FROM _prisma_migrations WHERE migration_name='$history'")
+[[ $original_checksum =~ ^[0-9a-f]{64}$ ]]
+sql "$source_id" -e "UPDATE _prisma_migrations SET migration_name='fixture_unknown_migration' WHERE migration_name='$history'"
+expected_failure MIGRATIONS_NOT_REVIEWED_CHAIN operate backup
+sql "$source_id" -e "UPDATE _prisma_migrations SET migration_name='$history', checksum=REPEAT('0',64)
+  WHERE migration_name='fixture_unknown_migration'"
+expected_failure MIGRATIONS_NOT_REVIEWED_CHAIN operate backup
+sql "$source_id" -e "UPDATE _prisma_migrations SET checksum='$original_checksum' WHERE migration_name='$history'"
+# Save a single synthetic migration row solely to undo the isolated test mutation.
+docker exec "$source_id" mysqldump --defaults-file=/run/secrets/restore-client --protocol=SOCKET \
+  --no-create-info --skip-triggers --skip-lock-tables --skip-add-locks --no-tablespaces --set-gtid-purged=OFF \
+  --where="migration_name='$history'" membership_production _prisma_migrations >"$root/fixture-migration-row.sql"
+sql "$source_id" -e "DELETE FROM _prisma_migrations WHERE migration_name='$history'"
+expected_failure MIGRATIONS_NOT_REVIEWED_CHAIN operate backup
+sql "$source_id" <"$root/fixture-migration-row.sql"
+sql "$source_id" -e 'RENAME TABLE OrderEvent TO FixtureRenamedOrderEvent'
+expected_failure DATABASE_SCHEMA_INCOMPLETE operate backup
+sql "$source_id" -e 'RENAME TABLE FixtureRenamedOrderEvent TO OrderEvent'
+"$root/restic" --json snapshots | python3 -c 'import json,sys; assert json.load(sys.stdin) == []'
+echo 'Unknown, tampered and missing migration records and a missing business table each blocked backup before snapshot creation.'
+
+# Compare against the alternate T23.1 line-ending checksum in an actual successful backup and restore.
+alternate_checksum=$(python3 -c '
+import hashlib,sys
+from pathlib import Path
+sql = Path(sys.argv[1]).read_bytes().replace(b"\r\n", b"\n")
+variants = (sql, sql.replace(b"\n", b"\r\n"))
+print(next(checksum for data in variants if (checksum := hashlib.sha256(data).hexdigest()) != sys.argv[2]))
+' "$root/app/backend/prisma/migrations/$history/migration.sql" "$original_checksum")
+sql "$source_id" -e "UPDATE _prisma_migrations SET checksum='$alternate_checksum' WHERE migration_name='$history'"
 operate backup
 run1=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["run"])' "$root/state/backup.json")
 restore_images=$root/$target-images
@@ -182,6 +225,21 @@ wait_db "$target_id"
 expected_failure RESTORE_DEFINERS_MISSING operate restore --run "$run1" --project "$target" --output "$restore_images"
 [[ ! -e $restore_images ]]
 create_accounts "$target_id"
+sql "$target_id" <<'SQL'
+REVOKE TRIGGER,INSERT,UPDATE,DELETE,CREATE,CREATE TEMPORARY TABLES,ALTER,DROP,INDEX,REFERENCES
+  ON `membership\_production`.* FROM 'fixture_migrate'@'127.0.0.1';
+SQL
+expected_failure RESTORE_DEFINER_PRIVILEGES operate restore --run "$run1" --project "$target" --output "$restore_images"
+[[ ! -e $restore_images ]]
+sql "$target_id" <<'SQL'
+GRANT TRIGGER ON `membership\_production`.* TO 'fixture_migrate'@'127.0.0.1';
+REVOKE SELECT ON `membership\_production`.* FROM 'fixture_migrate'@'127.0.0.1';
+SQL
+expected_failure RESTORE_DEFINER_PRIVILEGES operate restore --run "$run1" --project "$target" --output "$restore_images"
+[[ ! -e $restore_images ]]
+sql "$target_id" <<'SQL'
+GRANT SELECT ON `membership\_production`.* TO 'fixture_migrate'@'127.0.0.1';
+SQL
 operate restore --run "$run1" --project "$target" --output "$restore_images"
 expected_failure RESTORE_TARGET_NONEMPTY operate restore --run "$run1" --project "$target" --output "$root/$target-second"
 [[ ! -e $root/$target-second ]]
@@ -201,6 +259,10 @@ diff -r "$root/images" "$restore_images/${root#/}/images"
 printf 'Exact table counts matched across %s tables. Both restored images are byte-identical.\n' "$(wc -l <"$root/source-counts")"
 docker cp "$target_id:/var/lib/mysql/public_key.pem" "$root/target.pem"
 fixture_api "$target_id" "$root/target.pem" "$restore_images/${root#/}/images" api fixture.mjs restore
+expected_failure ORDER_REVISION_IMMUTABLE sql "$target_id" -e \
+  'DELETE FROM OrderRevision WHERE version=1'
+expected_failure ORDER_DELETE_FORBIDDEN sql "$target_id" -e \
+  'DELETE FROM `Order` WHERE orderNo="583024917"'
 operate check-data
 openssl rand -hex 32 >"$root/wrong-repo-password"
 RESTIC_PASSWORD_FILE="$root/wrong-repo-password" expected_failure REPOSITORY_CHECK_FAILED operate check

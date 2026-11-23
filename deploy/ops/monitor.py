@@ -22,7 +22,7 @@ LIMITS = {
     "workerMaxAgeSeconds": 180, "loadPerCpu": 2, "cpuPercent": 95,
     "memoryAvailableMiB": 256, "swapUsedMiB": 768, "swapPercent": 80, "diskFreePercent": 15,
     "inodeFreePercent": 10, "backupMaxAgeSeconds": 21600,
-    "repositoryCheckMaxAgeSeconds": 108000, "repositoryDataMaxAgeSeconds": 777600, "journalMaxMiB": 110,
+    "repositoryCheckMaxAgeSeconds": 108000, "repositoryDataMaxAgeSeconds": 777600, "journalMaxMiB": 85,
     "certificateDays": 14, "alertTimeoutSeconds": 5, "alertCooldownSeconds": 1800,
 }
 LOCAL = "http://127.0.0.1:3101"
@@ -63,6 +63,23 @@ def fetch_json(http, path, timeout):
         return json.loads(response.read(65537))
 
 
+def unit_properties(name, properties="ActiveState,Result"):
+    output = command(["systemctl", "show", name, "--property=" + properties], "SYSTEMD", timeout=4)
+    return dict(line.split("=", 1) for line in output.decode().splitlines())
+
+
+def unit_failed(name):
+    values = unit_properties(name)
+    return values["ActiveState"] == "failed" or values["Result"] != "success"
+
+
+def journal_below_limit(directory, max_mib):
+    if not directory.is_dir():
+        return False
+    size = sum(path.stat().st_blocks * 512 for path in directory.glob("*.journal*"))
+    return size < max_mib * 1024 * 1024
+
+
 def probes(settings, state, prior, now):
     limits = {**LIMITS, **settings.get("thresholds", {})}
     if any(type(limits[key]) not in (int, float) or limits[key] <= 0 for key in LIMITS):
@@ -80,9 +97,7 @@ def probes(settings, state, prior, now):
             active.add(code)
 
     def api_unit():
-        output = command(["systemctl", "show", "ai-membership-store.service",
-                          "--property=ActiveState,NRestarts,Result"], "SYSTEMD", timeout=4)
-        values = dict(line.split("=", 1) for line in output.decode().splitlines())
+        values = unit_properties("ai-membership-store.service", "ActiveState,NRestarts,Result")
         sample["restarts"] = int(values["NRestarts"])
         if sample["restarts"] > prior.get("restarts", sample["restarts"]):
             active.add("API_RESTART")
@@ -160,24 +175,21 @@ def probes(settings, state, prior, now):
 
     def backup_status():
         backup = read_json(state / "backup.json", {})
-        repo = read_json(state / "repository.json", {})
-        repo_data = read_json(state / "repository-data.json", {})
-        unit = command(["systemctl", "show", "ai-membership-store-backup.service",
-                        "--property=ActiveState", "--value"], "BACKUP_UNIT", timeout=4)
-        if backup.get("result") == "failed" or unit.strip() == b"failed":
+        if backup.get("result") == "failed" or unit_failed("ai-membership-store-backup.service"):
             active.add("BACKUP_FAILED")
         if age(backup.get("lastSuccessAt"), now) >= limits["backupMaxAgeSeconds"]:
             active.add("BACKUP_STALE")
-        if repo.get("result") != "success" or age(repo.get("checkedAt"), now) >= limits["repositoryCheckMaxAgeSeconds"]:
-            active.add("REPOSITORY_CHECK")
-        if repo_data.get("result") != "success" or age(repo_data.get("checkedAt"), now) >= limits["repositoryDataMaxAgeSeconds"]:
-            active.add("REPOSITORY_DATA_CHECK")
         return True
+
+    def repository_status(unit, filename, max_age):
+        if unit_failed(unit):
+            return False
+        saved = read_json(state / filename, {})
+        return saved.get("result") == "success" and age(saved.get("checkedAt"), now) < max_age
 
     def journal():
         directory = Path("/var/log/journal") / (Path("/etc/machine-id").read_text().strip() + "." + NAMESPACE)
-        size = sum(path.stat().st_blocks * 512 for path in directory.glob("*.journal*"))
-        if not directory.is_dir() or size >= limits["journalMaxMiB"] * 1024 * 1024:
+        if not journal_below_limit(directory, limits["journalMaxMiB"]):
             active.add("LOG_STORAGE")
         return True
 
@@ -207,6 +219,10 @@ def probes(settings, state, prior, now):
     check("DISK_DOCKER_PROBE", lambda: space(command(
         ["docker", "info", "--format", "{{.DockerRootDir}}"], "DOCKER_ROOT", timeout=4).decode().strip(), "DOCKER"))
     check("BACKUP_STATUS", backup_status)
+    check("REPOSITORY_CHECK", lambda: repository_status(
+        "ai-membership-store-repository.service", "repository.json", limits["repositoryCheckMaxAgeSeconds"]))
+    check("REPOSITORY_DATA_CHECK", lambda: repository_status(
+        "ai-membership-store-repository-data.service", "repository-data.json", limits["repositoryDataMaxAgeSeconds"]))
     check("JOURNAL_PROBE", journal)
     check("KERNEL_PROBE", kernel)
     check("TLS", tls)

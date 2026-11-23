@@ -27,8 +27,12 @@ TAG = "membership-store"
 RUN = re.compile(r"[0-9a-f]{32}")
 RESTORE_PROJECT = re.compile(r"membership-restore-[0-9a-f]{12}")
 FIXTURE_PROJECT = re.compile(r"membership-backup-test-[0-9a-f]{12}")
-IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z_0-9]*")
 KEY = re.compile(r"[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}\.(png|webp)")
+TABLES = {
+    "_prisma_migrations", "AdminAuditLog", "AppSettings", "IdempotencyRecord",
+    "InvitationToken", "Order", "OrderEvent", "OrderRevision", "PaymentTransaction",
+    "Product", "Session", "Subscription", "SubscriptionEvent", "User",
+}
 TRIGGERS = {
     "Order_renewal_immutable_update", "Order_paid_renewal_delete",
     "Order_new_source_insert", "Order_source_immutable_update", "Order_delete_guard",
@@ -82,7 +86,32 @@ def rows(mysql, sql):
     return [json.loads(line) for line in output.splitlines()]
 
 
-def inventory(mysql):
+def release_migrations(directory):
+    migrations = {}
+    try:
+        for entry in directory.iterdir():
+            if not entry.is_dir():
+                continue
+            sql = (entry / "migration.sql").read_bytes()
+            lf = sql.replace(b"\r\n", b"\n")
+            # Match T23.1 bootstrap: exact, LF and CRLF SHA-256.
+            migrations[entry.name] = {
+                hashlib.sha256(text).hexdigest() for text in (sql, lf, lf.replace(b"\n", b"\r\n"))
+            }
+    except OSError:
+        raise Failure("OPERATIONS_MIGRATIONS_MISSING") from None
+    if len(migrations) != 14:
+        raise Failure("OPERATIONS_MIGRATIONS_MISSING")
+    return migrations
+
+
+def verify_migrations(recorded, expected):
+    if (len(recorded) != len(expected) or {row[0] for row in recorded} != expected.keys()
+            or any(row[1] not in expected[row[0]] for row in recorded)):
+        raise Failure("MIGRATIONS_NOT_REVIEWED_CHAIN")
+
+
+def inventory(mysql, expected):
     sql = ";".join(
         f"SELECT JSON_ARRAY('{kind}',{columns}) FROM information_schema.{table} "
         f"WHERE {scope}=DATABASE() ORDER BY {order}"
@@ -93,16 +122,15 @@ def inventory(mysql):
     if any(row[0] in {"routines", "events"} or
            (row[0] == "tables" and row[2:4] != ["BASE TABLE", "InnoDB"]) for row in data):
         raise Failure("UNSUPPORTED_DATABASE_OBJECT")
-    if not {"_prisma_migrations", "Product", "AppSettings"}.issubset(tables):
+    if set(tables) != TABLES:
         raise Failure("DATABASE_SCHEMA_INCOMPLETE")
     migrations = rows(mysql, """
         SELECT JSON_ARRAY(migration_name,checksum,finished_at IS NOT NULL,rolled_back_at IS NULL)
         FROM _prisma_migrations ORDER BY migration_name
     """)
-    if len(migrations) != 14 or len({row[0] for row in migrations}) != 14 or any(
-        row[2:] != [1, 1] or not SNAPSHOT.fullmatch(row[1]) for row in migrations
-    ):
+    if any(row[2:] != [1, 1] for row in migrations):
         raise Failure("MIGRATIONS_NOT_REVIEWED_CHAIN")
+    verify_migrations(migrations, expected)
     version, schema = rows(mysql, "SELECT JSON_ARRAY(VERSION(),DATABASE())")[0]
     if version != "8.4.13" or schema != DATABASE:
         raise Failure("MYSQL_VERSION_OR_SCHEMA")
@@ -115,6 +143,7 @@ def inventory(mysql):
         "migrations": [row[:2] for row in migrations],
         "schemaSha256": hashlib.sha256(json.dumps(data, separators=(",", ":")).encode()).hexdigest(),
         "triggerDefiners": sorted({row[7] for row in triggers}),
+        "triggerDefinerTables": sorted([list(pair) for pair in {(row[7], row[2]) for row in triggers}]),
         "triggerCount": len(triggers),
     }
 
@@ -254,6 +283,10 @@ def release_sha(fixture):
     return sha
 
 
+def operations_root(fixture):
+    return fixture / "app" if fixture else HERE.parents[1]
+
+
 def backup(repo, settings, state, fixture):
     status_path = state / "backup.json"
     old = read_json(status_path, {})
@@ -267,6 +300,11 @@ def backup(repo, settings, state, fixture):
             raise Failure("LOCAL_SPACE_LOW")
         paths = image_directories(root)
         sha = release_sha(fixture)
+        operations = operations_root(fixture)
+        operations_manifest = read_json(operations / "release.json", {})
+        if (operations_manifest.get("kind"), operations_manifest.get("gitSha")) != ("operations", sha):
+            raise Failure("OPERATIONS_RELEASE_MISMATCH")
+        expected = release_migrations(operations / "backend/prisma/migrations")
         if fixture:
             project = settings.get("fixtureProject", "")
             if not FIXTURE_PROJECT.fullmatch(project):
@@ -284,13 +322,15 @@ def backup(repo, settings, state, fixture):
         options = ["--defaults-file=/run/secrets/backup.mysql.cnf", "--host=mysql", "--protocol=TCP",
                    "--user=" + ("fixture_backup" if fixture else "membership_backup"), "--ssl-mode=REQUIRED"]
         mysql = [*client, "mysql", *options, "--batch", "--raw", "--skip-column-names", DATABASE]
-        before = inventory(mysql)
+        before = inventory(mysql, expected)
         check_image_references(mysql, paths, "BACKUP_IMAGE_REFERENCE")
         database_started_at = utc()
         database = repo.snapshot(run, "database", "--stdin-from-command", "--stdin-filename", "database.sql",
                                  "--", *client, "mysqldump", *options, *DUMP)
         images = repo.snapshot(run, "images", "--one-file-system", "--", *map(str, paths))
-        if inventory(mysql) != before or release_sha(fixture) != sha:
+        if (inventory(mysql, expected) != before or release_sha(fixture) != sha
+                or read_json(operations / "release.json", {}) != operations_manifest
+                or release_migrations(operations / "backend/prisma/migrations") != expected):
             raise Failure("DATABASE_OR_RELEASE_CHANGED")
         completed = utc()
         manifest = {
@@ -345,7 +385,31 @@ def load_manifest(repo, run, parts):
     return meta
 
 
-def restore(repo, run, project, output):
+def verify_definer_privileges(mysql, definer_tables):
+    grants = rows(mysql, """
+        SELECT JSON_ARRAY(CONCAT(User,'@',Host),'*',Select_priv='Y',Trigger_priv='Y')
+        FROM mysql.db WHERE BINARY Db=BINARY DATABASE() OR
+            (@@GLOBAL.partial_revokes=0 AND BINARY Db=BINARY REPLACE(DATABASE(),'_',CONCAT(CHAR(92),'_')))
+        UNION ALL
+        SELECT JSON_ARRAY(CONCAT(User,'@',Host),Table_name,
+            FIND_IN_SET('Select',Table_priv)>0,FIND_IN_SET('Trigger',Table_priv)>0)
+        FROM mysql.tables_priv WHERE BINARY Db=BINARY DATABASE()
+    """)
+    allowed = {(account, table, privilege)
+               for account, table, select, trigger in grants
+               for privilege, present in (("SELECT", select), ("TRIGGER", trigger)) if present}
+    for account, table in definer_tables:
+        if table not in {"Order", "OrderRevision"}:
+            raise Failure("RESTORE_DEFINER_PRIVILEGES")
+        required = [(table, "TRIGGER"), (table, "SELECT")]
+        if table == "OrderRevision":
+            required.append(("Order", "SELECT"))
+        if any((account, name, privilege) not in allowed and (account, "*", privilege) not in allowed
+               for name, privilege in required):
+            raise Failure("RESTORE_DEFINER_PRIVILEGES")
+
+
+def restore(repo, run, project, output, migrations_directory):
     if not RUN.fullmatch(run) or not RESTORE_PROJECT.fullmatch(project):
         raise Failure("RESTORE_TARGET_ARGUMENT")
     if (not output.is_absolute() or output.parent.resolve(strict=True) != output.parent
@@ -361,9 +425,16 @@ def restore(repo, run, project, output):
     if empty != [[0, 0, 0]]:
         raise Failure("RESTORE_TARGET_NONEMPTY")
     meta = load_manifest(repo, run, groups(repo).get(run, {}))
+    recorded = meta["inventory"]
+    expected = release_migrations(migrations_directory)
+    verify_migrations(recorded["migrations"], expected)
+    if set(recorded["tables"]) != TABLES:
+        raise Failure("DATABASE_SCHEMA_INCOMPLETE")
     definers = {row[0] for row in rows(mysql, "SELECT JSON_ARRAY(CONCAT(User,'@',Host)) FROM mysql.user")}
-    if not set(meta["inventory"]["triggerDefiners"]).issubset(definers):
+    if not set(recorded["triggerDefiners"]).issubset(definers):
         raise Failure("RESTORE_DEFINERS_MISSING")
+    if "triggerDefinerTables" in recorded:
+        verify_definer_privileges(mysql, recorded["triggerDefinerTables"])
     started = time.monotonic()
     output.mkdir(mode=0o700)
     repo.call("restore", meta["imagesSnapshot"], "--target", str(output), "--verify", error="RESTORE_IMAGES")
@@ -389,7 +460,11 @@ def restore(repo, run, project, output):
         finally:
             if sql.poll() is None:
                 sql.kill()
-    if inventory(mysql) != meta["inventory"]:
+    restored = inventory(mysql, expected)
+    if "triggerDefinerTables" not in recorded:
+        # Older manifests name the accounts without their table assignments.
+        verify_definer_privileges(mysql, restored.pop("triggerDefinerTables"))
+    if restored != recorded:
         raise Failure("RESTORE_SCHEMA_MISMATCH")
     check_image_references(mysql, paths, "RESTORE_IMAGE_REFERENCE")
     log("restore_completed", run=run, tables=len(meta["inventory"]["tables"]),
@@ -431,7 +506,8 @@ def run_tool():
             case "restore":
                 if args.output is None:
                     raise Failure("RESTORE_OUTPUT_REQUIRED")
-                restore(repo, args.run, args.project, args.output)
+                restore(repo, args.run, args.project, args.output,
+                        operations_root(fixture) / "backend/prisma/migrations")
             case "inspect":
                 log("backup_manifest", manifest=load_manifest(repo, args.run, groups(repo).get(args.run, {})))
             case _:
