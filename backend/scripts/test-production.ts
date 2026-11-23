@@ -32,7 +32,7 @@ const databases = [
 const cleanEnv = Object.fromEntries(
   Object.entries(process.env).filter(
     ([key]) =>
-      !/^(NODE_ENV|DATABASE_URL|.*_DATABASE_URL|PRODUCTION_DATABASE_NAME|APP_BASE_URL|ADMIN_.*|MYSQL_.*|API_PORT|TRUSTED_PROXY_IP)$/i.test(
+      !/^(NODE_ENV|DATABASE_URL|.*_DATABASE_URL|PRODUCTION_DATABASE_NAME|APP_BASE_URL|ADMIN_.*|MYSQL_.*|API_PORT|TRUSTED_PROXY_IP|WECHAT_QR_STORAGE_DIR|PRODUCT_COVER_STORAGE_DIR)$/i.test(
         key,
       ),
   ),
@@ -273,6 +273,8 @@ try {
       PRODUCTION_TEST_CONTAINER: container,
       PRODUCTION_TEST_PORT: port,
       MYSQL_AUTH_PUBLIC_KEY_FILE: keyFile,
+      WECHAT_QR_STORAGE_DIR: join(directory, 'wechat-qr'),
+      PRODUCT_COVER_STORAGE_DIR: join(directory, 'product-covers'),
       PRODUCTION_TEST_MIGRATOR_URL: url('migrator', databases[0]),
       PRODUCTION_TEST_API_URL: url('api', databases[0]),
       PRODUCTION_TEST_BOOTSTRAP_URL: url('bootstrap', databases[0]),

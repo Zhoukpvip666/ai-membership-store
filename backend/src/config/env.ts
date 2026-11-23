@@ -5,6 +5,7 @@ import {
   defaultQrStorage,
   defaultCoverStorage,
   isPrivateCoverDirectory,
+  isPrivateProductionImageDirectory,
 } from './image-directories.ts'
 
 const loopback = new Set(['localhost', '127.0.0.1', '[::1]'])
@@ -51,9 +52,9 @@ function localAppUrl(value: string) {
 function productionAppUrl(value: string) {
   // Validate the original URL shape before WHATWG parsing can normalize paths,
   // credentials or an empty query/fragment away.
-  if (!/^https:\/\/[a-zA-Z0-9.-]+(?::[0-9]{1,5})?\/?$/.test(value)) return false
+  if (!/^https:\/\/[a-zA-Z0-9.-]+(?::443)?\/?$/.test(value)) return false
   try {
-    const { hostname, port } = new URL(value)
+    const { hostname } = new URL(value)
     return (
       !isIP(hostname) &&
       hostname.length <= 253 &&
@@ -64,8 +65,7 @@ function productionAppUrl(value: string) {
           /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label),
         ) &&
       !/\.(?:localhost|local|internal|test|invalid|example)$/.test(hostname) &&
-      !/(?:^|\.)example\.(?:com|net|org)$/.test(hostname) &&
-      (!port || Number(port) > 0)
+      !/(?:^|\.)example\.(?:com|net|org)$/.test(hostname)
     )
   } catch {
     return false
@@ -155,20 +155,33 @@ const appEnv = databaseEnv
     PRODUCT_COVER_STORAGE_DIR: storageDirectory,
   })
   .superRefine((env, context) => {
-    const originIsValid =
-      env.NODE_ENV === 'production' ? productionAppUrl : localAppUrl
+    const production = env.NODE_ENV === 'production'
+    const originIsValid = production ? productionAppUrl : localAppUrl
     if (!originIsValid(env.APP_BASE_URL))
       context.addIssue({
         code: 'custom',
         path: ['APP_BASE_URL'],
         message: 'Invalid origin',
       })
-    if (
-      !isPrivateCoverDirectory(
-        env.WECHAT_QR_STORAGE_DIR ?? defaultQrStorage,
-        env.PRODUCT_COVER_STORAGE_DIR ?? defaultCoverStorage,
-      )
-    )
+    if (production)
+      for (const field of [
+        'WECHAT_QR_STORAGE_DIR',
+        'PRODUCT_COVER_STORAGE_DIR',
+      ] as const) {
+        const directory = env[field]
+        if (!directory || !isPrivateProductionImageDirectory(directory))
+          context.addIssue({
+            code: 'custom',
+            path: [field],
+            message: 'Use an explicit private directory outside the release',
+          })
+      }
+    const qr =
+      env.WECHAT_QR_STORAGE_DIR ?? (production ? undefined : defaultQrStorage)
+    const cover =
+      env.PRODUCT_COVER_STORAGE_DIR ??
+      (production ? undefined : defaultCoverStorage)
+    if (qr && cover && !isPrivateCoverDirectory(qr, cover))
       context.addIssue({
         code: 'custom',
         path: ['PRODUCT_COVER_STORAGE_DIR'],

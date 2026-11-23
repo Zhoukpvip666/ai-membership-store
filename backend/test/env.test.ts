@@ -1,6 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
+import {
+  mkdtempSync,
+  realpathSync,
+  rmdirSync,
+  symlinkSync,
+  unlinkSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 import {
@@ -171,6 +179,15 @@ test('server and seed exit before connecting on invalid env without leaking valu
   }
 })
 
+const storageFixture = resolve(
+  realpathSync.native(tmpdir()),
+  'membership-env-fixture',
+)
+const release = fileURLToPath(new URL('../../', import.meta.url))
+const storageFields = [
+  'WECHAT_QR_STORAGE_DIR',
+  'PRODUCT_COVER_STORAGE_DIR',
+] as const
 const production = {
   NODE_ENV: 'production',
   PRODUCTION_DATABASE_NAME: 'membership_live',
@@ -179,6 +196,8 @@ const production = {
   APP_BASE_URL: 'https://shop.membership-commerce.net',
   TRUSTED_PROXY_IP: '127.0.0.1',
   MYSQL_AUTH_PUBLIC_KEY_FILE: resolve('test-public-key.pem'),
+  WECHAT_QR_STORAGE_DIR: resolve(storageFixture, 'wechat-qr'),
+  PRODUCT_COVER_STORAGE_DIR: resolve(storageFixture, 'product-covers'),
 }
 
 test('production accepts a named HTTPS origin without bootstrap credentials', () => {
@@ -187,6 +206,12 @@ test('production accepts a named HTTPS origin without bootstrap credentials', ()
   assert.equal(env.TRUSTED_PROXY_IP, '127.0.0.1')
   assert.equal(env.APP_BASE_URL, production.APP_BASE_URL)
   assert.ok(!('ADMIN_PASSWORD' in env))
+  assert.doesNotThrow(() =>
+    parseEnvironment({
+      ...production,
+      APP_BASE_URL: production.APP_BASE_URL + ':443/',
+    }),
+  )
 })
 
 test('production rejects HTTP, loopback, IPs, placeholder names, and non-origin URLs', () => {
@@ -209,6 +234,8 @@ test('production rejects HTTP, loopback, IPs, placeholder names, and non-origin 
     'https://shop.membership-commerce.net/#',
     'https://shop.membership-commerce.net/?x=1',
     'https://shop.membership-commerce.net/#info',
+    'https://shop.membership-commerce.net:8443',
+    'https://shop.membership-commerce.net:80',
   ])
     assert.throws(
       () => parseEnvironment({ ...production, APP_BASE_URL }),
@@ -222,6 +249,64 @@ test('production rejects HTTP, loopback, IPs, placeholder names, and non-origin 
     () => parseEnvironment({ ...production, TRUSTED_PROXY_IP: '0.0.0.0/0' }),
     /TRUSTED_PROXY_IP/,
   )
+})
+
+test('only production requires explicit absolute image storage settings', () => {
+  for (const field of storageFields) {
+    assert.equal(parseEnvironment(production)[field], production[field])
+    for (const value of [undefined, '', 'relative/images']) {
+      assert.throws(
+        () => parseEnvironment({ ...production, [field]: value }),
+        new RegExp('Invalid environment: ' + field),
+      )
+    }
+    for (const NODE_ENV of ['development', 'test'])
+      assert.equal(parseEnvironment({ ...valid, NODE_ENV })[field], undefined)
+  }
+})
+
+test('neither production image directory may overlap the release or static web root', () => {
+  for (const field of storageFields)
+    for (const directory of [
+      release,
+      resolve(release, '..'),
+      resolve(release, '.local-data', 'images'),
+      resolve(release, 'frontend', 'dist', 'images'),
+    ]) {
+      assert.throws(
+        () => parseEnvironment({ ...production, [field]: directory }),
+        new RegExp('Invalid environment: .*' + field),
+      )
+    }
+  for (const PRODUCT_COVER_STORAGE_DIR of [
+    production.WECHAT_QR_STORAGE_DIR,
+    resolve(production.WECHAT_QR_STORAGE_DIR, 'covers'),
+  ])
+    assert.throws(
+      () => parseEnvironment({ ...production, PRODUCT_COVER_STORAGE_DIR }),
+      /Invalid environment: PRODUCT_COVER_STORAGE_DIR/,
+    )
+})
+
+test('production rejects a storage alias into the release even when its child is absent', (t) => {
+  const directory = mkdtempSync(
+    resolve(storageFixture, '..', 'membership-env-alias-'),
+  )
+  const alias = resolve(directory, 'release')
+  symlinkSync(release, alias, process.platform === 'win32' ? 'junction' : 'dir')
+  t.after(() => {
+    unlinkSync(alias)
+    rmdirSync(directory)
+  })
+  for (const field of storageFields)
+    assert.throws(
+      () =>
+        parseEnvironment({
+          ...production,
+          [field]: resolve(alias, 'absent-images'),
+        }),
+      new RegExp('Invalid environment: ' + field),
+    )
 })
 
 test('runtime, migration and first bootstrap use separate credentials and explicit database targets', () => {
