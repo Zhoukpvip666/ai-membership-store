@@ -63,7 +63,7 @@ async function loadGuidance() {
   try {
     guidance.value = await readOrderGuidance()
   } catch {
-    guidanceError.value = '暂时无法读取付款说明和业务时区。'
+    guidanceError.value = '暂时无法读取商家备注和业务时区。'
   }
 }
 
@@ -221,6 +221,7 @@ onMounted(() => {
       :key="selected"
       :id="selected"
       :guidance="guidance"
+      :guidance-failed="Boolean(guidanceError)"
       @close="closeDetail"
       @changed="loadOrders"
       @retry-guidance="loadGuidance"
