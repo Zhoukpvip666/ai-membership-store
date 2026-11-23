@@ -1,4 +1,7 @@
-import { parseEnvironment } from '../../src/config/env.ts'
+import {
+  parseEnvironment,
+  parseLocalSeedEnvironment,
+} from '../../src/config/env.ts'
 
 export function integrationEnvironment() {
   if (
@@ -10,7 +13,7 @@ export function integrationEnvironment() {
       'Use npm run test:db; integration fixtures must never run against the development database.',
     )
   }
-  const env = parseEnvironment()
+  const env = { ...parseEnvironment(), ...parseLocalSeedEnvironment() }
   const url = new URL(env.DATABASE_URL)
   if (
     url.pathname !== '/foundation_test' ||

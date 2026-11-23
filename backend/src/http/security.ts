@@ -20,7 +20,7 @@ export function csrf(appBaseUrl: string): RequestHandler {
         new ApiError(
           403,
           'CSRF_REJECTED',
-          '请求来源无效，请从本地应用重新操作',
+          '请求来源无效，请在当前站点刷新后重试',
         ),
       )
     next()

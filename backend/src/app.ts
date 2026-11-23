@@ -11,6 +11,16 @@ export function createApp(
 ) {
   const app = express()
   app.disable('x-powered-by')
+  const proxy =
+    options?.env.NODE_ENV === 'production'
+      ? options.env.TRUSTED_PROXY_IP
+      : undefined
+  if (proxy)
+    app.set(
+      'trust proxy',
+      (address: string, hop: number) =>
+        hop === 0 && (address === proxy || address === '::ffff:' + proxy),
+    )
   app.use((_request, response, next) => {
     response.locals.requestId = randomUUID()
     response.setHeader('X-Request-Id', response.locals.requestId)

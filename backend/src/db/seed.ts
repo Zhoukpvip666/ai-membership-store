@@ -1,51 +1,82 @@
-import { hash, argon2id } from 'argon2'
 import { Prisma, type PrismaClient } from '../generated/prisma/client.ts'
-import type { Environment } from '../config/env.ts'
+import { hashPassword } from '../modules/auth/security.ts'
+import {
+  releaseMigrations,
+  verifyBootstrapTarget,
+} from './bootstrap-migrations.ts'
 
-// A stable UUID makes simultaneous first seeds contend on the same primary key,
-// even when separate shells accidentally use different ADMIN_EMAIL values.
+// Separate invocations still contend on the same primary key.
 const ownerId = '00000000-0000-4000-8000-000000000001'
 
+type AdminCredentials = { ADMIN_EMAIL: string; ADMIN_PASSWORD: string }
+
 export class SeedConflictError extends Error {
-  constructor() {
-    super(
-      'Administrator bootstrap conflict. Existing accounts were preserved; inspect the local database and ADMIN_EMAIL.',
-    )
+  constructor(
+    message = 'Administrator bootstrap conflict. Existing accounts and settings were preserved.',
+  ) {
+    super(message)
     this.name = 'SeedConflictError'
   }
 }
 
-export async function seedAdministrator(
+export function seedAdministrator(
   database: PrismaClient,
-  env: Environment,
+  env: AdminCredentials,
 ) {
-  // Never log this value, its hash, or the entire Prisma error object.
-  const passwordHash = await hash(env.ADMIN_PASSWORD, {
-    type: argon2id,
-    memoryCost: 19456,
-    timeCost: 2,
-    parallelism: 1,
+  return initialize(database, env)
+}
+
+export function bootstrapProductionAdministrator(
+  database: PrismaClient,
+  env: AdminCredentials & { PRODUCTION_DATABASE_NAME: string },
+) {
+  return initialize(database, env, {
+    name: env.PRODUCTION_DATABASE_NAME,
+    migrations: releaseMigrations(),
   })
+}
+
+async function initialize(
+  database: PrismaClient,
+  env: AdminCredentials,
+  target?: { name: string; migrations: ReturnType<typeof releaseMigrations> },
+) {
+  const passwordHash = await hashPassword(env.ADMIN_PASSWORD)
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
       return await database.$transaction(
         async (tx) => {
-          const admins = await tx.user.findMany({ where: { role: 'ADMIN' } })
+          if (target) {
+            await verifyBootstrapTarget(tx, target.name, target.migrations)
+            if (await tx.user.findFirst({ select: { id: true } }))
+              throw new SeedConflictError(
+                'Production bootstrap requires an empty User table. Existing accounts were preserved.',
+              )
+          }
+
+          const admins = target
+            ? []
+            : await tx.user.findMany({ where: { role: 'ADMIN' } })
+          let admin = admins[0]
           if (
             admins.length > 1 ||
-            (admins[0] &&
-              (admins[0].loginEmail !== env.ADMIN_EMAIL ||
-                !admins[0].passwordHash))
+            (admin &&
+              (admin.loginEmail !== env.ADMIN_EMAIL || !admin.passwordHash))
           )
             throw new SeedConflictError()
 
-          let created = false
-          let admin = admins[0]
+          const created = !admin
           if (!admin) {
-            const collision = await tx.user.findFirst({
-              where: { OR: [{ loginEmail: env.ADMIN_EMAIL }, { id: ownerId }] },
-            })
-            if (collision) throw new SeedConflictError()
+            if (
+              !target &&
+              (await tx.user.findFirst({
+                where: {
+                  OR: [{ loginEmail: env.ADMIN_EMAIL }, { id: ownerId }],
+                },
+                select: { id: true },
+              }))
+            )
+              throw new SeedConflictError()
             admin = await tx.user.create({
               data: {
                 id: ownerId,
@@ -58,7 +89,22 @@ export async function seedAdministrator(
                 activatedAt: new Date(),
               },
             })
-            created = true
+          }
+
+          const settings = {
+            id: 1,
+            storeName: 'AI 会员商店',
+            ownerEmail: env.ADMIN_EMAIL,
+          }
+          if (target) await tx.appSettings.create({ data: settings })
+          else
+            await tx.appSettings.upsert({
+              where: { id: 1 },
+              update: {},
+              create: settings,
+            })
+
+          if (created)
             await tx.adminAuditLog.create({
               data: {
                 actorAdminId: admin.id,
@@ -68,16 +114,6 @@ export async function seedAdministrator(
                 afterJson: { role: 'ADMIN', status: 'ACTIVE' },
               },
             })
-          }
-          await tx.appSettings.upsert({
-            where: { id: 1 },
-            update: {},
-            create: {
-              id: 1,
-              storeName: 'AI 会员商店',
-              ownerEmail: env.ADMIN_EMAIL,
-            },
-          })
           return { created }
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -85,10 +121,11 @@ export async function seedAdministrator(
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
-        ['P2002', 'P2034'].includes(error.code) &&
-        attempt < 3
-      )
-        continue
+        ['P2002', 'P2034'].includes(error.code)
+      ) {
+        if (attempt < 3) continue
+        throw new SeedConflictError()
+      }
       throw error
     }
   }

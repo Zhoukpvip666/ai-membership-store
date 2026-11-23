@@ -6,6 +6,9 @@ import { resolve } from 'node:path'
 import {
   parseEnvironment,
   parseDatabaseEnvironment,
+  parseMigrationEnvironment,
+  parseLocalSeedEnvironment,
+  parseProductionBootstrapEnvironment,
   EnvironmentError,
 } from '../src/config/env.ts'
 
@@ -19,7 +22,11 @@ const valid = {
 
 test('environment normalizes admin email and defaults API port', () => {
   const env = parseEnvironment(valid)
-  assert.equal(env.ADMIN_EMAIL, 'owner@example.com')
+  assert.equal(
+    parseLocalSeedEnvironment(valid).ADMIN_EMAIL,
+    'owner@example.com',
+  )
+  assert.ok(!('ADMIN_PASSWORD' in env))
   assert.equal(env.API_PORT, 3000)
   for (const host of ['127.0.0.1', 'localhost', '[::1]']) {
     assert.doesNotThrow(() =>
@@ -39,7 +46,7 @@ test('environment failures list field names without secret inputs', () => {
       assert.ok(error instanceof EnvironmentError)
       assert.equal(
         error.message,
-        'Invalid environment: ADMIN_EMAIL, ADMIN_PASSWORD, APP_BASE_URL, DATABASE_URL. Check .env.example.',
+        'Invalid environment: APP_BASE_URL, DATABASE_URL. Check .env.example.',
       )
       return true
     },
@@ -55,7 +62,7 @@ test('environment failures list field names without secret inputs', () => {
     (error: unknown) => {
       assert.ok(error instanceof EnvironmentError)
       assert.ok(!error.message.includes(secret))
-      assert.match(error.message, /ADMIN_EMAIL, DATABASE_URL/)
+      assert.match(error.message, /DATABASE_URL/)
       return true
     },
   )
@@ -101,7 +108,7 @@ test('application config rejects public origins, weak/placeholders and invalid p
     'replace_with_local_admin_password',
   ]) {
     assert.throws(
-      () => parseEnvironment({ ...valid, ADMIN_PASSWORD }),
+      () => parseLocalSeedEnvironment({ ...valid, ADMIN_PASSWORD }),
       EnvironmentError,
     )
   }
@@ -160,6 +167,186 @@ test('server and seed exit before connecting on invalid env without leaking valu
     assert.equal(result.status, 1)
     assert.match(result.stderr, /Invalid environment: DATABASE_URL/)
     assert.ok(!result.stderr.includes('do-not-log-this'))
-    assert.ok(!result.stdout.includes('Local API:'))
+    assert.ok(!result.stdout.includes('API listening'))
+  }
+})
+
+const production = {
+  NODE_ENV: 'production',
+  PRODUCTION_DATABASE_NAME: 'membership_live',
+  DATABASE_URL:
+    'mysql://shop_api:synthetic-password@127.0.0.1:3309/membership_live',
+  APP_BASE_URL: 'https://shop.membership-commerce.net',
+  TRUSTED_PROXY_IP: '127.0.0.1',
+  MYSQL_AUTH_PUBLIC_KEY_FILE: resolve('test-public-key.pem'),
+}
+
+test('production accepts a named HTTPS origin without bootstrap credentials', () => {
+  const env = parseEnvironment(production)
+  assert.equal(env.NODE_ENV, 'production')
+  assert.equal(env.TRUSTED_PROXY_IP, '127.0.0.1')
+  assert.equal(env.APP_BASE_URL, production.APP_BASE_URL)
+  assert.ok(!('ADMIN_PASSWORD' in env))
+})
+
+test('production rejects HTTP, loopback, IPs, placeholder names, and non-origin URLs', () => {
+  for (const APP_BASE_URL of [
+    'http://shop.membership-commerce.net',
+    'https://localhost',
+    'https://a.localhost',
+    'https://127.0.0.1',
+    'https://2130706433',
+    'https://[::1]',
+    'https://192.168.1.50',
+    'https://shop.example.com',
+    'https://example.net',
+    'https://shop.invalid',
+    'https://shop.test',
+    'https://user:password@shop.membership-commerce.net',
+    'https://@shop.membership-commerce.net',
+    'https://shop.membership-commerce.net/about/..',
+    'https://shop.membership-commerce.net/?',
+    'https://shop.membership-commerce.net/#',
+    'https://shop.membership-commerce.net/?x=1',
+    'https://shop.membership-commerce.net/#info',
+  ])
+    assert.throws(
+      () => parseEnvironment({ ...production, APP_BASE_URL }),
+      /APP_BASE_URL/,
+    )
+  assert.throws(
+    () => parseEnvironment({ ...production, TRUSTED_PROXY_IP: undefined }),
+    /TRUSTED_PROXY_IP/,
+  )
+  assert.throws(
+    () => parseEnvironment({ ...production, TRUSTED_PROXY_IP: '0.0.0.0/0' }),
+    /TRUSTED_PROXY_IP/,
+  )
+})
+
+test('runtime, migration and first bootstrap use separate credentials and explicit database targets', () => {
+  const migration = production.DATABASE_URL.replace(
+    'shop_api:',
+    'shop_migrator:',
+  )
+  const bootstrap = production.DATABASE_URL.replace(
+    'shop_api:',
+    'shop_bootstrap:',
+  )
+  assert.throws(
+    () => parseMigrationEnvironment(production),
+    /MIGRATION_DATABASE_URL/,
+  )
+  assert.equal(
+    parseMigrationEnvironment({
+      ...production,
+      MIGRATION_DATABASE_URL: migration,
+    }).DATABASE_URL,
+    migration,
+  )
+  assert.throws(
+    () =>
+      parseMigrationEnvironment({
+        ...production,
+        MIGRATION_DATABASE_URL: migration.replace(
+          'membership_live',
+          'another_db',
+        ),
+      }),
+    /PRODUCTION_DATABASE_NAME/,
+  )
+  assert.throws(
+    () => parseLocalSeedEnvironment({ ...valid, NODE_ENV: 'production' }),
+    /NODE_ENV/,
+  )
+  const credentials = {
+    NODE_ENV: 'production',
+    PRODUCTION_DATABASE_NAME: 'membership_live',
+    BOOTSTRAP_DATABASE_URL: bootstrap,
+    MYSQL_AUTH_PUBLIC_KEY_FILE: production.MYSQL_AUTH_PUBLIC_KEY_FILE,
+    ADMIN_EMAIL: valid.ADMIN_EMAIL,
+    ADMIN_PASSWORD: valid.ADMIN_PASSWORD,
+  }
+  assert.equal(
+    parseProductionBootstrapEnvironment(credentials).ADMIN_EMAIL,
+    'owner@example.com',
+  )
+  assert.throws(
+    () =>
+      parseProductionBootstrapEnvironment({
+        ...credentials,
+        NODE_ENV: 'development',
+      }),
+    /NODE_ENV/,
+  )
+  assert.throws(
+    () =>
+      parseProductionBootstrapEnvironment({
+        ...credentials,
+        PRODUCTION_DATABASE_NAME: 'other',
+      }),
+    /PRODUCTION_DATABASE_NAME/,
+  )
+  assert.throws(
+    () =>
+      parseEnvironment({
+        ...production,
+        DATABASE_URL: production.DATABASE_URL.replace('shop_api:', 'root:'),
+      }),
+    /DATABASE_URL/,
+  )
+  assert.throws(
+    () =>
+      parseProductionBootstrapEnvironment({
+        ...credentials,
+        PRODUCTION_DATABASE_NAME: 'membership_preview',
+        BOOTSTRAP_DATABASE_URL: bootstrap.replace(
+          'membership_live',
+          'membership_preview',
+        ),
+      }),
+    /PRODUCTION_DATABASE_NAME/,
+  )
+  for (const field of [
+    'ADMIN_EMAIL',
+    'ADMIN_PASSWORD',
+    'MIGRATION_DATABASE_URL',
+    'BOOTSTRAP_DATABASE_URL',
+    'BACKUP_DATABASE_URL',
+    'MYSQL_ROOT_PASSWORD',
+  ])
+    assert.throws(
+      () => parseEnvironment({ ...production, [field]: 'must-not-be-logged' }),
+      (error: unknown) => {
+        assert.ok(error instanceof EnvironmentError)
+        assert.ok(error.message.includes(field))
+        assert.ok(!error.message.includes('must-not-be-logged'))
+        return true
+      },
+    )
+})
+
+test('invalid production origins and implicit bootstrap mode exit before connecting', () => {
+  for (const [script, env, field] of [
+    [
+      'src/server.ts',
+      { ...production, APP_BASE_URL: 'http://public.example.com' },
+      'APP_BASE_URL',
+    ],
+    [
+      'prisma/bootstrap-admin.ts',
+      { ...valid, NODE_ENV: 'development' },
+      'NODE_ENV',
+    ],
+  ] as const) {
+    const result = spawnSync(process.execPath, [script], {
+      cwd: fileURLToPath(new URL('..', import.meta.url)),
+      encoding: 'utf8',
+      env: { ...process.env, ...env },
+      timeout: 15000,
+    })
+    assert.equal(result.status, 1)
+    assert.ok(result.stderr.includes(field))
+    assert.ok(!result.stdout.includes('API listening'))
   }
 })

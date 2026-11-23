@@ -1,9 +1,12 @@
-import { parseEnvironment, EnvironmentError } from '../src/config/env.ts'
+import {
+  parseLocalSeedEnvironment,
+  EnvironmentError,
+} from '../src/config/env.ts'
 import { createDatabase } from '../src/db/client.ts'
 import { seedAdministrator, SeedConflictError } from '../src/db/seed.ts'
 
 try {
-  const env = parseEnvironment()
+  const env = parseLocalSeedEnvironment()
   const database = createDatabase(env.DATABASE_URL)
   try {
     const { created } = await seedAdministrator(database, env)

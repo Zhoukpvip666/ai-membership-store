@@ -422,8 +422,8 @@ onMounted(() => load())
         </p>
         <h3>客户邀请</h3>
         <p class="inline-note">
-          链接默认 7
-          天有效且只能使用一次；只能在本机打开，不会发送邮件。关闭详情后无法再次读取原始链接，需要重新生成。
+          链接默认 7 天有效且只能使用一次。使用 localhost
+          或环回地址的链接只能在本机打开。请手动分享邀请链接，关闭详情后需重新生成才能查看。
         </p>
         <p v-if="detailError" class="form-error" role="alert">
           {{ detailError }}

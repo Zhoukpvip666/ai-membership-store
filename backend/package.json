@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "node --env-file-if-exists=../.env --watch src/server.ts",
     "start": "node --env-file-if-exists=../.env dist/server.js",
+    "start:production": "node dist/server.js --production",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.ts",
@@ -17,7 +18,11 @@
     "db:migrate": "node --env-file-if-exists=../.env scripts/prisma.ts migrate deploy",
     "db:status": "node --env-file-if-exists=../.env scripts/prisma.ts migrate status",
     "db:seed": "node --env-file-if-exists=../.env scripts/prisma.ts db seed",
+    "db:migrate:production": "node scripts/prisma.ts --production migrate deploy",
+    "db:status:production": "node scripts/prisma.ts --production migrate status",
+    "db:bootstrap:production": "node prisma/bootstrap-admin.ts",
     "test:db": "node scripts/test-database.ts",
+    "test:production": "npm run build && node scripts/test-production.ts",
     "test:e2e": "node scripts/test-database.ts --e2e"
   },
   "dependencies": {

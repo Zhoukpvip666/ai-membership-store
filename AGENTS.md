@@ -69,6 +69,12 @@ Use the status index for what is implemented and the linked task-specific contra
 - Keep secrets out of API responses and frontend bundles.
 - Add tests for authorization, state transitions, duplicate actions, and failure paths.
 
+## T23.1 production application profile
+
+- Use [the clean installation guide](docs/31-production-clean-install.md). Package the reviewed release artifacts and use a fresh MySQL schema and private image directories.
+- Keep the production API on loopback with runtime-only credentials. Migration, first-ADMIN bootstrap and backup credentials belong in separate contexts. Run first-ADMIN bootstrap explicitly against the named, migrated and empty target before opening registration.
+- Review and authorization for actual production operations remain part of the separately scoped deployment stages.
+
 ## Definition of done
 
 A task is complete only when:
