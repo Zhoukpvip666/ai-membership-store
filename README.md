@@ -111,6 +111,10 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 30. [docs/29-product-cover-images.md](docs/29-product-cover-images.md) — T24.5B single-cover upload, display, storage and migration.
 31. [docs/30-storefront-launch-preparation.md](docs/30-storefront-launch-preparation.md) — next-task draft for customer-facing launch polish and T23.1 application readiness.
 
+32. [docs/31-production-clean-install.md](docs/31-production-clean-install.md) — T23.1 production profiles, first administrator initialization and isolated acceptance.
+
+For T23.1 use the [production runtime example](.env.production.example) and the [clean installation guide](docs/31-production-clean-install.md). The production API, migrator and first-ADMIN command use separate credential contexts. Provision the clean database and bootstrap the owner before opening public registration.
+
 Earlier milestone exclusions and test reports describe their original delivery scope. Later merged contracts supersede those exclusions for implemented features; historical test results are not evidence of a new test run or a current deployment.
 
 ## Important launch gates

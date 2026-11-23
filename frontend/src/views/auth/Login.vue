@@ -52,7 +52,7 @@ async function submit() {
     <div class="panel auth-panel">
       <Brand />
       <h1>{{ admin ? '管理员登录' : '客户登录' }}</h1>
-      <p class="muted">本地管理工具 · 仅限本机访问</p>
+      <p v-if="!admin" class="muted">登录后可查看个人订单与订阅。</p>
       <p v-if="error || auth.state.error" class="form-error" role="alert">
         {{ error || auth.state.error }}
       </p>

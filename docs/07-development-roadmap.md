@@ -133,9 +133,9 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 
 ## T23 — Production deployment readiness
 
-**Status: T23.0 production design and the historical Seoul VPS audit merged in PR #37.** [Production design and readiness audit](28-production-deployment-design.md). T23.1–T23.5 remain the planned production-readiness sequence in this repository. The original audit is a point-in-time observation; it does not establish current server capacity, configuration or deployment. See the [status index](00-project-status.md) for the evidence boundary.
+**Status: T23.0 production design and the historical Seoul VPS audit merged in PR #37.** [Production design and readiness audit](28-production-deployment-design.md). T23.1 application adaptation is ready for review. T23.2–T23.5 remain the planned deployment-readiness sequence. The original audit is a point-in-time observation; it does not establish current server capacity, configuration or deployment. See the [status index](00-project-status.md) for the evidence boundary.
 
-- T23.1 — Production configuration and security. Validate HTTPS origin, credentials, trusted proxy, sessions, Origin checks, invitations and worker lifecycle.
+- T23.1 — Production configuration and first ADMIN. The [Clean Install guide](31-production-clean-install.md) covers the HTTPS profile, separate database accounts, proxy trust, explicit migration and bootstrap, and service drain.
 - T23.2 — Caddy, systemd and MySQL deployment definitions. Provide site/unit/Compose templates that preserve existing listeners and services.
 - T23.3 — Backup, recovery, logging and monitoring. Demonstrate encrypted backup, isolated restore, log redaction and alerts.
 - T23.4 — Isolated deployment rehearsal and launch checklist. Verify shared-host capacity, prior-site health, application behavior and recovery before requesting T23.5 approval.

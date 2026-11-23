@@ -11,9 +11,11 @@ This index records implemented repository capabilities and outstanding boundarie
 - The [contributor instructions](../AGENTS.md) retain the security, privacy, data-preservation and task-scope rules. An unresolved business-rule conflict still requires a decision; this status reconciliation changes no product rules.
 - Product requirements and architecture describe some future capabilities. In particular, planned email, supplier and payment-provider flows are not evidence that those integrations exist.
 
+The T23.1 development base is [09fcc26](https://github.com/lear111/ai-membership-store/commit/09fcc26a14afb4f7f47446ea60caf241e8a52c1b), including the [PR #49](https://github.com/lear111/ai-membership-store/pull/49) customer order detail and product description links.
+
 ## Current work priority
 
-The owner's 2026-11-23 priority is to make the customer-facing storefront available as soon as practical. The operating overview remains deferred. The [storefront launch preparation draft](30-storefront-launch-preparation.md) defines the proposed next application task: formal storefront copy and public branding, existing purchase-flow acceptance, and T23.1 production configuration. Its implementation scope awaits feedback; no Codex task or server rollout is recorded by that draft. Existing purchase functionality stays in scope.
+The owner's 2026-11-23 priority is to make the customer-facing storefront available as soon as practical. The operating overview remains deferred. The [storefront launch preparation draft](30-storefront-launch-preparation.md) defines the proposed next application task: formal storefront copy and public branding, existing purchase-flow acceptance, and T23.1 production configuration. The draft records the broader release work. T23.1 Clean Install is separately implemented for review. Existing purchase functionality stays in scope.
 
 ## Product and technical baseline
 
@@ -51,7 +53,7 @@ The repository uses Vue 3, TypeScript, Vite and Element Plus, with Node.js 24, E
 | Registration and email ownership | Self-registration is implemented, but email ownership is unverified. The current duplicate-email response and per-process connection-IP limiter have the operating limits documented in [PR #44](https://github.com/lear111/ai-membership-store/pull/44). |
 | Email and supplier integration | No SMTP/outbox worker, supplier API, automatic supplier transfer or automated third-party activation. Planned supplier/customer email and expiry reminders remain future work. |
 | Other planned APIs | Notification, verification-code and API-key APIs remain absent. |
-| Production readiness | T23.0 is a merged design. T23.1–T23.5 adaptation, rehearsal and rollout remain separately scoped work in the [production plan](28-production-deployment-design.md). This reconciliation did not inspect a running server or its deployed commit, migration state or backups. |
+| Production readiness | T23.0 is a merged design. T23.1 production profiles and explicit first administrator initialization are ready for review in the [Clean Install guide](31-production-clean-install.md). T23.2–T23.5 remain separate work in the [production plan](28-production-deployment-design.md). This reconciliation did not inspect a running server or its deployed commit, migration state or backups. |
 
 ## Migrations, storage and release evidence
 
