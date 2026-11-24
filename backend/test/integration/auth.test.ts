@@ -1,4 +1,4 @@
-import { after, before, test } from 'node:test'
+import { after, afterEach, beforeEach, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import type { Server } from 'node:http'
@@ -27,6 +27,7 @@ async function request(
   method = 'GET',
   body?: unknown,
   cookie = adminCookie,
+  idempotencyKey?: string,
 ) {
   const response = await fetch(base + '/api/v1' + path, {
     method,
@@ -35,6 +36,7 @@ async function request(
       'x-requested-with': 'MembershipStore',
       'content-type': 'application/json',
       ...(cookie ? { cookie } : {}),
+      ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
@@ -48,11 +50,10 @@ async function request(
 const cookieOf = (response: Response) =>
   response.headers.get('set-cookie')!.split(';')[0]
 const rawToken = (cookie: string) => cookie.slice(COOKIE_NAME.length + 1)
-async function customer() {
-  const loginEmail = randomUUID() + '@example.com'
+const newEmail = () => randomUUID() + '@example.com'
+async function customer(adminLabel = '客户-' + randomUUID()) {
   const result = await request('/admin/users', 'POST', {
-    adminLabel: '测试客户',
-    loginEmail,
+    adminLabel,
   })
   assert.equal(result.status, 201)
   return result.body.user
@@ -66,7 +67,7 @@ async function issue(userId: string) {
   assert.equal(result.status, 201)
   return { ...result.body, token: new URL(result.body.url).hash.slice(1) }
 }
-before(async () => {
+beforeEach(async () => {
   server = createApp(() => checkDatabase(db), { database: db, env }).listen(
     0,
     '127.0.0.1',
@@ -85,13 +86,13 @@ before(async () => {
   adminCookie = cookieOf(login.response)
   adminId = login.body.user.id
 })
-after(async () => {
+afterEach(async () => {
   if (server)
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     )
-  await db.$disconnect()
 })
+after(() => db.$disconnect())
 
 test('all admin routes require a database session, even unimplemented routes', async () => {
   for (const path of [
@@ -196,11 +197,10 @@ test('incorrect, unknown, disabled and pending accounts fail login without accou
     { email: 'missing@example.com', password: customerPassword },
     '',
   )
-  const user = await customer()
   const pending = await request(
     '/auth/login',
     'POST',
-    { email: user.loginEmail, password: customerPassword },
+    { email: newEmail(), password: customerPassword },
     '',
   )
   for (const result of [wrong, unknown, pending]) {
@@ -210,39 +210,59 @@ test('incorrect, unknown, disabled and pending accounts fail login without accou
   }
 })
 
-test('customers stay pending without passwords; duplicate/normalized emails and privileged fields are rejected', async () => {
-  const user = await customer()
-  const stored = await db.user.findUniqueOrThrow({ where: { id: user.id } })
-  assert.equal(stored.status, 'PENDING_ACTIVATION')
-  assert.equal(stored.passwordHash, null)
-  assert.equal(stored.activatedAt, null)
-  assert.equal(stored.role, 'CUSTOMER')
-  assert.equal(
-    (
-      await request('/admin/users', 'POST', {
-        adminLabel: '重复',
-        loginEmail: ' ' + user.loginEmail.toUpperCase() + ' ',
-      })
-    ).status,
-    409,
-  )
-  for (const field of ['password', 'passwordHash', 'role', 'status'])
+test('multiple customers can be created with only an admin label and no credentials', async () => {
+  const users = await Promise.all([customer(), customer()])
+  assert.notEqual(users[0].id, users[1].id)
+  for (const user of users) {
+    const stored = await db.user.findUniqueOrThrow({ where: { id: user.id } })
+    assert.equal(stored.status, 'PENDING_ACTIVATION')
+    assert.equal(stored.role, 'CUSTOMER')
+    for (const field of [
+      'loginEmail',
+      'notificationEmail',
+      'passwordHash',
+      'activatedAt',
+    ] as const)
+      assert.equal(stored[field], null)
+    const list = await request(
+      '/admin/users?search=' + encodeURIComponent(user.adminLabel),
+    )
+    assert.equal(list.body.total, 1)
+    assert.equal(list.body.items[0].id, user.id)
+    assert.equal(JSON.stringify(list.body).includes('passwordHash'), false)
+    assert.equal(
+      (await request('/admin/users/' + user.id)).body.user.loginEmail,
+      null,
+    )
+  }
+  for (const field of [
+    'loginEmail',
+    'notificationEmail',
+    'password',
+    'passwordHash',
+    'role',
+    'status',
+  ])
     assert.equal(
       (
         await request('/admin/users', 'POST', {
           adminLabel: '注入',
-          loginEmail: randomUUID() + '@example.com',
           [field]: 'forbidden',
         })
       ).status,
       400,
     )
-  const list = await request(
-    '/admin/users?search=' + encodeURIComponent(user.loginEmail),
+  const unlabelled = await request('/admin/users/' + users[0].id, 'PATCH', {
+    adminLabel: null,
+  })
+  assert.equal(unlabelled.status, 200)
+  const unfiltered = await request('/admin/users?pageSize=100')
+  assert.ok(
+    unfiltered.body.items.some(
+      (profile: { id: string }) => profile.id === users[0].id,
+    ),
   )
-  assert.equal(list.body.total, 1)
-  assert.equal(list.body.items[0].id, user.id)
-  assert.equal(JSON.stringify(list.body).includes('passwordHash'), false)
+  assert.equal((await request('/admin/users', 'POST', {})).status, 400)
   assert.equal(await db.user.count({ where: { role: 'ADMIN' } }), 1)
 })
 
@@ -250,10 +270,13 @@ test('customer editing is limited to profile fields and admin changes are audite
   const user = await customer()
   const result = await request('/admin/users/' + user.id, 'PATCH', {
     adminLabel: '更新姓名',
-    notificationEmail: ' Notice@Example.com ',
   })
   assert.equal(result.status, 200)
-  assert.equal(result.body.user.notificationEmail, 'notice@example.com')
+  assert.equal(result.body.user.notificationEmail, null)
+  const notification = await request('/admin/users/' + user.id, 'PATCH', {
+    notificationEmail: 'notice@example.com',
+  })
+  assert.equal(notification.body.error.code, 'CUSTOMER_NOT_CLAIMED')
   for (const input of [
     { loginEmail: 'changed@example.com' },
     { password: customerPassword },
@@ -314,9 +337,13 @@ test('reissuing, revoking and expiry invalidate activation without changing the 
   assert.equal(
     (
       await request(
-        '/auth/activate',
+        '/auth/register',
         'POST',
-        { token: old.token, password: customerPassword },
+        {
+          invitationToken: old.token,
+          email: newEmail(),
+          password: customerPassword,
+        },
         '',
       )
     ).status,
@@ -335,9 +362,13 @@ test('reissuing, revoking and expiry invalidate activation without changing the 
   assert.equal(
     (
       await request(
-        '/auth/activate',
+        '/auth/register',
         'POST',
-        { token: current.token, password: customerPassword },
+        {
+          invitationToken: current.token,
+          email: newEmail(),
+          password: customerPassword,
+        },
         '',
       )
     ).status,
@@ -351,9 +382,13 @@ test('reissuing, revoking and expiry invalidate activation without changing the 
   assert.equal(
     (
       await request(
-        '/auth/activate',
+        '/auth/register',
         'POST',
-        { token: expired.token, password: customerPassword },
+        {
+          invitationToken: expired.token,
+          email: newEmail(),
+          password: customerPassword,
+        },
         '',
       )
     ).status,
@@ -367,17 +402,22 @@ test('reissuing, revoking and expiry invalidate activation without changing the 
 test('only one concurrent activation succeeds, password is Argon2id and customer cannot access any admin/customer data routes', async () => {
   const user = await customer()
   const invitation = await issue(user.id)
+  const email = newEmail()
   const results = await Promise.all(
     [1, 2].map(() =>
       request(
-        '/auth/activate',
+        '/auth/register',
         'POST',
-        { token: invitation.token, password: customerPassword },
+        {
+          invitationToken: invitation.token,
+          email: ' ' + email.toUpperCase() + ' ',
+          password: customerPassword,
+        },
         '',
       ),
     ),
   )
-  assert.deepEqual(results.map((result) => result.status).sort(), [200, 409])
+  assert.deepEqual(results.map((result) => result.status).sort(), [201, 409])
   const account = await db.user.findUniqueOrThrow({ where: { id: user.id } })
   assert.equal(account.status, 'ACTIVE')
   assert.ok(account.activatedAt)
@@ -393,14 +433,18 @@ test('only one concurrent activation succeeds, password is Argon2id and customer
       })
     ).usedAt,
   )
-  const login = await request(
-    '/auth/login',
-    'POST',
-    { email: user.loginEmail, password: customerPassword },
-    '',
-  )
-  assert.equal(login.status, 200)
-  const cookie = cookieOf(login.response)
+  const successful = results.find((result) => result.status === 201)!
+  assert.equal(successful.body.user.id, user.id)
+  assert.equal(successful.body.user.loginEmail, email)
+  assert.equal('adminLabel' in successful.body.user, false)
+  assert.equal('passwordHash' in successful.body.user, false)
+  assert.equal(await db.session.count({ where: { userId: user.id } }), 1)
+  const notification = await request('/admin/users/' + user.id, 'PATCH', {
+    notificationEmail: ' Notice@Example.com ',
+  })
+  assert.equal(notification.status, 200)
+  assert.equal(notification.body.user.notificationEmail, 'notice@example.com')
+  const cookie = cookieOf(successful.response)
   assert.equal(
     (await request('/auth/me', 'GET', undefined, cookie)).body.user.id,
     user.id,
@@ -439,22 +483,15 @@ test('only one concurrent activation succeeds, password is Argon2id and customer
 test('disable revokes sessions/invitations; restore preserves activation status and existing entitlement history', async () => {
   const user = await customer()
   const invitation = await issue(user.id)
-  await request(
-    '/auth/activate',
+  const email = newEmail()
+  const registered = await request(
+    '/auth/register',
     'POST',
-    { token: invitation.token, password: customerPassword },
+    { invitationToken: invitation.token, email, password: customerPassword },
     '',
   )
-  const cookie = cookieOf(
-    (
-      await request(
-        '/auth/login',
-        'POST',
-        { email: user.loginEmail, password: customerPassword },
-        '',
-      )
-    ).response,
-  )
+  assert.equal(registered.status, 201)
+  const cookie = cookieOf(registered.response)
   const oldHash = (await db.user.findUniqueOrThrow({ where: { id: user.id } }))
     .passwordHash
   const disable = await request(
@@ -472,7 +509,7 @@ test('disable revokes sessions/invitations; restore preserves activation status 
       await request(
         '/auth/login',
         'POST',
-        { email: user.loginEmail, password: customerPassword },
+        { email, password: customerPassword },
         '',
       )
     ).status,
@@ -552,9 +589,13 @@ test('disable revokes sessions/invitations; restore preserves activation status 
   assert.equal(
     (
       await request(
-        '/auth/activate',
+        '/auth/register',
         'POST',
-        { token: unused.token, password: customerPassword },
+        {
+          invitationToken: unused.token,
+          email: newEmail(),
+          password: customerPassword,
+        },
         '',
       )
     ).status,
@@ -589,14 +630,18 @@ test('simultaneous invitation reissues leave exactly one valid token', async () 
   const results = await Promise.all(
     invitations.map((invitation) =>
       request(
-        '/auth/activate',
+        '/auth/register',
         'POST',
-        { token: invitation.token, password: customerPassword },
+        {
+          invitationToken: invitation.token,
+          email: newEmail(),
+          password: customerPassword,
+        },
         '',
       ),
     ),
   )
-  assert.deepEqual(results.map((result) => result.status).sort(), [200, 409])
+  assert.deepEqual(results.map((result) => result.status).sort(), [201, 409])
 })
 
 test('activation racing disable never leaves an active disabled account or reusable invitation', async () => {
@@ -604,9 +649,13 @@ test('activation racing disable never leaves an active disabled account or reusa
   const invitation = await issue(user.id)
   const results = await Promise.all([
     request(
-      '/auth/activate',
+      '/auth/register',
       'POST',
-      { token: invitation.token, password: customerPassword },
+      {
+        invitationToken: invitation.token,
+        email: newEmail(),
+        password: customerPassword,
+      },
       '',
     ),
     request('/admin/users/' + user.id + '/status', 'PATCH', {
@@ -615,7 +664,19 @@ test('activation racing disable never leaves an active disabled account or reusa
     }),
   ])
   assert.equal(results[1].status, 200)
-  assert.ok([200, 409].includes(results[0].status))
+  assert.ok([201, 409].includes(results[0].status))
+  if (results[0].status === 201)
+    assert.equal(
+      (
+        await request(
+          '/auth/me',
+          'GET',
+          undefined,
+          cookieOf(results[0].response),
+        )
+      ).status,
+      401,
+    )
   assert.equal(
     (await db.user.findUniqueOrThrow({ where: { id: user.id } })).status,
     'DISABLED',
@@ -623,9 +684,13 @@ test('activation racing disable never leaves an active disabled account or reusa
   assert.equal(
     (
       await request(
-        '/auth/activate',
+        '/auth/register',
         'POST',
-        { token: invitation.token, password: customerPassword },
+        {
+          invitationToken: invitation.token,
+          email: newEmail(),
+          password: customerPassword,
+        },
         '',
       )
     ).status,
@@ -633,24 +698,206 @@ test('activation racing disable never leaves an active disabled account or reusa
   )
 })
 
-test('duplicate concurrent creation and audit failure leave no partial customer changes', async () => {
-  const loginEmail = randomUUID() + '@example.com'
-  const results = await Promise.all(
-    [1, 2].map(() =>
-      request('/admin/users', 'POST', { adminLabel: '并发客户', loginEmail }),
+test('revocation and invitation registration serialize without accepting a revoked token', async () => {
+  const profile = await customer()
+  const invite = await issue(profile.id)
+  const requestBody = {
+    invitationToken: invite.token,
+    email: newEmail(),
+    password: customerPassword,
+  }
+  const [claimed, revoked] = await Promise.all([
+    request('/auth/register', 'POST', requestBody, ''),
+    request(
+      '/admin/invitations/' + invite.invitation.id + '/revoke',
+      'POST',
+      {},
     ),
+  ])
+  assert.deepEqual(
+    [claimed.status, revoked.status],
+    claimed.status === 201 ? [201, 409] : [409, 204],
   )
-  assert.deepEqual(results.map((result) => result.status).sort(), [201, 409])
-  assert.equal(await db.user.count({ where: { loginEmail } }), 1)
-  const rejectedEmail = randomUUID() + '@example.com'
+  const stored = await db.invitationToken.findUniqueOrThrow({
+    where: { id: invite.invitation.id },
+  })
+  assert.equal(Boolean(stored.usedAt), claimed.status === 201)
+  assert.equal(Boolean(stored.revokedAt), revoked.status === 204)
+  const retry = await request('/auth/register', 'POST', requestBody, '')
+  assert.equal(retry.body.error.code, 'INVITATION_INVALID')
+})
+
+test('reissuing and invitation registration cannot both succeed against the old invitation', async () => {
+  const profile = await customer()
+  const invite = await issue(profile.id)
+  const requestBody = {
+    invitationToken: invite.token,
+    email: newEmail(),
+    password: customerPassword,
+  }
+  const [claimed, reissued] = await Promise.all([
+    request('/auth/register', 'POST', requestBody, ''),
+    request('/admin/users/' + profile.id + '/invitations', 'POST', {}),
+  ])
+  assert.deepEqual(
+    [claimed.status, reissued.status],
+    claimed.status === 201 ? [201, 409] : [409, 201],
+  )
+  if (reissued.status === 201) {
+    assert.equal(claimed.body.error.code, 'INVITATION_INVALID')
+    assert.equal(
+      (
+        await request(
+          '/auth/register',
+          'POST',
+          {
+            ...requestBody,
+            invitationToken: new URL(reissued.body.url).hash.slice(1),
+          },
+          '',
+        )
+      ).status,
+      201,
+    )
+  }
+  assert.equal(
+    await db.session.count({ where: { userId: profile.id, revokedAt: null } }),
+    1,
+  )
+})
+
+test('audit failure leaves no partial customer profile', async () => {
+  const adminLabel = '回滚-' + randomUUID()
   await assert.rejects(
     customerService(db, env.APP_BASE_URL).create(
-      { adminLabel: '回滚测试', loginEmail: rejectedEmail },
+      { adminLabel },
       adminId,
       'x'.repeat(100),
     ),
   )
-  assert.equal(await db.user.count({ where: { loginEmail: rejectedEmail } }), 0)
+  assert.equal(await db.user.count({ where: { adminLabel } }), 0)
+})
+
+test('duplicate email and an existing session leave the invitation available for retry', async () => {
+  const user = await customer()
+  const invitation = await issue(user.id)
+  const attempt = (email: string, cookie = '') =>
+    request(
+      '/auth/register',
+      'POST',
+      { invitationToken: invitation.token, email, password: customerPassword },
+      cookie,
+    )
+  const signedIn = await attempt(newEmail(), adminCookie)
+  assert.equal(signedIn.body.error.code, 'ALREADY_AUTHENTICATED')
+  const duplicate = await attempt(env.ADMIN_EMAIL.toUpperCase())
+  assert.equal(duplicate.status, 409)
+  assert.equal(duplicate.body.error.code, 'EMAIL_EXISTS')
+  assert.equal(duplicate.response.headers.get('set-cookie'), null)
+  const pending = await db.user.findUniqueOrThrow({ where: { id: user.id } })
+  assert.equal(pending.status, 'PENDING_ACTIVATION')
+  assert.equal(pending.loginEmail, null)
+  assert.equal(pending.passwordHash, null)
+  assert.equal(await db.session.count({ where: { userId: user.id } }), 0)
+  assert.equal(
+    (
+      await db.invitationToken.findUniqueOrThrow({
+        where: { id: invitation.invitation.id },
+      })
+    ).usedAt,
+    null,
+  )
+  assert.equal((await attempt(newEmail())).status, 201)
+})
+
+test('orders and subscriptions created for an unbound profile stay visible to its new session', async () => {
+  const user = await customer()
+  const product = await db.product.create({
+    data: {
+      slug: randomUUID(),
+      name: '邀请注册测试商品',
+      type: 'SUBSCRIPTION',
+      priceFen: 100,
+      renewalPriceFen: 100,
+      termLabel: '月',
+      servicePeriodUnit: 'MONTH',
+      servicePeriodCount: 1,
+    },
+  })
+  const createdOrder = await request(
+    '/admin/orders',
+    'POST',
+    {
+      userId: user.id,
+      productId: product.id,
+      amountFen: 100,
+      formData: {},
+    },
+    adminCookie,
+    randomUUID(),
+  )
+  assert.equal(createdOrder.status, 201, JSON.stringify(createdOrder.body))
+  const orderId = createdOrder.body.order.id
+  assert.equal(createdOrder.body.order.contactEmailSnapshot, null)
+  const revision = await db.orderRevision.findFirstOrThrow({
+    where: { orderId },
+  })
+  assert.equal(
+    (revision.snapshotJson as { order: { contactEmailSnapshot: unknown } })
+      .order.contactEmailSnapshot,
+    null,
+  )
+  const createdSubscription = await request('/admin/subscriptions', 'POST', {
+    userId: user.id,
+    productId: product.id,
+    renewalPriceFen: 100,
+    formData: {},
+    startedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 86400000).toISOString(),
+  })
+  assert.equal(
+    createdSubscription.status,
+    201,
+    JSON.stringify(createdSubscription.body),
+  )
+  const subscriptionId = createdSubscription.body.subscription.id
+  const invite = await issue(user.id)
+  const result = await request(
+    '/auth/register',
+    'POST',
+    {
+      invitationToken: invite.token,
+      email: newEmail(),
+      password: customerPassword,
+    },
+    '',
+  )
+  assert.equal(result.status, 201)
+  assert.equal(result.body.user.id, user.id)
+  const cookie = cookieOf(result.response)
+  const ownedOrder = await request(
+    '/customer/orders/' + orderId,
+    'GET',
+    undefined,
+    cookie,
+  )
+  assert.equal(ownedOrder.status, 200)
+  assert.equal(ownedOrder.body.order.contactEmailSnapshot, null)
+  assert.equal(
+    (
+      await request(
+        '/customer/subscriptions/' + subscriptionId,
+        'GET',
+        undefined,
+        cookie,
+      )
+    ).status,
+    200,
+  )
+  assert.equal(
+    (await db.user.findUniqueOrThrow({ where: { id: user.id } })).adminLabel,
+    user.adminLabel,
+  )
 })
 
 test('CSRF, malformed input and oversized requests are rejected without echoing secrets', async () => {

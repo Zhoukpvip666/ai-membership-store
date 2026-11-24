@@ -9,15 +9,12 @@ export const password = z
     (value) => value.trim().length >= 12 && !value.startsWith('replace_with_'),
   )
 export const id = z.uuid()
-const profile = {
-  adminLabel: z.string().trim().min(1).max(80).nullable().optional(),
-  notificationEmail: email.nullable().optional(),
-}
-export const createCustomer = z.strictObject({ ...profile, loginEmail: email })
+const adminLabel = z.string().trim().min(1).max(80)
+export const createCustomer = z.strictObject({ adminLabel })
 export const editCustomer = z
   .strictObject({
-    adminLabel: profile.adminLabel.optional(),
-    notificationEmail: profile.notificationEmail,
+    adminLabel: adminLabel.nullable().optional(),
+    notificationEmail: email.nullable().optional(),
   })
   .refine((value) => Object.keys(value).length > 0)
 export const changeStatus = z.strictObject({
@@ -32,8 +29,11 @@ export const listCustomers = z.strictObject({
 })
 export const emptyBody = z.strictObject({})
 export const login = z.strictObject({ email, password })
-export const register = z.strictObject({ email, password })
-export const activation = z.strictObject({
-  token: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+export const register = z.strictObject({
+  email,
   password,
+  invitationToken: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{43}$/)
+    .optional(),
 })

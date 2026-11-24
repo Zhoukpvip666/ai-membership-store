@@ -198,7 +198,7 @@ test('empty production install has complete migration history, schema objects an
   const [history] = await db.$queryRaw<
     { n: bigint }[]
   >`SELECT COUNT(*) AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`
-  assert.equal(Number(history.n), 14)
+  assert.equal(Number(history.n), 15)
   const [objects] = await db.$queryRaw<Record<string, bigint>[]>`
     SELECT
       (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()) AS tables_n,
@@ -298,7 +298,7 @@ test('production API enforces proxy rate limiting, exact Origin, secure cookies 
     const invitationUser = await post(
       base,
       '/admin/users',
-      { loginEmail: 'invitee@example.test' },
+      { adminLabel: 'Production invitation fixture' },
       { Cookie: ownerCookie },
     )
     assert.equal(invitationUser.status, 201)
@@ -319,6 +319,19 @@ test('production API enforces proxy rate limiting, exact Origin, secure cookies 
       email: 'customer-' + index + '@example.test',
       password: customerPassword,
     })
+    const claimed = await post(
+      base,
+      '/auth/register',
+      {
+        ...credentialsFor(0),
+        invitationToken: invitation.hash.slice(1),
+      },
+      { 'X-Forwarded-For': '198.51.100.22' },
+    )
+    assert.equal(claimed.status, 201)
+    const claimedCookie = session(claimed)
+    assert.equal((await claimed.json()).user.id, invitee.id)
+    assert.equal((await get(base, '/auth/me', claimedCookie)).status, 200)
     const invalidHeaders: Record<string, string>[] = [
       {
         Origin: 'http://shop.membership-commerce.net',

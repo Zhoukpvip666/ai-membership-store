@@ -231,6 +231,18 @@ try {
     // Full deploy now includes migration eleven: only its additive version and
     // in-place actor column rename may differ from the migration-nine fixture.
     for (const row of expected.Order) row.version = 1
+    // Migration fifteen clears only unactivated, administrator-created profiles.
+    for (const user of expected.User)
+      if (
+        user.role === 'CUSTOMER' &&
+        user.createdByAdminId &&
+        !user.activatedAt &&
+        user.passwordHash === null &&
+        ['PENDING_ACTIVATION', 'DISABLED'].includes(user.status)
+      ) {
+        user.loginEmail = null
+        user.notificationEmail = null
+      }
     for (const row of expected.IdempotencyRecord) {
       row.actorUserId = row.actorAdminId
       delete row.actorAdminId

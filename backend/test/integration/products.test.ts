@@ -5,7 +5,7 @@ import type { Server } from 'node:http'
 import { randomUUID } from 'node:crypto'
 import { createApp } from '../../src/app.ts'
 import { createDatabase, checkDatabase } from '../../src/db/client.ts'
-import { integrationEnvironment } from './support.ts'
+import { activeCredentials, integrationEnvironment } from './support.ts'
 import { productService } from '../../src/modules/products/service.ts'
 import { settingsService } from '../../src/modules/settings/service.ts'
 import { createProduct } from '../../src/modules/products/schemas.ts'
@@ -160,6 +160,7 @@ test('every product/settings endpoint requires ADMIN session and mutations requi
       loginEmail: randomUUID() + '@example.com',
       role: 'CUSTOMER',
       status: 'ACTIVE',
+      ...(await activeCredentials()),
     },
   })
   await db.session.create({

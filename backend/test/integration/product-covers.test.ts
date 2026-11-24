@@ -22,7 +22,7 @@ import {
   tokenHash,
   COOKIE_NAME,
 } from '../../src/modules/auth/security.ts'
-import { integrationEnvironment } from './support.ts'
+import { activeCredentials, integrationEnvironment } from './support.ts'
 
 const env = integrationEnvironment()
 const db = createDatabase(env.DATABASE_URL)
@@ -58,6 +58,7 @@ before(async () => {
           loginEmail: randomUUID() + '@covers.test',
           role: 'CUSTOMER',
           status: 'ACTIVE',
+          ...(await activeCredentials()),
         },
       })
     ).id,

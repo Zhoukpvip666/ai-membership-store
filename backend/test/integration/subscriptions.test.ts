@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { createApp } from '../../src/app.ts'
 import { createDatabase, checkDatabase } from '../../src/db/client.ts'
-import { integrationEnvironment } from './support.ts'
+import { activeCredentials, integrationEnvironment } from './support.ts'
 import { subscriptionService } from '../../src/modules/subscriptions/service.ts'
 import { newToken, tokenHash } from '../../src/modules/auth/security.ts'
 
@@ -131,7 +131,10 @@ after(async () => {
 
 test('ADMIN authorization, customer privacy and CSRF protect all subscription endpoints', async () => {
   const { user, input } = await fixture()
-  await db.user.update({ where: { id: user.id }, data: { status: 'ACTIVE' } })
+  await db.user.update({
+    where: { id: user.id },
+    data: { status: 'ACTIVE', ...(await activeCredentials()) },
+  })
   const token = newToken()
   await db.session.create({
     data: {
@@ -621,7 +624,7 @@ test('filters search private/public names, email and frozen product; user/produc
     s = await create({ ...f.input, expiresAt: days(2) })
   for (const search of [
     f.user.adminLabel!,
-    f.user.loginEmail,
+    f.user.loginEmail!,
     f.product.name,
     '公开用户名',
   ]) {

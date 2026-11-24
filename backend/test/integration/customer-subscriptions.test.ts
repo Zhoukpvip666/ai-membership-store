@@ -10,7 +10,7 @@ import {
   newToken,
   tokenHash,
 } from '../../src/modules/auth/security.ts'
-import { integrationEnvironment } from './support.ts'
+import { activeCredentials, integrationEnvironment } from './support.ts'
 
 const env = integrationEnvironment()
 const db = createDatabase(env.DATABASE_URL)
@@ -58,7 +58,11 @@ before(async () => {
   admin = (await db.user.findFirstOrThrow({ where: { role: 'ADMIN' } })).id
   owner = (
     await db.user.create({
-      data: { loginEmail: randomUUID() + '@example.test', status: 'ACTIVE' },
+      data: {
+        loginEmail: randomUUID() + '@example.test',
+        status: 'ACTIVE',
+        ...(await activeCredentials()),
+      },
     })
   ).id
   stranger = (
@@ -66,6 +70,7 @@ before(async () => {
       data: {
         loginEmail: randomUUID() + '@example.test',
         status: 'ACTIVE',
+        ...(await activeCredentials()),
         adminLabel: 'PRIVATE_OTHER_LABEL',
       },
     })

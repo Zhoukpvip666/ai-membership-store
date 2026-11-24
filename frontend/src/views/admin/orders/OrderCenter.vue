@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { adminName } from '../../../stores/user-name'
 import { ElTag } from 'element-plus'
 import { onMounted, ref } from 'vue'
 import { readOrders, type AdminOrder } from '../../../api/orders'
@@ -200,9 +201,7 @@ onMounted(() => {
                 >
               </td>
               <td>
-                {{
-                  row.customer.username ||
-                  row.customer.loginEmail.split('@')[0]
+                {{ adminName(row.customer)
                 }}<small>{{ mask(row.customer.loginEmail) }}</small>
               </td>
               <td>

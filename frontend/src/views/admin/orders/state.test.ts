@@ -34,6 +34,7 @@ const order: AdminOrder = {
   customer: {
     id: 'customer',
     username: null,
+    adminLabel: null,
     loginEmail: 'customer@example.com',
     notificationEmail: null,
   },

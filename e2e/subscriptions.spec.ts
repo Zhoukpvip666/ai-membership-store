@@ -64,10 +64,11 @@ test('real subscription creation, frozen eight-field data, editing, renewal, arc
     label = '待激活-' + tag
   const userResponse = await page.request.post('/api/v1/admin/users', {
     headers,
-    data: { adminLabel: label, loginEmail: randomUUID() + '@example.com' },
+    data: { adminLabel: label },
   })
   expect(userResponse.status()).toBe(201)
   const user = (await userResponse.json()).user
+  expect(user.loginEmail).toBeNull()
   const schema = {
     version: 1,
     fields: [

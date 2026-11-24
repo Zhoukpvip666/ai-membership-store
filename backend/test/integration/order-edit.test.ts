@@ -14,7 +14,7 @@ import {
   tokenHash,
 } from '../../src/modules/auth/security.ts'
 import { buildOrderSnapshot } from '../../src/modules/orders/revisions.ts'
-import { integrationEnvironment } from './support.ts'
+import { activeCredentials, integrationEnvironment } from './support.ts'
 import { businessSnapshot } from './order-source-support.ts'
 
 const env = integrationEnvironment(),
@@ -202,11 +202,12 @@ function sql(input: string) {
 }
 before(async () => {
   admin = await db.user.findFirstOrThrow({ where: { role: 'ADMIN' } })
-  const user = (status: User['status']) =>
+  const user = async (status: User['status']) =>
     db.user.create({
       data: {
         role: 'CUSTOMER',
         status,
+        ...(status === 'ACTIVE' ? await activeCredentials() : {}),
         loginEmail: randomUUID() + '@example.com',
         username: 'Public name',
         adminLabel: 'PRIVATE_LABEL',
@@ -612,7 +613,13 @@ test('role DTOs use exact allowlists; V2 preserves frozen fields, original deadl
     if (role === 'admin') {
       assert.deepEqual(
         Object.keys(dto.customer).sort(),
-        ['id', 'username', 'loginEmail', 'notificationEmail'].sort(),
+        [
+          'id',
+          'username',
+          'adminLabel',
+          'loginEmail',
+          'notificationEmail',
+        ].sort(),
       )
       assert.deepEqual(
         Object.keys(dto.creator).sort(),

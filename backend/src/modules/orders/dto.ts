@@ -50,6 +50,7 @@ export const adminOrderSelect = {
     select: {
       id: true,
       username: true,
+      adminLabel: true,
       loginEmail: true,
       notificationEmail: true,
     },
@@ -155,6 +156,7 @@ export function adminOrderDto(order: AdminOrder, now = new Date()) {
     customer: {
       id: order.user.id,
       username: order.user.username,
+      adminLabel: order.user.adminLabel,
       loginEmail: order.user.loginEmail,
       notificationEmail: order.user.notificationEmail,
     },

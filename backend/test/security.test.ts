@@ -107,12 +107,31 @@ test('passwords are salted Argon2id and wrong passwords/hashes fail closed', asy
 })
 
 test('customer inputs normalize identities and reject injected passwords, roles and statuses', () => {
+  assert.deepEqual(schemas.createCustomer.parse({ adminLabel: ' 客户 ' }), {
+    adminLabel: '客户',
+  })
+  const token = 'a'.repeat(43)
+  const password = 'FixturePassword1234'
   assert.equal(
-    schemas.createCustomer.parse({
-      adminLabel: ' 客户 ',
-      loginEmail: ' Customer@Example.com ',
-    }).loginEmail,
+    schemas.register.parse({
+      invitationToken: token,
+      password,
+      email: ' Customer@Example.com ',
+    }).email,
     'customer@example.com',
+  )
+  assert.equal(
+    schemas.register.safeParse({ invitationToken: token, password }).success,
+    false,
+  )
+  assert.equal(
+    schemas.register.safeParse({
+      invitationToken: token,
+      password,
+      email: 'customer@example.com',
+      role: 'ADMIN',
+    }).success,
+    false,
   )
   for (const key of [
     'password',
@@ -120,11 +139,12 @@ test('customer inputs normalize identities and reject injected passwords, roles 
     'role',
     'status',
     'activatedAt',
+    'loginEmail',
+    'notificationEmail',
   ])
     assert.equal(
       schemas.createCustomer.safeParse({
         adminLabel: '客户',
-        loginEmail: 'customer@example.com',
         [key]: 'untrusted',
       }).success,
       false,

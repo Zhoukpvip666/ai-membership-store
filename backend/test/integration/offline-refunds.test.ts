@@ -14,7 +14,7 @@ import {
   tokenHash,
 } from '../../src/modules/auth/security.ts'
 import { buildOrderSnapshot } from '../../src/modules/orders/revisions.ts'
-import { integrationEnvironment } from './support.ts'
+import { activeCredentials, integrationEnvironment } from './support.ts'
 import { businessSnapshot } from './order-source-support.ts'
 
 const env = integrationEnvironment(),
@@ -218,12 +218,17 @@ function gate() {
 before(async () => {
   admin = await db.user.findFirstOrThrow({ where: { role: 'ADMIN' } })
   customer = await db.user.create({
-    data: { status: 'ACTIVE', loginEmail: randomUUID() + '@example.com' },
+    data: {
+      status: 'ACTIVE',
+      ...(await activeCredentials()),
+      loginEmail: randomUUID() + '@example.com',
+    },
   })
   const secondAdmin = await db.user.create({
     data: {
       role: 'ADMIN',
       status: 'ACTIVE',
+      ...(await activeCredentials()),
       loginEmail: randomUUID() + '@example.com',
     },
   })

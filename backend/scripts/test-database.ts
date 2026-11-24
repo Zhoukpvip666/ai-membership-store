@@ -6,6 +6,8 @@ import { randomBytes } from 'node:crypto'
 import {
   mkdtempSync,
   existsSync,
+  copyFileSync,
+  mkdirSync,
   writeFileSync,
   unlinkSync,
   rmdirSync,
@@ -47,6 +49,7 @@ const customerSubscriptionsOnly = process.argv.includes(
   '--customer-subscriptions-only',
 )
 const registrationOnly = process.argv.includes('--registration-only')
+const invitationsOnly = process.argv.includes('--invitations-only')
 const catalogOnly = process.argv.includes('--catalog-only')
 const coversOnly = process.argv.includes('--covers-only')
 const purchaseOnly = process.argv.includes('--customer-purchase-only')
@@ -64,9 +67,14 @@ const creationOnly =
   customerCenterOnly ||
   customerSubscriptionsOnly ||
   registrationOnly ||
+  invitationsOnly ||
   catalogOnly ||
   coversOnly ||
   purchaseOnly
+const invitationMigration = '20261124000000_customer_invitation_registration'
+const invitationUpgradeSnapshot = join(directory, 'invitation-upgrade.json')
+const previousMigrations = join(directory, 'previous-migrations')
+const previousConfig = join(directory, 'previous-prisma.config.mjs')
 const creationUpgradeSnapshot = join(directory, 'creation-upgrade.json')
 const revisionUpgradeSnapshot = join(directory, 'revision-upgrade.json')
 // Protected history cannot be deleted to prepare empty-database API/seed tests.
@@ -79,6 +87,17 @@ const freshInstall =
   ordersOnly ||
   requestedFreshInstall ||
   (!modelsOnly && !browserMode)
+// Auth and ordinary registration share the public five-attempt limit. The full
+// browser run uses another isolated application for the invitation/auth spec.
+const browserArgs = process.argv.slice(2)
+const allBrowserFiles =
+  browserMode &&
+  browserArgs.every(
+    (argument, index) =>
+      ['--e2e', '--fresh', '--project'].includes(argument) ||
+      argument.startsWith('--project=') ||
+      browserArgs[index - 1] === '--project',
+  )
 let apiProcess: ChildProcess | undefined
 writeFileSync(
   envFile,
@@ -241,6 +260,22 @@ try {
         600000,
       ),
     )
+  if (allBrowserFiles) {
+    const args = browserArgs
+      .map((arg, index) =>
+        browserArgs[index - 1] === '--project' ? '--project=' + arg : arg,
+      )
+      .filter((arg) => arg !== '--project')
+    if (splitBrowserProjects) args.push('--project=mobile-edge')
+    console.info(
+      run(
+        process.execPath,
+        ['scripts/test-database.ts', ...args, '--invitations-only'],
+        process.env,
+        cwd,
+      ),
+    )
+  }
   console.info(`Starting isolated MySQL 8.4 project: ${project}`)
   run('docker', [...compose, 'up', '-d', '--wait', 'mysql'])
   const databaseAddress = () => {
@@ -532,7 +567,58 @@ try {
       ),
     )
   }
-  if (creationOnly && !requestedFreshInstall && !browserMode) {
+
+  if (invitationsOnly && !browserMode && !requestedFreshInstall) {
+    mkdirSync(previousMigrations)
+    const migrationDirectory = join(cwd, 'prisma/migrations')
+    const history = readdirSync(migrationDirectory).filter(
+      (name) => /^2026/.test(name) && name < invitationMigration,
+    )
+    for (const name of history) {
+      mkdirSync(join(previousMigrations, name))
+      copyFileSync(
+        join(migrationDirectory, name, 'migration.sql'),
+        join(previousMigrations, name, 'migration.sql'),
+      )
+    }
+    copyFileSync(
+      join(migrationDirectory, 'migration_lock.toml'),
+      join(previousMigrations, 'migration_lock.toml'),
+    )
+    writeFileSync(
+      previousConfig,
+      'export default {schema:' +
+        JSON.stringify(join(cwd, 'prisma/schema.prisma')) +
+        ',migrations:{path:' +
+        JSON.stringify(previousMigrations) +
+        '},datasource:{url:process.env.DATABASE_URL}}\n',
+    )
+    console.info(
+      run(
+        process.execPath,
+        ['scripts/prisma.ts', 'migrate', 'deploy', '--config', previousConfig],
+        migrationEnv,
+      ),
+    )
+    run(process.execPath, ['test/integration/product-fixture.ts'], env)
+    console.info(
+      run(
+        process.execPath,
+        [
+          'test/integration/invitation-upgrade.ts',
+          'before',
+          invitationUpgradeSnapshot,
+        ],
+        env,
+      ),
+    )
+  }
+  if (
+    creationOnly &&
+    !invitationsOnly &&
+    !requestedFreshInstall &&
+    !browserMode
+  ) {
     for (const migration of readdirSync(join(cwd, 'prisma/migrations'))
       .filter(
         (name) => /^2026/.test(name) && name < '20261119010000_order_creation',
@@ -573,6 +659,29 @@ try {
     ['scripts/prisma.ts', 'migrate', 'deploy'],
     migrationEnv,
   )
+  if (invitationsOnly && !browserMode && !requestedFreshInstall) {
+    console.info(
+      run(
+        process.execPath,
+        [
+          'test/integration/invitation-upgrade.ts',
+          'after',
+          invitationUpgradeSnapshot,
+        ],
+        env,
+      ),
+    )
+    const repeated = run(
+      process.execPath,
+      ['scripts/prisma.ts', 'migrate', 'deploy'],
+      migrationEnv,
+    )
+    if (!repeated.includes('No pending migrations to apply.'))
+      throw new Error(
+        'Expected repeat migration deployment to find no pending steps.',
+      )
+    console.info(repeated)
+  }
   if (!browserMode && !freshInstall) {
     console.info(
       run(
@@ -611,7 +720,12 @@ try {
   console.info(
     'Versioned migrations applied; repeated deploy has no pending migrations; database matches Prisma schema.',
   )
-  if (creationOnly && !requestedFreshInstall && !browserMode) {
+  if (
+    creationOnly &&
+    !invitationsOnly &&
+    !requestedFreshInstall &&
+    !browserMode
+  ) {
     console.info(
       run(
         process.execPath,
@@ -647,7 +761,7 @@ try {
     // Fresh runner-owned database, fictional login/settings fixtures; never Seed.
     run(process.execPath, ['test/integration/product-fixture.ts'], env)
   }
-  if (registrationOnly && !browserMode) {
+  if ((registrationOnly || invitationsOnly) && !browserMode) {
     for (const suite of [
       'auth.test.ts',
       'admin-storefront.test.ts',
@@ -754,7 +868,7 @@ try {
       try {
         const versions = await db.$queryRawUnsafe('SELECT COUNT(*) AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL');
         const tables = await db.$queryRawUnsafe('SELECT COUNT(*) AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()');
-        assert.equal(Number(versions[0].n), 14);
+        assert.equal(Number(versions[0].n), 15);
         assert.equal(Number(tables[0].n), 14);
         if (await db.user.count() === 0) {
           await db.user.create({ data: { loginEmail: 'model-fixture@example.com', role: 'ADMIN', status: 'DISABLED' } });
@@ -841,27 +955,36 @@ try {
           ...(splitBrowserProjects ? ['--project=mobile-edge'] : []),
           ...(coversOnly
             ? ['product-covers.spec.ts']
-            : registrationOnly
-              ? ['registration.spec.ts']
-              : purchaseOnly
-                ? ['customer-purchase.spec.ts']
-                : customerSubscriptionsOnly
-                  ? ['customer-subscriptions.spec.ts']
-                  : catalogOnly
-                    ? ['public-catalog.spec.ts']
-                    : customerCenterOnly
-                      ? ['customer-order-center.spec.ts']
-                      : adminCenterOnly
-                        ? ['admin-order-center.spec.ts']
-                        : fulfillmentOnly
-                          ? ['manual-fulfillment.spec.ts']
-                          : []),
+            : invitationsOnly
+              ? ['auth.spec.ts']
+              : registrationOnly
+                ? ['registration.spec.ts']
+                : purchaseOnly
+                  ? ['customer-purchase.spec.ts']
+                  : customerSubscriptionsOnly
+                    ? ['customer-subscriptions.spec.ts']
+                    : catalogOnly
+                      ? ['public-catalog.spec.ts']
+                      : customerCenterOnly
+                        ? ['customer-order-center.spec.ts']
+                        : adminCenterOnly
+                          ? ['admin-order-center.spec.ts']
+                          : fulfillmentOnly
+                            ? ['manual-fulfillment.spec.ts']
+                            : allBrowserFiles
+                              ? readdirSync(join(cwd, '../e2e')).filter(
+                                  (file) =>
+                                    file.endsWith('.spec.ts') &&
+                                    file !== 'auth.spec.ts',
+                                )
+                              : []),
           ...process.argv
             .slice(2)
             .filter(
               (argument) =>
                 ![
                   '--e2e',
+                  '--fresh',
                   '--products-only',
                   '--revisions-only',
                   '--creation-only',
@@ -874,6 +997,7 @@ try {
                   '--customer-orders-only',
                   '--customer-subscriptions-only',
                   '--registration-only',
+                  '--invitations-only',
                   '--catalog-only',
                   '--covers-only',
                   '--customer-purchase-only',
@@ -1004,6 +1128,21 @@ try {
     for (const filename of readdirSync(storageDirectory))
       unlinkSync(join(storageDirectory, filename))
     rmdirSync(storageDirectory)
+  }
+  if (existsSync(invitationUpgradeSnapshot))
+    unlinkSync(invitationUpgradeSnapshot)
+  if (existsSync(previousConfig)) unlinkSync(previousConfig)
+  if (existsSync(previousMigrations)) {
+    for (const name of readdirSync(previousMigrations, {
+      withFileTypes: true,
+    })) {
+      const path = join(previousMigrations, name.name)
+      if (name.isDirectory()) {
+        unlinkSync(join(path, 'migration.sql'))
+        rmdirSync(path)
+      } else unlinkSync(path)
+    }
+    rmdirSync(previousMigrations)
   }
   rmdirSync(directory)
 }

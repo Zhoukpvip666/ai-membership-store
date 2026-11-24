@@ -44,7 +44,8 @@ export const date = (value: string, timezone = 'Asia/Shanghai') =>
     month: '2-digit',
     day: '2-digit',
   }).format(new Date(value))
-export const mask = (value: string) => {
+export const mask = (value: string | null) => {
+  if (!value) return '待绑定邮箱'
   const [name, domain] = value.split('@')
   return domain
     ? name!.slice(0, 2) + '***@' + domain

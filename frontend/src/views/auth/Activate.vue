@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ApiError } from '../../api/client'
 import Brand from '../../components/Brand.vue'
-import { api } from '../../api/client'
+import { auth } from '../../stores/auth'
 const route = useRoute()
 const router = useRouter()
 const token = ref('')
+const email = ref('')
 const password = ref('')
 const confirmation = ref('')
 const busy = ref(false)
-const activated = ref(false)
 const error = ref('邀请链接无效，请联系管理员获取新链接')
 watch(
   () => route.hash,
@@ -18,8 +19,7 @@ watch(
     token.value = hash.slice(1)
     password.value = ''
     confirmation.value = ''
-    activated.value = false
-    busy.value = false
+    email.value = ''
     error.value = /^[A-Za-z0-9_-]{43}$/.test(token.value)
       ? ''
       : '邀请链接无效，请联系管理员获取新链接'
@@ -29,7 +29,7 @@ watch(
   { immediate: true },
 )
 async function activate() {
-  if (busy.value) return
+  if (busy.value || !/^[A-Za-z0-9_-]{43}$/.test(token.value)) return
   error.value = ''
   if (password.value !== confirmation.value) {
     error.value = '两次密码输入不一致'
@@ -38,20 +38,21 @@ async function activate() {
   busy.value = true
   const submittedToken = token.value
   try {
-    await api('/auth/activate', 'POST', {
-      token: submittedToken,
-      password: password.value,
-    })
-    if (token.value === submittedToken) activated.value = true
+    await auth.register(email.value, password.value, submittedToken)
+    if (token.value === submittedToken) await router.replace('/profile')
   } catch (cause) {
-    if (token.value === submittedToken)
-      error.value = cause instanceof Error ? cause.message : '激活失败'
-  } finally {
-    if (token.value === submittedToken) {
-      password.value = ''
-      confirmation.value = ''
-      busy.value = false
+    if (token.value !== submittedToken) return
+    if (cause instanceof ApiError && cause.code === 'NETWORK_ERROR') {
+      error.value =
+        '网络连接异常，注册结果尚未确认。你可以尝试用该邮箱和密码登录。'
+    } else {
+      error.value =
+        cause instanceof Error ? cause.message : '暂时无法注册，请稍后重试。'
     }
+  } finally {
+    password.value = ''
+    confirmation.value = ''
+    busy.value = false
   }
 }
 </script>
@@ -59,49 +60,54 @@ async function activate() {
   <main class="auth-shell">
     <div class="panel auth-panel">
       <Brand />
-      <h1>激活客户账户</h1>
-      <p class="inline-note">
-        localhost / 127.0.0.1
-        邀请链接只能在运行本项目的本机访问，不能从其他设备打开。本系统不会发送邮件。
-      </p>
-      <div v-if="activated" role="status">
-        <h2>账户激活成功</h2>
-        <p>现在可以使用登录邮箱和刚设置的密码登录。</p>
-        <RouterLink to="/login" class="outline-link">前往登录</RouterLink>
-      </div>
-      <template v-else>
-        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-        <ElForm v-if="token" label-position="top" @submit.prevent="activate">
-          <ElFormItem label="设置密码"
-            ><ElInput
-              v-model="password"
-              type="password"
-              autocomplete="new-password"
-              minlength="12"
-              maxlength="128"
-              aria-label="设置密码"
-              required
-              show-password
-          /></ElFormItem>
-          <ElFormItem label="确认密码"
-            ><ElInput
-              v-model="confirmation"
-              type="password"
-              autocomplete="new-password"
-              minlength="12"
-              maxlength="128"
-              aria-label="确认密码"
-              required
-              show-password
-          /></ElFormItem>
-          <p class="muted">
-            密码需为 12～128 字符。邀请有效期 7 天，且只能使用一次。
-          </p>
-          <ElButton type="primary" native-type="submit" :loading="busy"
-            >激活账户</ElButton
-          >
-        </ElForm>
-      </template>
+      <h1>通过邀请注册</h1>
+      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <ElForm
+        v-if="/^[A-Za-z0-9_-]{43}$/.test(token)"
+        label-position="top"
+        :disabled="busy"
+        @submit.prevent="activate"
+      >
+        <ElFormItem label="登录邮箱">
+          <ElInput
+            v-model="email"
+            type="email"
+            autocomplete="username"
+            maxlength="254"
+            aria-label="登录邮箱"
+            required
+          />
+        </ElFormItem>
+        <ElFormItem label="设置密码"
+          ><ElInput
+            v-model="password"
+            type="password"
+            autocomplete="new-password"
+            minlength="12"
+            maxlength="128"
+            aria-label="设置密码"
+            required
+            show-password
+        /></ElFormItem>
+        <ElFormItem label="确认密码"
+          ><ElInput
+            v-model="confirmation"
+            type="password"
+            autocomplete="new-password"
+            minlength="12"
+            maxlength="128"
+            aria-label="确认密码"
+            required
+            show-password
+        /></ElFormItem>
+        <p class="muted">
+          密码需为 12～128 字符。邀请有效期 7 天，且只能使用一次。
+        </p>
+        <ElButton type="primary" native-type="submit" :loading="busy"
+          >注册并登录</ElButton
+        >
+      </ElForm>
+      <RouterLink to="/login" class="outline-link">前往登录</RouterLink>
     </div>
   </main>
 </template>

@@ -1,7 +1,10 @@
 import { expect, test } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import { createDatabase } from '../backend/src/db/client.ts'
-import { integrationEnvironment } from '../backend/test/integration/support.ts'
+import {
+  activeCredentials,
+  integrationEnvironment,
+} from '../backend/test/integration/support.ts'
 import {
   COOKIE_NAME,
   newToken,
@@ -24,6 +27,7 @@ for (const role of ['ADMIN', 'CUSTOMER'] as const) {
             data: {
               loginEmail: randomUUID() + '@example.com',
               status: 'ACTIVE',
+              ...(await activeCredentials()),
             },
           })
     const target =

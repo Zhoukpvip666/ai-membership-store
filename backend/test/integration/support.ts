@@ -1,3 +1,4 @@
+import { hashPassword } from '../../src/modules/auth/security.ts'
 import {
   parseEnvironment,
   parseLocalSeedEnvironment,
@@ -24,4 +25,14 @@ export function integrationEnvironment() {
     )
   }
   return env
+}
+
+let fixturePasswordHash: Promise<string> | undefined
+
+export async function activeCredentials() {
+  fixturePasswordHash ??= hashPassword('IsolatedNonLoginFixture2357!')
+  return {
+    passwordHash: await fixturePasswordHash,
+    activatedAt: new Date(),
+  }
 }

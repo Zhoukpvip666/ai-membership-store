@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { adminName } from '../../../stores/user-name'
 import { computed, onMounted, ref, toRaw } from 'vue'
 import {
   api,
@@ -176,7 +177,7 @@ onMounted(() => {
                 :key="c.id"
                 :value="c.id"
                 :label="
-                  (c.adminLabel || c.username || c.loginEmail) +
+                  adminName(c) +
                   (c.status === 'PENDING_ACTIVATION' ? '（待激活）' : '')
                 " /></ElSelect
           ></ElFormItem>

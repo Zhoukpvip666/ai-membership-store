@@ -13,7 +13,7 @@ import {
   newToken,
   tokenHash,
 } from '../../src/modules/auth/security.ts'
-import { integrationEnvironment } from './support.ts'
+import { activeCredentials, integrationEnvironment } from './support.ts'
 import { businessSnapshot } from './order-source-support.ts'
 import { buildOrderSnapshot } from '../../src/modules/orders/revisions.ts'
 
@@ -86,6 +86,7 @@ before(async () => {
         loginEmail: 'orders-owner@example.com',
         role: 'ADMIN',
         status: 'ACTIVE',
+        ...(await activeCredentials()),
       },
     }))
   alice = await db.user.create({
@@ -95,7 +96,7 @@ before(async () => {
       adminLabel: 'PRIVATE_ALICE_LABEL',
       role: 'CUSTOMER',
       status: 'ACTIVE',
-      passwordHash: 'synthetic-not-a-login-hash',
+      ...(await activeCredentials()),
       notificationEmail: 'alice-notifications@example.com',
     },
   })
@@ -106,6 +107,7 @@ before(async () => {
       adminLabel: 'PRIVATE_BOB_LABEL',
       role: 'CUSTOMER',
       status: 'ACTIVE',
+      ...(await activeCredentials()),
     },
   })
   pending = await db.user.create({
@@ -506,7 +508,7 @@ test('ADMIN searches order number, public customer names/email, private labels a
   ]) {
     for (const key of ['customer', 'search']) {
       const result = await request(
-        '/admin/orders?' + key + '=' + encodeURIComponent(customer),
+        '/admin/orders?' + key + '=' + encodeURIComponent(customer!),
       )
       assert.equal(
         result.body.total,
@@ -970,6 +972,7 @@ test('ADMIN and CUSTOMER list/detail DTOs match independent complete key allowli
         assertKeys(order.customer, [
           'id',
           'username',
+          'adminLabel',
           'loginEmail',
           'notificationEmail',
         ])
@@ -985,7 +988,7 @@ test('ADMIN and CUSTOMER list/detail DTOs match independent complete key allowli
   }
 })
 
-test('DTOs exclude authentication, audit, payment references and private labels; only ADMIN receives internalNote', async () => {
+test('DTOs exclude authentication, audit, payment references and private labels and internal notes are ADMIN-only', async () => {
   for (const [prefix, cookie] of [
     ['/admin', cookies.admin],
     ['/customer', cookies.alice],
@@ -1001,14 +1004,12 @@ test('DTOs exclude authentication, audit, payment references and private labels;
         'passwordHash',
         'tokenHash',
         'membership_session',
-        'adminLabel',
         'beforeJson',
         'afterJson',
         'requestId',
         'renewalRequestKeyHash',
         'renewalRequestHash',
         'paymentRecordedAt',
-        'PRIVATE_ALICE_LABEL',
         'PRIVATE_EVENT_',
         'PRIVATE_AUDIT_',
         'PRIVATE_PAYMENT_',
@@ -1018,6 +1019,8 @@ test('DTOs exclude authentication, audit, payment references and private labels;
       assert.equal(result.headers.get('cache-control'), 'no-store')
       assert(result.headers.get('x-request-id'))
       if (prefix === '/customer') {
+        assert(!text.includes('adminLabel'))
+        assert(!text.includes('PRIVATE_ALICE_LABEL'))
         assert(!text.includes('internalNote'))
         assert(!text.includes('PRIVATE_ORDER_NOTE'))
         for (const other of [
@@ -1031,7 +1034,7 @@ test('DTOs exclude authentication, audit, payment references and private labels;
           'cancellationReason',
         ])
           assert(
-            !text.includes(other),
+            other === null || !text.includes(other),
             'Customer DTO exposed another identity or internal field.',
           )
       }

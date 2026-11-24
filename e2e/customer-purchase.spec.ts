@@ -10,7 +10,10 @@ import {
   tokenHash,
 } from '../backend/src/modules/auth/security.ts'
 import { purchaseSchema } from '../backend/test/integration/purchase-fixture.ts'
-import { integrationEnvironment } from '../backend/test/integration/support.ts'
+import {
+  activeCredentials,
+  integrationEnvironment,
+} from '../backend/test/integration/support.ts'
 
 const env = integrationEnvironment()
 const db = createDatabase(env.DATABASE_URL)
@@ -45,6 +48,7 @@ async function customer(login = false) {
       loginEmail: randomUUID() + '@purchase.example',
       role: 'CUSTOMER',
       status: 'ACTIVE',
+      ...(await activeCredentials()),
       ...(login ? { passwordHash: await hashPassword(fixturePassword) } : {}),
     },
   })
@@ -110,7 +114,7 @@ test('guest buys from detail and returns to the same product after real login', 
   await expectLogin(page, destination)
   expect(reads).toEqual([])
   await db.product.update({ where: { id: item.id }, data: { priceFen: 4900 } })
-  await logIn(page, user.loginEmail)
+  await logIn(page, user.loginEmail!)
   await expect(page).toHaveURL(destination)
   await expect(input(page, '账号标识')).toBeVisible()
   await expect(page.getByRole('heading', { name: item.name })).toBeVisible()
@@ -140,7 +144,7 @@ test('ADMIN storefront login resumes the destination, including after expiry and
   })
   await page.goto(destination)
   await expectLogin(page, destination)
-  await logIn(page, admin.loginEmail, env.ADMIN_PASSWORD)
+  await logIn(page, admin.loginEmail!, env.ADMIN_PASSWORD)
   await expect(page).toHaveURL(destination)
   await expect(input(page, '账号标识')).toBeVisible()
   expect(reads).toEqual([purchaseApi + item.slug])
@@ -154,7 +158,7 @@ test('ADMIN storefront login resumes the destination, including after expiry and
   })
   await page.goto('/subscriptions')
   await expectLogin(page, '/subscriptions')
-  await logIn(page, admin.loginEmail, env.ADMIN_PASSWORD)
+  await logIn(page, admin.loginEmail!, env.ADMIN_PASSWORD)
   await expect(page).toHaveURL('/subscriptions')
   await page.goto('/profile')
   await page.getByRole('button', { name: '退出登录', exact: true }).click()
@@ -180,7 +184,7 @@ test('login rejects external, traversal and encoded redirect destinations', asyn
     '/purchase/a%2Fb',
   ]) {
     await page.goto('/login?' + new URLSearchParams({ redirect: target }))
-    await logIn(page, user.loginEmail)
+    await logIn(page, user.loginEmail!)
     await expect(page).toHaveURL('/profile')
   }
 })
@@ -483,7 +487,7 @@ test('guest opens the catalog, signs in, reviews, and creates exactly one payabl
       .click()
     await buy(page).click()
     await expectLogin(page, '/purchase/' + item.slug)
-    await logIn(page, user.loginEmail)
+    await logIn(page, user.loginEmail!)
     await review(page, 'discarded-review')
     await page.getByRole('button', { name: '返回修改' }).click()
     await expect(confirmOrder(page)).toHaveCount(0)

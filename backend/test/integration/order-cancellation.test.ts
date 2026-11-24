@@ -19,7 +19,7 @@ import {
   cancellationSelect,
 } from '../../src/modules/orders/cancel.ts'
 import { orderTimeoutService } from '../../src/modules/orders/timeout.ts'
-import { integrationEnvironment } from './support.ts'
+import { activeCredentials, integrationEnvironment } from './support.ts'
 import { businessSnapshot } from './order-source-support.ts'
 
 const env = integrationEnvironment(),
@@ -226,11 +226,12 @@ function gate() {
 }
 before(async () => {
   admin = await db.user.findFirstOrThrow({ where: { role: 'ADMIN' } })
-  const user = (status: User['status']) =>
+  const user = async (status: User['status']) =>
     db.user.create({
       data: {
         role: 'CUSTOMER',
         status,
+        ...(status === 'ACTIVE' ? await activeCredentials() : {}),
         loginEmail: randomUUID() + '@example.com',
         username: 'Customer',
         adminLabel: 'PRIVATE_LABEL',

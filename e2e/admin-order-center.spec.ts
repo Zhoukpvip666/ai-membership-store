@@ -1,7 +1,10 @@
 import { expect, test, type Page, type BrowserContext } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import { createDatabase } from '../backend/src/db/client.ts'
-import { integrationEnvironment } from '../backend/test/integration/support.ts'
+import {
+  activeCredentials,
+  integrationEnvironment,
+} from '../backend/test/integration/support.ts'
 import {
   COOKIE_NAME,
   newToken,
@@ -27,9 +30,10 @@ async function setup(
   const admin = await db.user.findFirstOrThrow({ where: { role: 'ADMIN' } })
   const customer = await db.user.create({
     data: {
-      loginEmail: marker + '@example.com',
+      loginEmail: active ? marker + '@example.com' : null,
       username: 'Customer ' + marker,
       status: active ? 'ACTIVE' : 'PENDING_ACTIVATION',
+      ...(active ? await activeCredentials() : {}),
     },
   })
   const product = await db.product.create({
@@ -94,7 +98,7 @@ async function create(
   const form = dialog(page, '新建订单')
   await form
     .getByRole('combobox', { name: '选择客户' })
-    .fill(data.customer.loginEmail)
+    .fill(data.customer.username!)
   await page
     .getByRole('option', { name: new RegExp(data.customer.username!) })
     .click()
@@ -610,7 +614,7 @@ test('credential-collecting catalog forms are blocked before entering data or su
   const form = dialog(page, '新建订单')
   await form
     .getByRole('combobox', { name: '选择客户' })
-    .fill(data.customer.loginEmail)
+    .fill(data.customer.username!)
   await page
     .getByRole('option', { name: new RegExp(data.customer.username!) })
     .click()

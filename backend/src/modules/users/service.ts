@@ -41,11 +41,13 @@ export function customerService(database: PrismaClient, appBaseUrl: string) {
       const where = {
         role: 'CUSTOMER' as const,
         status: input.status,
-        OR: [
-          { adminLabel: { contains: input.search } },
-          { username: { contains: input.search } },
-          { loginEmail: { contains: input.search } },
-        ],
+        OR: input.search
+          ? [
+              { adminLabel: { contains: input.search } },
+              { username: { contains: input.search } },
+              { loginEmail: { contains: input.search } },
+            ]
+          : undefined,
       }
       const [items, total] = await database.$transaction([
         database.user.findMany({
@@ -83,8 +85,7 @@ export function customerService(database: PrismaClient, appBaseUrl: string) {
       return transaction(database, async (tx) => {
         const user = await tx.user.create({
           data: {
-            ...input,
-            notificationEmail: input.notificationEmail ?? null,
+            adminLabel: input.adminLabel,
             role: 'CUSTOMER',
             status: 'PENDING_ACTIVATION',
             createdByAdminId: actorId,
@@ -111,13 +112,20 @@ export function customerService(database: PrismaClient, appBaseUrl: string) {
       requestId: string,
     ) {
       return transaction(database, async (tx) => {
+        const profile = await tx.user.findFirst({
+          where: { id: userId, role: 'CUSTOMER' },
+          select: { loginEmail: true, activatedAt: true },
+        })
+        if (!profile) throw missing()
         if (
-          !(await tx.user.findFirst({
-            where: { id: userId, role: 'CUSTOMER' },
-            select: { id: true },
-          }))
+          input.notificationEmail &&
+          (!profile.loginEmail || !profile.activatedAt)
         )
-          throw missing()
+          throw new ApiError(
+            409,
+            'CUSTOMER_NOT_CLAIMED',
+            '客户绑定登录邮箱后才能设置通知邮箱',
+          )
         const user = await tx.user.update({
           where: { id: userId },
           data: input,
@@ -149,7 +157,7 @@ export function customerService(database: PrismaClient, appBaseUrl: string) {
         if (!user) throw missing()
         const status = input.disabled
           ? 'DISABLED'
-          : user.activatedAt && user.passwordHash
+          : user.activatedAt && user.passwordHash && user.loginEmail
             ? 'ACTIVE'
             : 'PENDING_ACTIVATION'
         if (status === user.status)
@@ -194,8 +202,9 @@ export function customerService(database: PrismaClient, appBaseUrl: string) {
         if (!user) throw missing()
         if (
           user.status !== 'PENDING_ACTIVATION' ||
-          user.passwordHash ||
-          user.activatedAt
+          user.loginEmail !== null ||
+          user.passwordHash !== null ||
+          user.activatedAt !== null
         )
           throw new ApiError(409, 'CONFLICT', '仅待激活客户可以生成邀请')
         const now = new Date()
