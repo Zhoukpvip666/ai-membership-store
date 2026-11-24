@@ -1,8 +1,8 @@
 # Local Operations API Contract (Task 1.2 and Phase 2)
 
- > **T25 implemented API override (PR #54):** See [T25 contract](34-customer-claim-registration.md). `POST /admin/users` accepts only `{adminLabel}`. `POST /auth/register` accepts `{email,password,invitationToken?}`: without a token it performs ordinary registration; with a token it atomically claims the invited pending User, consumes the invitation and creates the normal Session. The existing `/activate#TOKEN` UI link and invitation issue/revoke/expiry rules remain. `POST /auth/activate` is removed and returns 404. The route and payload descriptions below that refer to password-only activation or required admin-supplied login email are historical.
+ > **T25 current API override (merged PR #54):** See [T25 contract](34-customer-claim-registration.md). `POST /admin/users` accepts only `{adminLabel}`. `POST /auth/register` accepts `{email,password,invitationToken?}`: without a token it performs ordinary registration; with a token it atomically claims the invited pending User, consumes the invitation and creates the normal Session. The existing `/activate#TOKEN` UI link and invitation issue/revoke/expiry rules remain. `POST /auth/activate` is removed and returns 404. The route and payload descriptions below that refer to password-only activation or required admin-supplied login email are historical.
 
-> **Merged snapshot (2026-11-23, Asia/Shanghai):** Reconciled against `main` at `105e1514e6ce97853d5e83d0b5c131df6872551b`. See [project status](00-project-status.md) for the current implementation boundary. Milestone reports and test results below retain their original scope; this documentation update does not rerun tests or establish deployment status.
+> **Merged snapshot (2026-11-24, Asia/Shanghai):** Reconciled through T25 PR #54 at `234397bb5ba3c7c009f63a0a8f53cc6bfae3e374`. See [project status](00-project-status.md) for the current implementation boundary. Historical milestone reports and test results below retain their original scope; this documentation update does not rerun tests or establish deployment status.
 
 Base path: /api/v1. Payloads are JSON except for the explicitly documented binary image upload/read routes. Timestamps are UTC ISO-8601. Money is integer CNY fen. Validate all input with Zod or an equivalent schema validator. This contract covers the local-only offline operations milestone; online payment and supplier/email APIs are deliberately absent.
 
@@ -67,11 +67,11 @@ The final model supports only USER/ADMIN/SYSTEM_RENEWAL. Migration ten removes t
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | /auth/register | Create an ACTIVE CUSTOMER and sign in with the existing Session cookie |
+| POST | /auth/register | Ordinary registration or invitation claim; create/claim CUSTOMER and sign in with Session cookie |
 | POST | /auth/login | Admin/customer login |
 | POST | /auth/logout | Revoke current session |
 | GET | /auth/me | Current account and role |
-| POST | /auth/activate | Consume one-time invitation token and set customer password |
+| POST | /auth/activate | Removed; returns HTTP 404. The existing `/activate#TOKEN` UI submits to `/auth/register`. |
 
 Admin is seeded from local environment configuration. Accounts provisioned by an administrator require a valid, unused, unexpired invitation token to activate. The raw invitation token is never returned by a read endpoint and is never emailed.
 
@@ -80,41 +80,41 @@ Admin is seeded from local environment configuration. Accounts provisioned by an
 - Login: JSON `{email, password}`; email is trimmed/lowercased. Password is 12–128 characters and is never trimmed before hashing/verifying. Invalid, inactive or unknown accounts share HTTP 401 `INVALID_CREDENTIALS`. Success returns `{user}` containing only public account fields and sets the session cookie; no token is returned in JSON.
 - Current account: `GET /auth/me` returns `{user}` or HTTP 401. Each protected request checks the persisted session expiry/revocation and current ACTIVE account status.
 - Logout: JSON `{}`; revoke the current session and clear its cookie, HTTP 204. Repeated logout is safe.
-- Activation: JSON `{token, password}`; success is HTTP 200 `{status:"activated"}`, with no implicit login. Expired/revoked/used/unknown tokens or non-pending customers return the same HTTP 409 `INVITATION_INVALID`. Token consumption/account activation and other unused-token/session revocation are atomic.
+- **Historical password-only activation (superseded by T25):** the old `POST /auth/activate` contract no longer exists and returns HTTP 404. The existing `/activate#TOKEN` page parses and clears the fragment, then submits `{email,password,invitationToken}` to `POST /auth/register`. A valid invitation atomically claims the pre-created User, consumes the invitation, revokes other unused invitations/sessions, and creates a new Session; success is HTTP 201 `{user}` with the standard session cookie.
 - Password hashing uses Argon2id with the same parameters as the bootstrap seed. Sessions and invitations use independent random 32-byte base64url tokens; only SHA-256 hashes are stored.
 - Session lifetime is fixed at 12 hours, with no rolling extension. The host-only `membership_session` cookie has `HttpOnly`, `SameSite=Strict`, `Path=/` and `Max-Age=43200`. `Secure` is set for HTTPS APP_BASE_URL and omitted only for local HTTP.
 - All JSON mutation requests require an Origin exactly matching APP_BASE_URL, `X-Requested-With: MembershipStore` and Content-Type application/json. No permissive CORS is enabled. Browser fetch uses the same-origin Vite proxy; open the exact configured frontend origin.
-- Login and activation each allow 30 requests per 15 minutes per source IP. Admin mutations allow 120 per 15 minutes per IP. Limits are bounded and local to the API process; a restart clears them.
+- Login allows 30 requests per 15 minutes per source IP. Registration (ordinary or invitation) allows 5 requests per 15 minutes per connection IP. Admin mutations allow 120 per 15 minutes per IP. Limits are bounded and local to the API process; a restart clears them.
 - Error shape: `{error:{code,message,requestId}}`. Request IDs are server-generated. Responses are no-store; validation/database failures do not expose input, credentials, driver messages or hashes.
 
 ### Storefront registration (T24.4B.2)
 
-POST /auth/register accepts exactly email and password. It reuses the email normalization and password validation used by login. The account starts as ACTIVE CUSTOMER, sets activatedAt on registration and has a null createdByAdminId. Registration returns HTTP 201 with the same safe user projection and 12-hour cookie used by login. One transaction inserts both the account and its Session.
+`POST /auth/register` accepts `{email,password,invitationToken?}`. Without `invitationToken`, it performs ordinary registration: create a new ACTIVE CUSTOMER with `createdByAdminId = NULL`, then create a Session in the same transaction. With `invitationToken`, it performs T25 claim registration: validate the existing one-time invitation and its pending, unclaimed CUSTOMER; update that same User ID with the normalized email, Argon2id password hash and activation time; consume the invitation; revoke other unused invitations/sessions; and create a Session in one transaction. Both branches return HTTP 201 `{user}` with the standard 12-hour cookie.
 
-HTTP 409 EMAIL_EXISTS applies to any existing normalized email, including pending invitations and administrator accounts. HTTP 409 ALREADY_AUTHENTICATED rejects a request with a valid active Session. Malformed input returns 400, CSRF failures return 403 and a separate five-attempt registration window returns 429 with Retry-After on the sixth attempt from the same connection IP within 15 minutes. If the response is lost, the user can sign in using the same credentials.
+HTTP 409 `EMAIL_EXISTS` applies to any existing normalized email, including ADMIN accounts and other claimed/pending identities. A duplicate email does not consume the invitation, so the customer can retry with another available email while the invitation remains valid. HTTP 409 `ALREADY_AUTHENTICATED` rejects a request with a valid active Session. Invalid, expired, revoked, used or raced invitation claims return `INVITATION_INVALID`; an invitation failure never falls back to ordinary registration. Malformed input returns 400, CSRF failures return 403 and registration has a five-attempt window per connection IP within 15 minutes. If the response is lost after commit, the customer can sign in using the selected credentials.
 
 ## 3. Admin customers and invitations
 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | /admin/users | Search/list customers |
-| POST | /admin/users | Create a PENDING_ACTIVATION customer |
+| POST | /admin/users | Create a label-only PENDING_ACTIVATION customer record (no login email) |
 | GET | /admin/users/:id | Customer detail and order/subscription counts |
 | PATCH | /admin/users/:id | Update private label/notification email |
 | PATCH | /admin/users/:id/status | Disable/enable customer account |
 | POST | /admin/users/:id/invitations | Generate/reissue invitation and return copyable URL once |
 | POST | /admin/invitations/:id/revoke | Revoke an unused invitation |
 
-Creating a user and creating a subscription are independent. A pending customer may have orders and subscriptions. Reissuing an invitation revokes previous unused tokens. The UI must warn that localhost invitation URLs are not externally reachable.
+Creating a customer record and creating orders/subscriptions are independent. A pending customer may have orders and subscriptions before claiming the record. Reissuing an invitation revokes previous unused tokens. The existing invitation URL remains `APP_BASE_URL/activate#TOKEN`; the page uses the unified registration API. Localhost links are only reachable from the host machine.
 
 ### Implemented customer payloads
 
 - List query: optional search, status (PENDING_ACTIVATION/ACTIVE/DISABLED), page (1–10000, default 1), pageSize (1–100, default 20). Response: `{items,total,page,pageSize}`; each item contains public account fields and `_count:{orders,subscriptions}`. Only CUSTOMER rows are listed.
-- Create: `{adminLabel?,loginEmail,notificationEmail?}`. adminLabel is nullable or 1–80 trimmed characters; username is customer-owned and cannot be assigned by admin; emails are validated, normalized and at most 254 characters. Null/omitted notification email falls back to login email in the UI. Response HTTP 201 `{user}`; account is CUSTOMER/PENDING_ACTIVATION with null passwordHash and activatedAt. Duplicate email returns 409 EMAIL_EXISTS.
+- Create (T25): strict `{adminLabel}` with a required 1–80 character trimmed label. The new CUSTOMER is `PENDING_ACTIVATION`; `loginEmail`, `notificationEmail`, `passwordHash` and `activatedAt` are NULL. The administrator cannot supply login credentials or notification email. Response HTTP 201 `{user}`.
 - Detail: `{user}`, including real order/subscription counts and the latest 10 invitation metadata rows (id/createdAt/expiresAt/usedAt/revokedAt). No password/token hash or original URL is exposed.
-- Edit: nonempty `{adminLabel?,notificationEmail?}`. Login email is immutable after creation, matching the profile-only PATCH contract. Supplied role, status, password, passwordHash or unknown fields are rejected with 400; administrators cannot set customer passwords.
+- Edit: nonempty `{adminLabel?,notificationEmail?}`. Login email is always customer-chosen and cannot be set/changed by ADMIN. Notification email may be edited only after the customer has claimed the record; unclaimed profiles keep it NULL. Supplied loginEmail, role, status, password, passwordHash or unknown fields are rejected with 400.
 - Status: `{disabled:boolean,reason:string}` (1–500 trimmed characters). Disabling revokes all sessions and unused invitations atomically, preserving orders/subscriptions. Restoring returns to ACTIVE only for an already activated/password-bearing account, otherwise PENDING_ACTIVATION. Repeating the current status returns 409.
-- Issue/reissue: JSON `{}`, allowed only for unactivated PENDING_ACTIVATION customers. Response HTTP 201 `{invitation,url}`; invitation contains safe metadata only, and url is returned once. It has the form APP_BASE_URL/activate#TOKEN so the browser never sends the token in a URL to the web server; the activation page removes the fragment from browser history and submits the token only in the activation body. Regeneration transactionally revokes earlier unused invitations.
+- Issue/reissue: JSON `{}`, allowed only for unclaimed PENDING_ACTIVATION customers with NULL loginEmail/passwordHash/activatedAt. Response HTTP 201 `{invitation,url}`; invitation contains safe metadata only, and url is returned once. It retains `APP_BASE_URL/activate#TOKEN` so the browser never sends the token in a request URL; the page removes the fragment from browser history and submits the token in the `POST /auth/register` body as `invitationToken`. Regeneration transactionally revokes earlier unused invitations.
 - Revoke: JSON `{}`; HTTP 204. Already used/revoked invitations return 409. The UI retains no recoverable URL after closing the detail.
 - Customer creation/edit/disable/restore, invitation issue/revoke and administrator login/logout append sanitized audit records transactionally. Audit snapshots omit names/emails, raw tokens and password/token hashes; edit logs name changed fields only.
 
