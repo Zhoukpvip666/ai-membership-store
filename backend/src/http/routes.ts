@@ -9,6 +9,7 @@ import {
 } from '../modules/auth/security.ts'
 import { customerService } from '../modules/users/service.ts'
 import * as schemas from '../modules/users/schemas.ts'
+import { settingsService } from '../modules/settings/service.ts'
 import { wechatPaymentRoutes } from '../modules/settings/wechat-routes.ts'
 import { ApiError } from './errors.ts'
 import { csrf, rateLimit } from './security.ts'
@@ -37,7 +38,11 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
     path: '/',
   }
   const sessionCookieOptions = { ...cookieOptions, maxAge: SESSION_MS }
+  const settings = settingsService(database)
   router.use(csrf(env.APP_BASE_URL))
+  router.get('/storefront/config', async (_request, response) => {
+    response.json(await settings.publicConfig())
+  })
   router.use(
     '/catalog',
     publicCatalogRoutes(database, env.PRODUCT_COVER_STORAGE_DIR),

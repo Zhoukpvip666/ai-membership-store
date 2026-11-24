@@ -604,12 +604,30 @@ test('settings persist only allowed fields, leave admin identity unchanged and a
     storeName: 'Persisted settings',
     ownerEmail: 'notifications@example.com',
     timezone: 'UTC',
+    paymentInstructions: 'Private order payment instructions',
   }
   assert.equal((await request('/admin/settings', 'PATCH', input)).status, 200)
   const saved = (await request('/admin/settings')).body.settings
   assert.equal(saved.storeName, input.storeName)
   assert.equal(saved.ownerEmail, input.ownerEmail)
   assert.equal(saved.timezone, input.timezone)
+  assert.equal(saved.paymentInstructions, input.paymentInstructions)
+  const publicConfig = await request('/storefront/config', 'GET', undefined, '')
+  assert.equal(publicConfig.status, 200)
+  assert.deepEqual(publicConfig.body, { storeName: input.storeName })
+  assert.equal(publicConfig.headers.get('cache-control'), 'no-store')
+  assert.equal(publicConfig.headers.get('set-cookie'), null)
+  assert.equal(
+    (
+      await request(
+        '/storefront/config',
+        'PATCH',
+        { storeName: 'Public write' },
+        '',
+      )
+    ).status,
+    404,
+  )
   assert.deepEqual(
     await db.user.findUniqueOrThrow({ where: { id: adminId } }),
     admin,

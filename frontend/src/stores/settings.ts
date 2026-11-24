@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
 import { api } from '../api/client'
+import { storefront } from './storefront'
 import type { AppSettings } from '../api/products'
 const state = reactive({
   value: {
@@ -46,6 +47,7 @@ export const settings = {
     ).settings
     state.loaded = true
     state.error = ''
+    void storefront.load()
     return state.value
   },
 }

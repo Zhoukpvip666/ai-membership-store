@@ -46,7 +46,7 @@ async function readAccount(signal: AbortSignal) {
     state.error =
       error instanceof ApiError && error.status === 401
         ? ''
-        : '无法连接本地 API，请确认后端已启动'
+        : '暂时无法验证登录状态，请稍后重试'
   } finally {
     if (!signal.aborted) {
       state.checked = true

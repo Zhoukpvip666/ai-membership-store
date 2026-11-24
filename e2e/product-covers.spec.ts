@@ -97,13 +97,38 @@ test('product covers preserve a centered 4:3 layout and fall back for absent or 
     )
     expect(response.status()).toBe(200)
   }
+  const storeName = '星桥会员商店'
+  expect(
+    (
+      await page.request.patch('/api/v1/admin/settings', {
+        headers: csrf,
+        data: { storeName },
+      })
+    ).status(),
+  ).toBe(200)
   await page.context().clearCookies()
+  const adminCalls: string[] = []
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname
+    if (path.startsWith('/api/v1/admin/')) adminCalls.push(path)
+  })
   await page.goto('/')
+  await expect(page.locator('.store-header .brand')).toHaveText(storeName)
+  await expect(page.locator('.store-footer')).toHaveText(storeName)
+  await expect(page).toHaveTitle(storeName)
+  await expect(page.getByText('预览环境', { exact: true })).toHaveCount(0)
   const search = page.getByRole('textbox', { name: '搜索商品', exact: true })
   await search.fill(marker)
   await search.press('Enter')
   const cards = page.locator('.product-card')
   await expect(cards).toHaveCount(4)
+  expect(
+    await page
+      .locator('.product-grid')
+      .evaluate(
+        (grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length,
+      ),
+  ).toBe(info.project.name === 'mobile-edge' ? 2 : 3)
   for (const [index, product] of products.entries()) {
     const cover = cards
       .filter({ hasText: product.name })
@@ -141,6 +166,7 @@ test('product covers preserve a centered 4:3 layout and fall back for absent or 
     expect(coverBox.y + coverBox.height).toBeLessThanOrEqual(purchaseBox.y)
   else expect(coverBox.x + coverBox.width).toBeLessThan(purchaseBox.x)
   await page.evaluate(() => window.scrollTo(0, 0))
+  await expect(page).toHaveTitle(storeName)
   await screenshot(page, info, 'detail-cover')
 
   await page.route(
@@ -151,6 +177,19 @@ test('product covers preserve a centered 4:3 layout and fall back for absent or 
   )
   await page.reload()
   await expect(detail.locator('.product-cover-placeholder')).toBeVisible()
+
+  await page.getByRole('button', { name: '立即购买', exact: true }).click()
+  await expect(page).toHaveURL(
+    (url) =>
+      url.pathname === '/login' &&
+      url.searchParams.get('redirect') === '/purchase/' + products[0].slug,
+  )
+  await expect(page.locator('.auth-panel .brand')).toHaveText(storeName)
+  await expect(page).toHaveTitle(storeName)
+  await expect(
+    page.getByText('登录后可继续购买商品、查看自己的订单和订阅。'),
+  ).toBeVisible()
+  expect(adminCalls).toEqual([])
 })
 
 test('admin can queue a cover when creating a product then preview, replace and delete it', async ({

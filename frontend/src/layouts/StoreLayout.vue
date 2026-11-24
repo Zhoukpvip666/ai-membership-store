@@ -10,14 +10,13 @@ import Brand from '../components/Brand.vue'
 import { auth } from '../stores/auth'
 import { watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { settings } from '../stores/settings'
+import { storefront } from '../stores/storefront'
 
 const route = useRoute()
 watch(
   () => auth.state.user?.role,
   (role, _previous, onCleanup) => {
     if (role !== 'ADMIN') return
-    void settings.load().catch(() => {})
     const refreshSession = () => {
       if (!document.hidden) void auth.load(true)
     }
@@ -97,8 +96,7 @@ function currentPage(path: string) {
       <RouterView />
     </main>
     <footer class="store-footer store-container">
-      <span>{{ settings.state.value.storeName }}</span>
-      <span class="store-preview-label">预览环境</span>
+      {{ storefront.state.storeName }}
     </footer>
     <nav class="store-bottom-nav" aria-label="移动端用户导航">
       <RouterLink

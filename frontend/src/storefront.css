@@ -149,13 +149,6 @@
   border-top: 1px solid var(--store-line);
   overflow-wrap: anywhere;
 }
-.store-shell .store-preview-label {
-  flex: none;
-  border: 1px solid var(--store-line);
-  border-radius: var(--store-radius-sm);
-  padding: var(--store-space-1) var(--store-space-2);
-  background: var(--store-surface);
-}
 .store-shell .store-bottom-nav {
   display: none;
 }

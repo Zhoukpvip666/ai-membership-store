@@ -8,7 +8,7 @@ The storefront has progressed through the merged T24 additions, including regist
 
 ## Current priority — customer-facing storefront launch
 
-Prioritize the customer-facing storefront over the Mock operating overview. The [launch preparation draft](30-storefront-launch-preparation.md) records the direction. Customer order detail polish, T23.1 application readiness and T23.2 infrastructure merged in PR #49 through #51. T23.3 backup and monitoring is the current review. Deployment rehearsal and controlled launch remain separately scoped.
+[T23.5-8 storefront launch polish](30-storefront-launch-preparation.md) is implemented and pending review. It adds public store branding, current customer copy and an explicit demonstration label for the operating overview. Release deployment and opening traffic are separate steps.
 
 ## Order creation API — merged
 
@@ -133,7 +133,7 @@ Reuses all twelve migrations unchanged. Both manual handlers share the locked at
 
 ## T23 — Production deployment readiness
 
-**Status** — T23.0 design, T23.1 application readiness and T23.2 infrastructure merged in PR #37, #50 and #51. T23.3 backup and monitoring is under review. The [Seoul readiness audit](28-production-deployment-design.md) is historical. See the [status index](00-project-status.md) for the current repository snapshot.
+**Status** — T23.0 design, T23.1 application readiness and T23.2 infrastructure merged in PR #37, #50 and #51. T23.3 backup and monitoring merged in PR #52. The [Seoul readiness audit](28-production-deployment-design.md) is historical. See the [status index](00-project-status.md) for the current repository snapshot.
 
 - T23.1 — Production configuration and first ADMIN. The [Clean Install guide](31-production-clean-install.md) covers the HTTPS profile, separate database accounts, proxy trust, explicit migration and bootstrap, and service drain.
 - T23.2 — Caddy, systemd and MySQL deployment definitions. The [infrastructure guide](32-production-infrastructure.md) records the templates, Linux release build, checksum/installation and rollback tooling, and candidate ports.

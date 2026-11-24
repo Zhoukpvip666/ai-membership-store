@@ -60,7 +60,10 @@ async function logout() {
         </div>
       </dl>
       <p class="muted">
-        本阶段支持账户激活与登录。密码修改和真实订单、订阅历史将在后续任务提供。
+        在<RouterLink to="/account/orders">我的订单</RouterLink
+        >查看订单和付款进度，在<RouterLink to="/subscriptions"
+          >我的订阅</RouterLink
+        >查看服务状态与到期时间。
       </p>
       <p v-if="error" role="alert" class="form-error">{{ error }}</p>
       <ElButton @click="logout">退出登录</ElButton>

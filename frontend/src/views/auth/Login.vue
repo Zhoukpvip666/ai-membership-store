@@ -52,7 +52,9 @@ async function submit() {
     <div class="panel auth-panel">
       <Brand />
       <h1>{{ admin ? '管理员登录' : '客户登录' }}</h1>
-      <p v-if="!admin" class="muted">登录后可查看个人订单与订阅。</p>
+      <p v-if="!admin" class="muted">
+        登录后可继续购买商品、查看自己的订单和订阅。
+      </p>
       <p v-if="error || auth.state.error" class="form-error" role="alert">
         {{ error || auth.state.error }}
       </p>

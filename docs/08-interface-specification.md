@@ -48,7 +48,7 @@ The same Vue application may serve both surfaces with route-level layouts and au
 - Product cards use three columns on typical desktop widths and two columns on tablets and mobile.
 - A card shows a centered 4:3 cover, the product name and the initial price. Use the shared placeholder when the cover is absent or fails to load. The whole card links to the detail page.
 - The current navigation item is visible in the header or mobile bar. On product detail and purchase routes, the catalog remains the current section.
-- Storefront colors, type, spacing, borders and focus styles use variables scoped to the storefront. A compact 预览环境 label identifies the local preview in the footer.
+- Storefront colors, type, spacing, borders and focus styles use variables scoped to the storefront. Show the public store name in the header, page title, footer and customer authentication screens. Use the default brand if the first public name lookup fails.
 - Do not add a large marketing banner or verbose introductory copy.
 
 ### 3.2 Mobile layout
@@ -98,8 +98,8 @@ The same Vue application may serve both surfaces with route-level layouts and au
 - 客户可从商城购买页提交订单，并进入本页查看订单详情。「我的订阅」提供本人订阅的只读列表和详情。在线支付、付款凭证上传及邮件通知仍不在本阶段范围内。
 
 **个人中心**
-- Show login email, notification email, password/security entry, and logout.
-- Keep profile minimal.
+- Show the login email, notification email, account status and logout action.
+- Link to 我的订单 for order and payment progress and 我的订阅 for service status and expiry.
 
 ### 3.4 T22 商品目录与购买流程
 
