@@ -117,6 +117,6 @@ The PR reports no GitHub Actions/CI checks for this private repository. These re
 | Fresh install | 新迁移链、首次 ADMIN 初始化、健康检查与相关运维完整性验证适配 |
 | 前端 | 桌面、移动创建/领取/登录/选择器及空邮箱展示正常；正常账户与权限边界不回归 |
 
-Implementation is merged in PR #54. The next work is a separate production-release task with live preflight, a recoverable one-off backup plus isolated restore verification, migration 15, compatible application deployment, and post-deployment checks. No production migration or release is authorized by the merge.
+Implementation is merged in PR #54. **Production rollout is intentionally deferred while the owner accumulates more application updates.** Continue development and isolated validation on `main`; do not migrate or deploy production after this PR alone. At the owner's later batch-release decision, prepare one recoverable pre-release backup and isolated restore verification, inspect the live customer classification, apply the complete pending migration chain and deploy the matching application/operations release in one controlled window. No production migration or release is authorized by this merge.
 
 本任务不包括邀请返利、账户合并、邮箱验证、SMTP、支付渠道变更、重新部署服务器或生产上线。

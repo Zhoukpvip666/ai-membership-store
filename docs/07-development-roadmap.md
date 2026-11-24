@@ -6,11 +6,11 @@ Start with the [project status index](00-project-status.md) for the current impl
 
 The storefront has progressed through the merged T24 additions, including registration, ADMIN self-purchase, customer subscription reads, WeChat payment claims, storefront redesign and product covers. The operating overview remains Mock. Order-based renewal remains future work; the earlier ADMIN direct-renewal API is retained in compatibility mode. Production design is merged, but the currently deployed revision, applied migrations and server state were not inspected for this documentation update.
 
-## Current priority — T25 production rollout preparation
+## Current priority — continue feature development; batch production updates
 
 [T23.5-8 storefront launch polish](30-storefront-launch-preparation.md) is merged in PR #53. T25 implementation is merged in [PR #54](https://github.com/lear111/ai-membership-store/pull/54); see [the T25 contract and implementation evidence](34-customer-claim-registration.md).
 
-**T25 code is merged; production migration/release is not.** Before the production update, inspect the live database's eligible and unclassified customer counts using the new preflight, create a one-off production backup and verify it through an isolated restore, then schedule a controlled write/worker pause and apply migration 15 using the matching operations bundle. Deploy the compatible application only after migration and health checks pass. Do not assume the old application can safely run against the new nullable-email schema or use a blind application-only rollback. This is a one-time release safety checkpoint, not approval to enable recurring backups or a broad backup service.
+**T25 code is merged; production migration/release is deliberately deferred while more updates accumulate.** Continue feature work on `main`, with each change tested in isolated databases and reviewed through PRs. Do not create a production deployment task after every merge. When the owner requests a batch release, inspect the live database and the full migration chain at that time, take one recoverable pre-release backup and verify it through an isolated restore, then apply all pending migrations and deploy the matching compatible application/operations bundle in one controlled window. Because T25 makes `loginEmail` nullable and changes order snapshot constraints, the old `bd9b116` application must not be assumed compatible with the migrated schema; no blind application-only rollback is permitted. No production preflight, backup, migration or deployment is authorized by the current roadmap note.
 
 ## Order creation API — merged
 
