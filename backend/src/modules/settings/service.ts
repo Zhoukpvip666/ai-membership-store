@@ -50,6 +50,15 @@ export const editSettings = z
   .refine((value) => Object.keys(value).length > 0)
 export function settingsService(database: PrismaClient) {
   return {
+    async publicConfig() {
+      const settings = await database.appSettings.findUnique({
+        where: { id: 1 },
+        select: { storeName: true },
+      })
+      if (!settings)
+        throw new ApiError(503, 'SETTINGS_UNAVAILABLE', '店铺信息暂不可用')
+      return { storeName: settings.storeName }
+    },
     async orderGuidance() {
       const settings = await database.appSettings.findUnique({
         where: { id: 1 },

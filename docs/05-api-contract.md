@@ -226,6 +226,7 @@ For ADMIN self-purchase, POST /customer/orders uses the current listed, unarchiv
 
 | Method | Path | Purpose |
 |---|---|---|
+| GET | /storefront/config | Public read returning only `{storeName}` from AppSettings |
 | GET | /customer/orders | Implemented: current customer's own visible ordinary orders |
 | GET | /customer/orders/:id | Implemented: own ordinary order snapshot; no internal timeline |
 | GET | /customer/order-guidance | Implemented T21: ACTIVE storefront session; safe `{storeName,businessTimezone,paymentInstructions}` allowlist |
@@ -235,6 +236,10 @@ For ADMIN self-purchase, POST /customer/orders uses the current listed, unarchiv
 | PATCH | /customer/orders/:id | Implemented T15: own eligible ordinary-order full form replacement |
 | GET | /customer/subscriptions | Implemented: own subscriptions with status filtering and pagination |
 | GET | /customer/subscriptions/:id | Implemented: own frozen subscription details and visible source order |
+
+### Public storefront config (T23.5-8)
+
+`GET /api/v1/storefront/config` requires no Session. HTTP 200 returns exactly `{storeName}` from AppSettings singleton ID `1` with `Cache-Control: no-store`. HTTP 503 `SETTINGS_UNAVAILABLE` indicates missing initialization. Administrative settings reads and writes retain the ADMIN guard. Order guidance and payment images keep their existing separate access rules.
 
 ### Customer subscription reads
 

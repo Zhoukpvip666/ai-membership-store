@@ -21,6 +21,8 @@ test.beforeEach(async ({ page }) => {
           },
         },
       })
+    if (path === '/api/v1/storefront/config')
+      return route.fulfill({ json: { storeName: 'Prototype store' } })
     if (path === '/api/v1/admin/settings')
       return route.fulfill({
         json: {
@@ -105,6 +107,9 @@ test('Mock overview retains independent waiting-fulfillment metric', async ({
 }) => {
   await page.goto('/admin')
   await expect(
+    page.getByRole('alert').filter({ hasText: '演示数据' }),
+  ).toBeVisible()
+  await expect(
     page
       .locator('.metric-card')
       .filter({ hasText: '待发货订单' })
@@ -116,6 +121,7 @@ test('Mock overview retains independent waiting-fulfillment metric', async ({
     page.getByRole('button', { name: '新建订单', exact: true }),
   ).toBeVisible()
   await expect(page.getByText('模拟确认已完成')).toHaveCount(0)
+  await expect(page.getByText('演示数据', { exact: true })).toHaveCount(0)
 })
 test('subscription navigation can show an empty result without a renewal action', async ({
   page,

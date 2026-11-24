@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { ElAlert } from 'element-plus'
 import {
   Banknote,
   WalletCards,
@@ -61,6 +62,14 @@ const metrics = computed(() => [
         {{ mock.state.settings.timezone }}</span
       >
     </div>
+    <ElAlert
+      class="overview-demo"
+      title="演示数据"
+      description="本页的收款、订单、客户和订阅均为演示内容。请通过各管理页面查看真实业务记录。"
+      type="warning"
+      show-icon
+      :closable="false"
+    />
     <div class="metric-grid">
       <article
         v-for="metric in metrics"
@@ -137,7 +146,7 @@ const metrics = computed(() => [
     <div class="panel subscription-summary">
       <div>
         <h2>订阅概况</h2>
-        <span class="muted">当前本地订阅记录</span>
+        <span class="muted">当前演示订阅记录</span>
       </div>
       <div class="summary-count">
         <span class="online-dot"></span
@@ -160,3 +169,9 @@ const metrics = computed(() => [
     <OrderDialog :order="selected" admin @close="selected = undefined" />
   </section>
 </template>
+
+<style scoped>
+.overview-demo {
+  margin-bottom: 16px;
+}
+</style>

@@ -40,7 +40,7 @@ async function request(
           : JSON.stringify(body),
     })
   } catch {
-    throw new ApiError(0, 'NETWORK_ERROR', '无法连接本地 API，请确认后端已启动')
+    throw new ApiError(0, 'NETWORK_ERROR', '暂时无法连接商店，请稍后重试')
   }
   if (!response.ok) {
     const error = await response.json().catch(() => null)

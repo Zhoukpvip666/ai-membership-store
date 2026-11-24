@@ -28,6 +28,8 @@ async function stubSession(page: Page, initial: Role | null = null) {
       case '/api/v1/auth/logout':
         role = null
         return route.fulfill({ status: 204 })
+      case '/api/v1/storefront/config':
+        return route.fulfill({ json: { storeName: 'AI 会员商店' } })
       case '/api/v1/admin/settings':
         return route.fulfill({
           json: {

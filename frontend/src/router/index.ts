@@ -126,8 +126,3 @@ window.addEventListener('membership:unauthenticated', () => {
       query: { redirect: router.currentRoute.value.fullPath },
     })
 })
-router.afterEach((to) => {
-  document.title =
-    (to.path.startsWith('/admin') ? '管理控制台' : 'AI 会员商店') +
-    ' · 本地管理'
-})

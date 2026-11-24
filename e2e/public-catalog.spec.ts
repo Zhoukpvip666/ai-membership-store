@@ -54,6 +54,19 @@ test.beforeAll(async () => {
   }
 })
 
+test('the first visit uses the fallback brand when the public config is unavailable', async ({
+  page,
+}) => {
+  await page.route(
+    (url) => url.pathname === '/api/v1/storefront/config',
+    (route) => route.fulfill({ status: 503, json: {} }),
+  )
+  await page.goto('/')
+  await expect(page.locator('.store-header .brand')).toHaveText('AI 会员商店')
+  await expect(page).toHaveTitle('AI 会员商店')
+  await expect(page.getByRole('heading', { name: featured.name })).toBeVisible()
+})
+
 function catalogResponse(response: Response, query: Record<string, string>) {
   const url = new URL(response.url())
   return (
@@ -178,6 +191,7 @@ test('guest product detail displays public data and defers the form until purcha
     if (
       path.startsWith('/api/v1/') &&
       path !== '/api/v1/auth/me' &&
+      path !== '/api/v1/storefront/config' &&
       !publicCover
     )
       calls.push(path)
