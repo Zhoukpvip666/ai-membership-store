@@ -1,6 +1,6 @@
 # User and Operations Flows
 
-> **T25 approved flow (pending implementation):** ADMIN creates a customer record using only the private label, can associate orders/subscriptions before activation, and shares the existing one-time invitation. The customer registers with their own email and password; the system atomically claims the same User ID, consumes the invitation and signs the customer in. Existing email conflicts follow ordinary registration rules; no account merge. See [T25 contract](34-customer-claim-registration.md).
+> **T25 implemented flow (PR #54):** ADMIN creates a customer record using only the private label, can associate orders/subscriptions before activation, and shares the existing one-time invitation. The customer registers with their own email and password; the system atomically claims the same User ID, consumes the invitation and signs the customer in. Existing email conflicts follow ordinary registration rules; no account merge. See [T25 contract](34-customer-claim-registration.md).
 
 > **Document scope:** These are the original end-to-end target flows with historical phase notes. The [current project status](00-project-status.md) identifies implemented flows. Supplier emails/outbox, supplier transfer recording, notification/reminder delivery and order-based renewal below remain planned; they are not side effects of the current manual payment or fulfillment APIs.
 

@@ -1,6 +1,6 @@
 # Current Project Status
 
-**Verified implementation snapshot** — `main` at [`bd9b1168c4fa7acbdaf247f6e9c56cfbf5c61232`](https://github.com/lear111/ai-membership-store/commit/bd9b1168c4fa7acbdaf247f6e9c56cfbf5c61232), the merge of [PR #53](https://github.com/lear111/ai-membership-store/pull/53). Subsequent documentation-only commits do not alter this implementation baseline.
+**Verified implementation snapshot** — `main` at [`234397bb5ba3c7c009f63a0a8f53cc6bfae3e374`](https://github.com/lear111/ai-membership-store/commit/234397bb5ba3c7c009f63a0a8f53cc6bfae3e374), the merge of [PR #54](https://github.com/lear111/ai-membership-store/pull/54). Subsequent documentation-only commits do not alter this implementation baseline.
 
 This index records implemented repository capabilities and outstanding boundaries. It is not a release record, a new test run, or evidence that a server or database has been upgraded. Check the current branch and relevant PR before starting another task.
 
@@ -17,7 +17,9 @@ The current main includes the customer order detail and product description link
 
 [T23.5-8 storefront launch polish](30-storefront-launch-preparation.md) is merged in PR #53. The public name API, shared branding and demonstration label are implemented.
 
-**Next approved design (not implemented):** [T25 customer records and invitation registration](34-customer-claim-registration.md). ADMIN creates a record with a private label and no email; the customer uses the existing invitation link to register and claim that same User ID. The current implementation still requires an ADMIN-supplied login email and password-only invitation activation. T25 requires a new migration, isolated upgrade/fresh-install tests, review and a separately approved production release.
+**T25 customer records and invitation registration is implemented and merged in PR #54.** ADMIN creates a label-only customer record; the customer uses the existing invitation link to register with their own email/password and claim the same User ID. Migration 15 makes `loginEmail` nullable, preserves the unique index, clears only confirmed never-activated ADMIN-created customer emails, and allows nullable order contact snapshots without rewriting history. See [T25 contract and implementation evidence](34-customer-claim-registration.md).
+
+**Next priority: separately approved production rollout of T25.** The last production release evidence provided in this conversation is T23.5-9 at `bd9b116`; no evidence here shows migration 15 or PR #54 deployed. Before production migration, inspect the actual production account classification, create and verify a recoverable backup/restore point, then separately approve the migration and compatible application release.
 
 ## Product and technical baseline
 
@@ -44,6 +46,7 @@ The repository uses Vue 3, TypeScript, Vite and Element Plus, with Node.js 24, E
 | T24.4B.2 self-registration | Email/password registration creates an ACTIVE CUSTOMER and Session; safe continuation returns the user to the purchase flow | [PR #44](https://github.com/lear111/ai-membership-store/pull/44), [API contract](05-api-contract.md) |
 | T24.5A storefront design | Storefront navigation, visual tokens, catalog cards and desktop/mobile product detail layout | [PR #45](https://github.com/lear111/ai-membership-store/pull/45), [interface specification](08-interface-specification.md) |
 | T24.5B product covers | One optional cover per product, administrator upload/replace/remove, normalized WebP storage, protected current-image reads, 4:3 display and a two-column mobile catalog | [PR #46](https://github.com/lear111/ai-membership-store/pull/46), [cover implementation and operation guide](29-product-cover-images.md) |
+| T25 customer records and invitation registration | ADMIN creates label-only pending customer records; existing invite links register a customer-chosen email/password and atomically claim the original User ID, preserving orders/subscriptions | [PR #54](https://github.com/lear111/ai-membership-store/pull/54), [T25 contract and implementation evidence](34-customer-claim-registration.md) |
 | Customer order detail polish | Redesigned offline payment section, prominent order number and merchant remarks, and safe HTTP/HTTPS links in product descriptions | [PR #49](https://github.com/lear111/ai-membership-store/pull/49) |
 
 ## Current boundaries and unfinished work
@@ -54,16 +57,16 @@ The repository uses Vue 3, TypeScript, Vite and Element Plus, with Node.js 24, E
 | Renewals | Customer/order-based renewal and SYSTEM_RENEWAL execution are not implemented services. The model includes renewal structures, and legacy ADMIN direct subscription renewal remains a compatibility API; neither means the order-renewal flow is complete. See [lifecycle design](17-order-creation-and-lifecycle-design.md) and [Phase 2 contract](14-user-subscription-core.md). |
 | Payment providers | No provider checkout, payment webhook, automatic refund or money movement. The WeChat QR and customer claim support manual verification only. |
 | Customer payment/refund evidence | No proof upload or customer refund-request workflow. Customer order responses do not expose administrator payment/refund attempt evidence. |
-| Registration and email ownership | Self-registration is implemented, but email ownership is unverified. The current duplicate-email response and per-process connection-IP limiter have the operating limits documented in [PR #44](https://github.com/lear111/ai-membership-store/pull/44). |
+| Registration and email ownership | Ordinary and invitation registration are implemented. Email ownership remains unverified: invitation possession authorizes claiming the pre-created record but does not prove control of the mailbox. Duplicate-email behavior and the per-process connection-IP limiter retain their documented limits. |
 | Email and supplier integration | No SMTP/outbox worker, supplier API, automatic supplier transfer or automated third-party activation. Planned supplier/customer email and expiry reminders remain future work. |
 | Other planned APIs | Notification, verification-code and API-key APIs remain absent. |
-| Production readiness | T23.0 through [T23.2 infrastructure](32-production-infrastructure.md) are merged. [T23.3 backup and monitoring](33-production-backup-and-monitoring.md) is merged. T23.4 rehearsal and T23.5 rollout evidence are tracked separately under the [production plan](28-production-deployment-design.md). The server audit remains historical. |
+| Production readiness | T23.0–T23.3 design/tooling are merged. The last reported production application release is T23.5-9 at `bd9b116`; PR #54's migration 15 and compatible application release are not evidenced as deployed. Verify the live host and complete a recoverable backup/restore checkpoint before separately approving the T25 production migration. |
 
 ## Migrations, storage and release evidence
 
-- The repository contains the additive WeChat migration `20261121000000_wechat_payment_settings` and product-cover migration `20261122000000_product_cover_image`. Applying them to a target database is separate from merging code; preserve the committed historical SQL and follow the target's approved backup/migration procedure.
+- The current repository contains 15 additive migrations, including T25 `20261124000000_customer_invitation_registration` after the historical product-cover migration. Production must be explicitly verified and migrated to this chain before deploying the T25 application. Preserve all committed historical SQL and checksums.
 - `WECHAT_QR_STORAGE_DIR` and `PRODUCT_COVER_STORAGE_DIR` must be separate, private persistent storage. Include the database and both image directories in coordinated backups. Superseded/unpublished image files are intentionally retained; use the maintenance procedures in the [WeChat settings guide](13-products-settings-forms.md) and [cover guide](29-product-cover-images.md) before cleanup.
-- The cover migration adds a nullable product field. It does not add images to historical order snapshots or prove a target database has been migrated.
+- T25 migration 15 makes `User.loginEmail` and `Order.contactEmailSnapshot` nullable, adds an ACTIVE-credential CHECK and extends the OrderRevision V1 JSON whitelist only to permit a NULL contact snapshot. Its targeted cleanup affects only never-activated ADMIN-created CUSTOMER profiles. It does not prove any target database has been migrated.
 - Test results in implementation reports belong to the runs recorded there. Do not treat an earlier commit's report as evidence that a later commit was rerun. A new validation report should identify the tested commit and commands, including the explicit database/E2E suite selectors where applicable.
 - A successful merge is not evidence that a server is deployed, a database is migrated or production acceptance is complete. Record those operations and their verification separately when they are performed.
 

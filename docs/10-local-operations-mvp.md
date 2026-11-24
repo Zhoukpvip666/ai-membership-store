@@ -1,6 +1,6 @@
 # Task 1.2 — Local Offline Customer and Order Management
 
-> **Later approved design (pending implementation):** [T25](34-customer-claim-registration.md) changes customer creation and invitation registration while preserving ADMIN-managed orders/subscriptions for unclaimed customer records. This historical milestone is not the new T25 implementation contract.
+> **Later T25 implementation (merged PR #54):** [T25](34-customer-claim-registration.md) changes customer creation and invitation registration while preserving ADMIN-managed orders/subscriptions for unclaimed customer records. This document remains the historical Task 1.2 milestone and is not the current API/UI contract.
 
 > **Historical milestone:** This document preserves the original Task 1.2 scope, exclusions and implementation sequence. It is not the current backlog or feature inventory. Public registration, catalog, customer purchasing, order centers and subscription reads were implemented in later stages; see the [current project status](00-project-status.md). Historical deployment restrictions and test records below do not establish the current state of any server.
 

@@ -1,5 +1,7 @@
 # T23.1 production clean installation
 
+> **Current migration-chain override:** This historical T23.1 guide was written for the original 14-migration release. T25 PR #54 adds migration 15 (`20261124000000_customer_invitation_registration`). A fresh install using a T25 release must package and verify all 15 migrations and the matching operations bundle. Do not edit or recalculate historical migration SQL/checksums. The T23.1 count below is historical.
+
 This procedure prepares a new MySQL 8.4 schema for the reviewed application release. Use a fresh database and private storage directories. Package the compiled API, Vue build, Linux-compatible runtime dependencies, and the exact release Prisma schema and fourteen migration directories. Keep a migration and bootstrap artifact with the release scripts, their source imports, the Prisma CLI and the generated client. Importing local accounts, products, orders, subscriptions, payment records, image files, QR files or development credentials is outside this procedure.
 
 Keep the new site behind the maintenance gate through migration and first login verification. The commands below apply only to a separately approved installation target.

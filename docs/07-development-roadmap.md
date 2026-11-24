@@ -6,11 +6,11 @@ Start with the [project status index](00-project-status.md) for the current impl
 
 The storefront has progressed through the merged T24 additions, including registration, ADMIN self-purchase, customer subscription reads, WeChat payment claims, storefront redesign and product covers. The operating overview remains Mock. Order-based renewal remains future work; the earlier ADMIN direct-renewal API is retained in compatibility mode. Production design is merged, but the currently deployed revision, applied migrations and server state were not inspected for this documentation update.
 
-## Current priority — T25 customer records and invitation registration
+## Current priority — T25 production rollout preparation
 
-[T23.5-8 storefront launch polish](30-storefront-launch-preparation.md) is merged in PR #53. It adds public store branding, current customer copy and an explicit demonstration label for the operating overview.
+[T23.5-8 storefront launch polish](30-storefront-launch-preparation.md) is merged in PR #53. T25 implementation is merged in [PR #54](https://github.com/lear111/ai-membership-store/pull/54); see [the T25 contract and implementation evidence](34-customer-claim-registration.md).
 
-**T25 — approved design; implementation pending.** Follow [the T25 contract](34-customer-claim-registration.md): ADMIN creates a label-only pending customer, existing invitations support registration with a customer-chosen email and password, and the original User ID and business history are preserved. Add a nullable unique loginEmail migration, safely clear only never-activated historical administrator-created accounts' preset emails, adapt nullable-email consumers and version-sensitive operations checks, and validate isolated migration/auth/concurrency/UI behavior. Submit one implementation PR. Production migration and release are separate approvals.
+**T25 code is merged; production migration/release is not.** Before the production update, inspect the live database's eligible and unclassified customer counts using the new preflight, create a one-off production backup and verify it through an isolated restore, then schedule a controlled write/worker pause and apply migration 15 using the matching operations bundle. Deploy the compatible application only after migration and health checks pass. Do not assume the old application can safely run against the new nullable-email schema or use a blind application-only rollback. This is a one-time release safety checkpoint, not approval to enable recurring backups or a broad backup service.
 
 ## Order creation API — merged
 

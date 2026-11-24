@@ -1,5 +1,7 @@
 # T23.2 production infrastructure
 
+> **Current release-chain override:** T25 PR #54 adds the 15th Prisma migration. The historical 14-migration count below describes the original T23.2 artifact. Current T25 runtime/operations artifacts must be built from the same reviewed SHA and include all 15 migrations; run the release verifier and matching migration preflight. Legacy 14-migration backups must continue to use their matching historical operations archive.
+
 **Merged baseline** — T23.2 merged in [PR #51](https://github.com/lear111/ai-membership-store/pull/51), following T23.1 in PR #50. These templates and release tools are for the Ubuntu 24.04 x86_64 hybrid design. The Seoul host inventory is the 2026-11-21 audit in the [deployment design](28-production-deployment-design.md). Reconfirm its capacity, existing sites and listener inventory in a separately approved window.
 
 ## Topology and paths

@@ -1,6 +1,6 @@
 # Product Requirements
 
-> **T25 approved change (pending implementation):** [Customer records and invitation registration](34-customer-claim-registration.md) supersedes the older administrator-assigned login-email and password-only invitation requirements for T25. ADMIN creates a private-label-only customer record; the customer chooses their own login email and password using the existing invitation and inherits that same record's orders/subscriptions. Ordinary registration and existing activated accounts remain unchanged.
+> **T25 implemented change (PR #54):** [Customer records and invitation registration](34-customer-claim-registration.md) supersedes the older administrator-assigned login-email and password-only invitation requirements. ADMIN creates a private-label-only customer record; the customer chooses their own login email and password using the existing invitation and claims that same record's orders/subscriptions. Ordinary registration and existing activated accounts remain unchanged.
 
 > **Document scope:** This document retains the original product goals and historical phase decisions. Use the [current project status](00-project-status.md) for merged capabilities and remaining work. Supplier email/outbox, supplier transfer tracking, reminders and order-based renewal below remain planned features; the public catalog, registration, purchasing and customer order/subscription reads have since been implemented.
 

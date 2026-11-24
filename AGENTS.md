@@ -2,7 +2,7 @@
 
 ## Current repository baseline
 
-The implementation snapshot is maintained in [docs/00-project-status.md](docs/00-project-status.md). The baseline verified on 2026-11-23 (Asia/Shanghai) is `main` at `105e1514e6ce97853d5e83d0b5c131df6872551b`, including merged PR #46. T20/T21 order centers, T22 storefront ordering, customer subscription reads, registration, ADMIN storefront self-service, WeChat payment claims, storefront redesign and product covers are implemented. T23.0 deployment design is merged; this does not establish the state of any running server.
+The implementation snapshot is maintained in [docs/00-project-status.md](docs/00-project-status.md). The implementation baseline is `main` at `234397bb5ba3c7c009f63a0a8f53cc6bfae3e374`, including merged PR #54. T20/T21 order centers, T22 storefront ordering, customer subscription reads, ordinary registration, T25 invitation-based customer claiming, ADMIN storefront self-service, WeChat payment claims, storefront redesign and product covers are implemented. T25 adds migration 15; its production rollout is separate and is not implied by this merge. This does not establish the state of any running server.
 
 Use the status index for what is implemented and the linked task-specific contracts for behavior. Earlier phase sections below preserve their original scope and safeguards; their exclusions do not undo subsequently merged features. An unresolved business-rule conflict still needs the owner's decision. Preserve all applicable privacy, authorization, data-protection and deployment constraints.
 

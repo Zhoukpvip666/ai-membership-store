@@ -1,6 +1,6 @@
 # Task 1.2.2 — Authentication, customers, and invitations
 
-> **Later approved design:** [T25 customer records and invitation registration](34-customer-claim-registration.md) will replace the required administrator-assigned email and password-only activation with customer-chosen email/password registration on the existing invited User ID. Preserve this original milestone report and test results; T25 is not yet implemented.
+> **T25 implementation override (merged PR #54):** [T25 customer records and invitation registration](34-customer-claim-registration.md) replaces administrator-assigned login email and password-only activation with customer-chosen email/password registration on the existing invited User ID. This file remains the historical Task 1.2.2 implementation report; its endpoint and payload descriptions below are not the current contract.
 
 > Historical milestone report. See [current project status](00-project-status.md) for merged capabilities. [Phase 2](14-user-subscription-core.md) records the later user/subscription compatibility contract; subsequent order centers, subscription reads and public registration are also merged. Prior table/test counts, invitation-only registration and displayName/source/status descriptions below belong to their original milestone.
 

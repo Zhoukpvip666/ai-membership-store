@@ -1,6 +1,6 @@
 # T25 — 客户档案与邀请注册重构
 
-**状态：用户已确认业务设计，待实现、审查及独立发布。** 设计基线为已合并 PR #53 的 `main`（`bd9b1168c4fa7acbdaf247f6e9c56cfbf5c61232`）。本文只记录目标行为和验收标准，不代表代码、数据库或线上商城已经更新。现有实现详见 [Task 1.2.2 历史报告](12-authentication-customers-invitations.md) 与 [API 契约](05-api-contract.md)。
+**状态：已实现并合并，生产迁移与发布待单独批准。** 实现 PR：[ #54](https://github.com/lear111/ai-membership-store/pull/54)，提交 `6cc2418cd82eb3b46449f46238d8af15a7fb2efd`，Squash Merge：`234397bb5ba3c7c009f63a0a8f53cc6bfae3e374`。设计基线为 PR #53 的 `bd9b1168c4fa7acbdaf247f6e9c56cfbf5c61232`。本文现同时记录已合并实现与生产发布边界；合并不代表生产数据库已迁移或线上代码已更新。历史实现见 [Task 1.2.2 报告](12-authentication-customers-invitations.md) 与 [API 契约](05-api-contract.md)。
 
 ## 1. 已确认的业务规则
 
@@ -80,7 +80,30 @@ interface RegisterRequest {
 - 开发及所有写入性测试仅使用随机隔离数据库；不连接生产，不迁移或重置现有本地开发库，不覆盖 .env 或数据卷。
 - 生产迁移是另一个明确批准的任务。上线前核对目标版本、停止写入/worker、验证可恢复的备份及隔离恢复能力，确认应用与 schema 的兼容性。旧版 API/前端依赖非空邮箱与旧激活语义，不能默认安全回滚；不得在失败后盲目切回旧应用或清空生产库。保留现场并按 [生产部署设计](28-production-deployment-design.md) 处理。
 
-## 6. 验收清单
+## 6. 实现结果与验证证据
+
+PR #54 implements this contract across 63 files. The delivered behavior includes:
+
+- ADMIN customer creation accepts only `{adminLabel}`. Pending profiles have NULL login email, notification email and password hash, and may still own orders/subscriptions.
+- The existing `/activate#TOKEN` link is retained. The page collects email/password and submits to the unified `POST /auth/register`; successful claims preserve the original User ID and automatically establish the Session. The old password-only `POST /auth/activate` endpoint now returns 404.
+- Migration 15 (`20261124000000_customer_invitation_registration`) makes `User.loginEmail` nullable while preserving uniqueness, adds the ACTIVE credential CHECK, makes order contact snapshots nullable, and updates the OrderRevision V1 whitelist. It clears only records with a real ADMIN creator, CUSTOMER role, pending/disabled state, NULL activation time and NULL password hash. Unclassified rows remain unchanged and are reported by migration preflight.
+- New orders without a contact email persist NULL; existing order and revision snapshots remain unchanged. Release verification expects 15 migrations; backup tooling still recognizes a historical 14-migration operations archive and a T25 15-migration archive by its contents.
+
+**Reported verification for PR #54 (not rerun by this documentation update):**
+
+| Suite | Result |
+| --- | --- |
+| Isolated MySQL 14→15 upgrade, fresh install, repeat deployment and Prisma schema comparison | Passed |
+| Auth, invitations, registration and ADMIN self-purchase | 35/35 |
+| Order, Revision and subscription regression | 72/72 |
+| Production configuration isolation | 5/5 |
+| Desktop Edge / mobile Edge E2E | 8/8 each |
+| Frontend / backend / operations unit tests | 52/52, 90/90, 7/7 |
+| Typecheck, lint, format, build, Prisma validation and diff checks | Passed |
+
+The PR reports no GitHub Actions/CI checks for this private repository. These results are the implementation report's local/isolated test evidence, not GitHub CI results. The implementation did not connect to or modify the production VPS/database.
+
+## 7. 验收清单
 
 | 验收 | 通过标准 |
 | --- | --- |
@@ -94,6 +117,6 @@ interface RegisterRequest {
 | Fresh install | 新迁移链、首次 ADMIN 初始化、健康检查与相关运维完整性验证适配 |
 | 前端 | 桌面、移动创建/领取/登录/选择器及空邮箱展示正常；正常账户与权限边界不回归 |
 
-交付独立实现 PR、准确提交 SHA、相关前后端单测、真实 HTTP + 隔离 MySQL 升级/新装测试、桌面及移动浏览器验收、类型检查、Lint 和构建结果。提交测试命令、实际结果和剩余问题，等待人工审查。设计/实现状态及验收证据由项目文档维护者依据审查结果同步，不能提前标为已完成。
+Implementation is merged in PR #54. The next work is a separate production-release task with live preflight, a recoverable one-off backup plus isolated restore verification, migration 15, compatible application deployment, and post-deployment checks. No production migration or release is authorized by the merge.
 
 本任务不包括邀请返利、账户合并、邮箱验证、SMTP、支付渠道变更、重新部署服务器或生产上线。
