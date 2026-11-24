@@ -12,6 +12,8 @@ The storefront has progressed through the merged T24 additions, including regist
 
 **T25 code is merged; production migration/release is deliberately deferred while more updates accumulate.** Continue feature work on `main`, with each change tested in isolated databases and reviewed through PRs. Do not create a production deployment task after every merge. When the owner requests a batch release, inspect the live database and the full migration chain at that time, take one recoverable pre-release backup and verify it through an isolated restore, then apply all pending migrations and deploy the matching compatible application/operations bundle in one controlled window. Because T25 makes `loginEmail` nullable and changes order snapshot constraints, the old `bd9b116` application must not be assumed compatible with the migrated schema; no blind application-only rollback is permitted. No production preflight, backup, migration or deployment is authorized by the current roadmap note.
 
+**T26 — product form long text (approved; implementation pending).** Implement [the T26 contract](35-product-form-long-text.md): textarea value/default up to 10,000 characters; keep text at 500 and email at 254; increase schema/formData aggregate UTF-8 caps to 64 KiB and Express JSON body cap to 128 KiB. Add boundary, multibyte, request-size, order-flow and desktop/mobile tests. No Prisma migration or production deployment.
+
 ## Order creation API — merged
 
 **Status: Merged in PR #11 (`b1f5d14`); historical and fresh isolated verification passed. That implementation did not migrate the development database.** [Implementation contract](19-order-creation-api.md).

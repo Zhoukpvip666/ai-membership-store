@@ -21,6 +21,8 @@ The current main includes the customer order detail and product description link
 
 **Production rollout is intentionally deferred.** The owner has chosen to accumulate several application updates and deploy them together rather than migrate production for each individual PR. The last production release evidence provided in this conversation is T23.5-9 at `bd9b116`; no evidence here shows migration 15 or PR #54 deployed. Continue development and isolated validation against `main`. When the owner chooses a release window, inspect the actual production account classification, create and verify a recoverable backup/restore point, then apply the complete reviewed migration chain and deploy one compatible release. Do not perform production preflight, backup, migration, or deployment merely because another PR merges.
 
+**T26 — approved next implementation, pending PR:** extend each dynamic `textarea` field/default to 10,000 characters, with 64 KiB UTF-8 caps for serialized schema and submitted form data, and a 128 KiB JSON request-body cap. Other field limits remain unchanged. This is application validation/transport only; no database migration. See [T26 contract](35-product-form-long-text.md).
+
 ## Product and technical baseline
 
 The application is a single-merchant storefront and administrator console for subscription and one-time digital services. The implemented order flow uses offline customer payment, administrator verification and manual fulfillment. Money is stored in integer CNY fen; timestamps are stored in UTC and displayed using the configured business timezone.

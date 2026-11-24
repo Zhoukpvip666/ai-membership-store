@@ -1,5 +1,7 @@
 # Task 1.2.3 — Products, settings and dynamic form configuration
 
+> **T26 approved limit override (implementation pending):** [T26 contract](35-product-form-long-text.md) raises each dynamic `textarea` input and default value to 10,000 characters. `text` remains 500 and `email` remains 254. Serialized form schema and submitted form data each have a 64 KiB UTF-8 aggregate limit; the Express JSON request-body limit becomes 128 KiB. The 500-character textarea defaults, 8 KiB schema/form-data limits and 16 KiB request limit described in the historical Form contract below are the pre-T26 baseline and remain current until T26 is implemented and merged.
+
 > Historical milestone report with later implementation addenda. See [current project status](00-project-status.md) for merged capabilities. [Phase 2](14-user-subscription-core.md) records the later subscription compatibility contract. Prior table/test counts and prototype-only boundaries below describe their original milestone, not the current schema or complete application.
 
 Task 1.2.3 is merged. Subsequent order/payment/fulfillment stages, public storefront, WeChat settings and product covers are also merged; the corresponding addenda and current status index describe those later scopes. Historical verification results below are unchanged and do not establish a target deployment's state.

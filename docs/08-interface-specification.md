@@ -1,5 +1,7 @@
 # Interface Specification
 
+> **T26 approved UI override (implementation pending):** [T26](35-product-form-long-text.md) raises only dynamic `textarea` customer input, admin default value and preview to 10,000 characters. Single-line text remains 500 and email remains 254. Keep the existing editor, preview, customer purchase flow and responsive layout; show a clear aggregate-size error when the 64 KiB serialized form-data limit is exceeded.
+
 > **T25 implemented UI override (PR #54):** [T25](34-customer-claim-registration.md) reduces the ADMIN create-customer dialog to the private label and displays unbound email as 待绑定邮箱. Existing invitation generation, copy, expiry and revocation controls remain. The existing `/activate#TOKEN` entry collects email/password/confirmation and registers the customer into the original User record, then automatically signs in. Ordinary registration and purchase continuation remain unchanged. Earlier password-only activation and required administrator-provided email descriptions below are historical.
 
 > **Merged snapshot (2026-11-24, Asia/Shanghai):** Reconciled through T25 PR #54 at `234397bb5ba3c7c009f63a0a8f53cc6bfae3e374`. See [project status](00-project-status.md) for the current implementation boundary. Historical milestone reports and test results below retain their original scope; this documentation update does not rerun tests or establish deployment status.
