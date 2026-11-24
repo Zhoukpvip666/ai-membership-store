@@ -20,7 +20,7 @@ import {
 } from '../../src/modules/auth/security.ts'
 import { buildOrderSnapshot } from '../../src/modules/orders/revisions.ts'
 import { fulfilledSubscriptionDto } from '../../src/modules/orders/fulfill.ts'
-import { integrationEnvironment } from './support.ts'
+import { activeCredentials, integrationEnvironment } from './support.ts'
 import { businessSnapshot } from './order-source-support.ts'
 
 const env = integrationEnvironment(),
@@ -186,7 +186,11 @@ before(async () => {
     },
   })
   const active = await db.user.create({
-    data: { loginEmail: randomUUID() + '@example.com', status: 'ACTIVE' },
+    data: {
+      loginEmail: randomUUID() + '@example.com',
+      status: 'ACTIVE',
+      ...(await activeCredentials()),
+    },
   })
   const disabled = await db.user.create({
     data: {

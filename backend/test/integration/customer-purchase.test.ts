@@ -10,7 +10,7 @@ import {
   tokenHash,
 } from '../../src/modules/auth/security.ts'
 import { purchaseSchema } from './purchase-fixture.ts'
-import { integrationEnvironment } from './support.ts'
+import { activeCredentials, integrationEnvironment } from './support.ts'
 
 const env = integrationEnvironment()
 const db = createDatabase(env.DATABASE_URL)
@@ -84,14 +84,16 @@ before(async () => {
   })
   const owner = await db.user.findFirstOrThrow({ where: { role: 'ADMIN' } })
   const [customer, inactive, blocked] = await Promise.all(
-    (['ACTIVE', 'PENDING_ACTIVATION', 'DISABLED'] as const).map((status) =>
-      db.user.create({
-        data: {
-          role: 'CUSTOMER',
-          status,
-          loginEmail: status.toLowerCase() + '@purchase.example',
-        },
-      }),
+    (['ACTIVE', 'PENDING_ACTIVATION', 'DISABLED'] as const).map(
+      async (status) =>
+        db.user.create({
+          data: {
+            role: 'CUSTOMER',
+            status,
+            ...(status === 'ACTIVE' ? await activeCredentials() : {}),
+            loginEmail: status.toLowerCase() + '@purchase.example',
+          },
+        }),
     ),
   )
   const future = new Date(Date.now() + 3_600_000)

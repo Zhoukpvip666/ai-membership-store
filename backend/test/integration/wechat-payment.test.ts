@@ -15,7 +15,7 @@ import {
 } from '../../src/modules/auth/security.ts'
 import { maxQrBytes } from '../../src/modules/settings/wechat-image.ts'
 import { wechatPaymentService } from '../../src/modules/settings/wechat-payment.ts'
-import { integrationEnvironment } from './support.ts'
+import { activeCredentials, integrationEnvironment } from './support.ts'
 
 const env = integrationEnvironment()
 const directory = env.WECHAT_QR_STORAGE_DIR
@@ -103,6 +103,7 @@ before(async () => {
     data: {
       loginEmail: randomUUID() + '@example.com',
       status: 'ACTIVE',
+      ...(await activeCredentials()),
       role: 'CUSTOMER',
     },
   })

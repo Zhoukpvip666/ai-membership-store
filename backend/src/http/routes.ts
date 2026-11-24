@@ -68,7 +68,11 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
         '当前已登录，请先退出再注册',
       )
     const input = schemas.register.parse(request.body)
-    const { token, user } = await auth.register(input.email, input.password)
+    const { token, user } = await auth.register(
+      input.email,
+      input.password,
+      input.invitationToken,
+    )
     response.cookie(COOKIE_NAME, token, sessionCookieOptions)
     response.status(201).json({ user })
   })
@@ -92,11 +96,6 @@ export function applicationRoutes(database: PrismaClient, env: Environment) {
       response.locals.requestId,
     )
     response.clearCookie(COOKIE_NAME, cookieOptions).sendStatus(204)
-  })
-  router.post('/auth/activate', rateLimit(30), async (request, response) => {
-    const input = schemas.activation.parse(request.body)
-    await auth.activate(input.token, input.password)
-    response.status(200).json({ status: 'activated' })
   })
   // Storefront routes use the Session owner and customer-safe permissions for either role.
   router.use(

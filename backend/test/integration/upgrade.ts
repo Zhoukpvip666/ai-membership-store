@@ -57,7 +57,7 @@ try {
       loginEmail: 'upgrade-customer@example.com',
     }
     const passwordHash = await hashPassword(env.ADMIN_PASSWORD)
-    await db.$executeRaw`INSERT INTO User (id,displayName,loginEmail,role,status,passwordHash,updatedAt) VALUES (${admin.id},'Upgrade fixture administrator',${admin.loginEmail},'ADMIN','ACTIVE',${passwordHash},UTC_TIMESTAMP(3))`
+    await db.$executeRaw`INSERT INTO User (id,displayName,loginEmail,role,status,passwordHash,activatedAt,updatedAt) VALUES (${admin.id},'Upgrade fixture administrator',${admin.loginEmail},'ADMIN','ACTIVE',${passwordHash},UTC_TIMESTAMP(3),UTC_TIMESTAMP(3))`
     await db.$executeRaw`INSERT INTO User (id,displayName,loginEmail,createdByAdminId,updatedAt) VALUES (${user.id},'Pending legacy customer',${user.loginEmail},${admin.id},UTC_TIMESTAMP(3))`
     const productId = randomUUID()
     await db.$executeRaw`INSERT INTO Product (id,slug,name,type,priceFen,renewalPriceFen,termLabel,targetField,listed,purchaseEnabled,renewalEnabled,updatedAt) VALUES (${productId},'legacy-product','Legacy product','SUBSCRIPTION',1234,999,'Legacy confirmed term','EMAIL',true,false,true,UTC_TIMESTAMP(3))`

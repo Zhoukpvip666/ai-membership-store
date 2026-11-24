@@ -1,7 +1,10 @@
 import { expect, test, type Page, type BrowserContext } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import { createDatabase } from '../backend/src/db/client.ts'
-import { integrationEnvironment } from '../backend/test/integration/support.ts'
+import {
+  activeCredentials,
+  integrationEnvironment,
+} from '../backend/test/integration/support.ts'
 import {
   COOKIE_NAME,
   newToken,
@@ -219,7 +222,7 @@ test('browser rejects forged fulfillment fields and CUSTOMER access without chan
   ).toBe(400)
   await db.user.update({
     where: { id: customer.id },
-    data: { status: 'ACTIVE' },
+    data: { status: 'ACTIVE', ...(await activeCredentials()) },
   })
   const token = newToken()
   await db.session.create({

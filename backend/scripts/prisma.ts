@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import {
   migrationPreflight,
+  CustomerCredentialsMigrationError,
   SuspendedMigrationError,
 } from '../src/db/migration-preflight.ts'
 import {
@@ -39,8 +40,16 @@ try {
       migration.MYSQL_AUTH_PUBLIC_KEY_FILE,
     )
     try {
-      if (deploying) await migrationPreflight(database)
-      else await checkDatabase(database)
+      if (deploying) {
+        const accounts = await migrationPreflight(database)
+        if (accounts)
+          console.info(
+            'Customer account preflight: %d total, %d eligible for legacy email cleanup, %d unclassified and left unchanged.',
+            accounts.total,
+            accounts.cleanup,
+            accounts.unclassified,
+          )
+      } else await checkDatabase(database)
     } finally {
       await database.$disconnect()
     }
@@ -74,7 +83,8 @@ try {
 } catch (error) {
   console.error(
     error instanceof EnvironmentError ||
-      error instanceof SuspendedMigrationError
+      error instanceof SuspendedMigrationError ||
+      error instanceof CustomerCredentialsMigrationError
       ? error.message
       : 'Prisma command failed.',
   )

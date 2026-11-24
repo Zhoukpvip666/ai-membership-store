@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { adminName } from '../../../stores/user-name'
 import LinkedText from '../../../components/LinkedText.vue'
 import { ElTag } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
@@ -234,11 +235,11 @@ onMounted(load)
           <h3>客户与商品快照</h3>
           <dl class="order-facts">
             <dt>客户</dt>
-            <dd>{{ order.customer.username || order.customer.loginEmail }}</dd>
+            <dd>{{ adminName(order.customer) }}</dd>
             <dt>联系邮箱</dt>
-            <dd>{{ order.contactEmailSnapshot }}</dd>
+            <dd>{{ order.contactEmailSnapshot ?? '未记录' }}</dd>
             <dt>客户登录邮箱</dt>
-            <dd>{{ order.customer.loginEmail }}</dd>
+            <dd>{{ order.customer.loginEmail ?? '待绑定邮箱' }}</dd>
             <dt>商品说明</dt>
             <dd>
               <LinkedText :text="order.productDescriptionSnapshot || '—'" />

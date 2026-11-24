@@ -55,7 +55,7 @@ test('migration creates thirteen domain tables and thirteen migration records', 
   assert.equal(zones[0]!.zone, '+00:00')
   const migrations = await db.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*) AS count FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`
-  assert.equal(Number(migrations[0]!.count), 14)
+  assert.equal(Number(migrations[0]!.count), 15)
   assert.equal(await db.user.count(), 0)
 })
 

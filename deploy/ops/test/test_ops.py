@@ -36,6 +36,25 @@ class OperationalTests(unittest.TestCase):
             with self.assertRaisesRegex(Failure, "MIGRATIONS_NOT_REVIEWED_CHAIN"):
                 verify_migrations(invalid, expected)
 
+    def test_release_history_accepts_previous_archive_and_rejects_mixed_chain(self):
+        directory = Path(__file__).resolve().parents[3] / "backend/prisma/migrations"
+        current = release_migrations(directory)
+        self.assertEqual(len(current), 15)
+        t25 = "20261124000000_customer_invitation_registration"
+        with tempfile.TemporaryDirectory() as root:
+            prior = Path(root)
+            for name in current.keys() - {t25}:
+                target = prior / name / "migration.sql"
+                target.parent.mkdir()
+                target.write_bytes((directory / name / "migration.sql").read_bytes())
+            historical = release_migrations(prior)
+        recorded = [[name, next(iter(checksums))] for name, checksums in historical.items()]
+        verify_migrations(recorded, historical)
+        with self.assertRaisesRegex(Failure, "MIGRATIONS_NOT_REVIEWED_CHAIN"):
+            verify_migrations(recorded, current)
+        with self.assertRaisesRegex(Failure, "MIGRATIONS_NOT_REVIEWED_CHAIN"):
+            verify_migrations([*recorded, [t25, next(iter(current[t25]))]], historical)
+
     def test_journal_alert_boundary_is_below_namespace_cap(self):
         deploy = Path(__file__).resolve().parents[2]
         conf = deploy / "journald/journald@ai-membership-store.conf.d/retention.conf"

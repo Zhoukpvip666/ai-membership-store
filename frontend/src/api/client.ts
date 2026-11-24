@@ -87,7 +87,8 @@ export interface Invitation {
   usedAt: string | null
   revokedAt: string | null
 }
-export interface Customer extends Account {
+export interface Customer extends Omit<Account, 'loginEmail'> {
+  loginEmail: string | null
   adminLabel: string | null
   _count: { orders: number; subscriptions: number }
   invitations?: Invitation[]

@@ -119,7 +119,7 @@ export function orderEventDto(row: Event) {
       ? '系统'
       : (row.actorType === 'ADMIN' ? actor?.adminLabel?.trim() : null) ||
         actor?.username?.trim() ||
-        actor?.loginEmail.split('@')[0] ||
+        actor?.loginEmail?.split('@')[0] ||
         '未知操作人'
   return {
     id: row.id,

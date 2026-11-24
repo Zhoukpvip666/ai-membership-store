@@ -19,7 +19,7 @@ import {
   cancellationSelect,
 } from '../../src/modules/orders/cancel.ts'
 import { orderTimeoutService } from '../../src/modules/orders/timeout.ts'
-import { integrationEnvironment } from './support.ts'
+import { activeCredentials, integrationEnvironment } from './support.ts'
 import { businessSnapshot } from './order-source-support.ts'
 
 const env = integrationEnvironment(),
@@ -231,6 +231,7 @@ before(async () => {
     data: {
       role: 'CUSTOMER',
       status: 'ACTIVE',
+      ...(await activeCredentials()),
       loginEmail: randomUUID() + '@example.com',
     },
   })

@@ -27,7 +27,7 @@ export interface AdminOrder {
   formSchemaSnapshot: ProductFormSchema | null
   formData: FormData | null
   amountFen: number
-  contactEmailSnapshot: string
+  contactEmailSnapshot: string | null
   targetIdentifier: string | null
   paymentStatus: PaymentStatus
   fulfillmentStatus: FulfillmentStatus
@@ -43,7 +43,8 @@ export interface AdminOrder {
   customer: {
     id: string
     username: string | null
-    loginEmail: string
+    adminLabel: string | null
+    loginEmail: string | null
     notificationEmail: string | null
   }
   creator: {

@@ -19,7 +19,7 @@ import {
   tokenHash,
 } from '../../src/modules/auth/security.ts'
 import { buildOrderSnapshot } from '../../src/modules/orders/revisions.ts'
-import { integrationEnvironment } from './support.ts'
+import { activeCredentials, integrationEnvironment } from './support.ts'
 import { businessSnapshot } from './order-source-support.ts'
 
 const env = integrationEnvironment(),
@@ -159,11 +159,12 @@ function sql(input: string) {
 }
 before(async () => {
   admin = await db.user.findFirstOrThrow({ where: { role: 'ADMIN' } })
-  const user = (status: User['status'], name: string) =>
+  const user = async (status: User['status'], name: string) =>
     db.user.create({
       data: {
         role: 'CUSTOMER',
         status,
+        ...(status === 'ACTIVE' ? await activeCredentials() : {}),
         loginEmail: randomUUID() + '@example.com',
         username: name,
         notificationEmail: name + '-notify@example.com',
@@ -631,7 +632,13 @@ test('complete role-safe DTOs, frozen terms, V1 revisions and correct actor-spec
     if (role === 'admin') {
       assert.deepEqual(
         Object.keys(o.customer).sort(),
-        ['id', 'username', 'loginEmail', 'notificationEmail'].sort(),
+        [
+          'id',
+          'username',
+          'adminLabel',
+          'loginEmail',
+          'notificationEmail',
+        ].sort(),
       )
       assert.deepEqual(
         Object.keys(o.creator).sort(),
@@ -1129,7 +1136,11 @@ test('customer/product locks recheck a concurrent disable, archive or price edit
   for (const change of ['disable', 'archive', 'price'] as const) {
     const p = await product()
     const target = await db.user.create({
-      data: { loginEmail: randomUUID() + '@example.com', status: 'ACTIVE' },
+      data: {
+        loginEmail: randomUUID() + '@example.com',
+        status: 'ACTIVE',
+        ...(await activeCredentials()),
+      },
     })
     const cookie = await session(target.id)
     let release!: () => void, locked!: () => void

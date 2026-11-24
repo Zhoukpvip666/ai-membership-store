@@ -1,6 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { adminName } from './user-name'
+import { mask } from './format'
 import { businessInput, businessUtc } from './business-time'
 test('admin naming prefers private label then username then email prefix', () => {
   assert.equal(
@@ -23,6 +24,17 @@ test('admin naming prefers private label then username then email prefix', () =>
     adminName({ username: null, loginEmail: 'fallback@example.com' }),
     'fallback',
   )
+})
+test('unclaimed profiles display their label or a distinct profile identifier', () => {
+  assert.equal(
+    adminName({ adminLabel: '预建客户', loginEmail: null }),
+    '预建客户',
+  )
+  assert.equal(
+    adminName({ id: 'ab12cd34-profile', loginEmail: null }),
+    '档案 ab12cd34',
+  )
+  assert.equal(mask(null), '待绑定邮箱')
 })
 test('business time converts UTC and Shanghai independently of browser/system timezone', () => {
   assert.equal(

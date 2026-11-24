@@ -15,7 +15,7 @@ import {
   tokenHash,
 } from '../../src/modules/auth/security.ts'
 import { orderTimeoutService } from '../../src/modules/orders/timeout.ts'
-import { integrationEnvironment } from './support.ts'
+import { activeCredentials, integrationEnvironment } from './support.ts'
 
 const env = integrationEnvironment()
 const db = createDatabase(env.DATABASE_URL)
@@ -45,9 +45,13 @@ async function session(userId: string) {
 }
 
 before(async () => {
-  const customer = (status: 'ACTIVE' | 'PENDING_ACTIVATION' = 'ACTIVE') =>
+  const customer = async (status: 'ACTIVE' | 'PENDING_ACTIVATION' = 'ACTIVE') =>
     db.user.create({
-      data: { status, loginEmail: randomUUID() + '@example.com' },
+      data: {
+        status,
+        ...(status === 'ACTIVE' ? await activeCredentials() : {}),
+        loginEmail: randomUUID() + '@example.com',
+      },
     })
   const [administrator, ownAccount, otherAccount, pendingAccount, product] =
     await Promise.all([

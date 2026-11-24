@@ -100,7 +100,10 @@ def release_migrations(directory):
             }
     except OSError:
         raise Failure("OPERATIONS_MIGRATIONS_MISSING") from None
-    if len(migrations) != 14:
+    # A historical restore uses the operations archive for that backup's release.
+    t25 = "20261124000000_customer_invitation_registration"
+    expected_count = 15 if t25 in migrations else 14
+    if len(migrations) != expected_count:
         raise Failure("OPERATIONS_MIGRATIONS_MISSING")
     return migrations
 

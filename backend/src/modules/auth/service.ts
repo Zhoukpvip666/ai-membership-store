@@ -28,12 +28,14 @@ const invalidInvitation = () =>
 export function authService(database: PrismaClient) {
   let dummyHash: Promise<string> | undefined
   return {
-    async register(email: string, password: string) {
+    async register(email: string, password: string, invitationToken?: string) {
+      if (invitationToken)
+        return claimInvitation(invitationToken, email, password)
       const passwordHash = await hashPassword(password)
       const token = newToken()
       const user = await transaction(database, async (tx) => {
         const now = new Date()
-        // Insert only. The database's unique loginEmail constraint also protects invited accounts.
+        // Keep public registration insert-only. The unique email index arbitrates concurrent claims.
         const created = await tx.user.create({
           data: {
             loginEmail: email,
@@ -59,7 +61,7 @@ export function authService(database: PrismaClient) {
         user?.passwordHash ?? (await dummyHash),
         password,
       )
-      if (!user || !verified || user.status !== 'ACTIVE')
+      if (!user?.passwordHash || !verified || user.status !== 'ACTIVE')
         throw new ApiError(
           401,
           'INVALID_CREDENTIALS',
@@ -139,55 +141,76 @@ export function authService(database: PrismaClient) {
           })
       })
     },
-    async activate(token: string, password: string) {
-      const passwordHash = await hashPassword(password)
-      await transaction(database, async (tx) => {
-        const invitation = await tx.invitationToken.findUnique({
-          where: { tokenHash: tokenHash(token) },
-          include: { user: true },
-        })
-        const now = new Date()
-        if (
-          !invitation ||
-          invitation.usedAt ||
-          invitation.revokedAt ||
-          invitation.expiresAt <= now ||
-          invitation.user.role !== 'CUSTOMER' ||
-          invitation.user.status !== 'PENDING_ACTIVATION' ||
-          invitation.user.passwordHash ||
-          invitation.user.activatedAt
-        )
-          throw invalidInvitation()
-        const consumed = await tx.invitationToken.updateMany({
-          where: {
-            id: invitation.id,
-            usedAt: null,
-            revokedAt: null,
-            expiresAt: { gt: now },
-          },
-          data: { usedAt: now },
-        })
-        if (consumed.count !== 1) throw invalidInvitation()
-        const activated = await tx.user.updateMany({
-          where: {
-            id: invitation.userId,
-            role: 'CUSTOMER',
-            status: 'PENDING_ACTIVATION',
-            passwordHash: null,
-            activatedAt: null,
-          },
-          data: { passwordHash, status: 'ACTIVE', activatedAt: now },
-        })
-        if (activated.count !== 1) throw invalidInvitation()
-        await tx.invitationToken.updateMany({
-          where: { userId: invitation.userId, usedAt: null, revokedAt: null },
-          data: { revokedAt: now },
-        })
-        await tx.session.updateMany({
-          where: { userId: invitation.userId, revokedAt: null },
-          data: { revokedAt: now },
-        })
+  }
+
+  async function claimInvitation(
+    invitationToken: string,
+    email: string,
+    password: string,
+  ) {
+    const invitationHash = tokenHash(invitationToken)
+    const target = await database.invitationToken.findUnique({
+      where: { tokenHash: invitationHash },
+      select: { userId: true },
+    })
+    if (!target) throw invalidInvitation()
+
+    const passwordHash = await hashPassword(password)
+    const token = newToken()
+    const user = await transaction(database, async (tx) => {
+      // Serialize activation with other writes to the same customer before
+      // reading or consuming their invitation.
+      await tx.$queryRaw`SELECT id FROM User WHERE id = ${target.userId} FOR UPDATE`
+      const invitation = await tx.invitationToken.findUnique({
+        where: { tokenHash: invitationHash },
+        include: { user: true },
       })
-    },
+      const now = new Date()
+      if (
+        !invitation ||
+        invitation.userId !== target.userId ||
+        invitation.usedAt ||
+        invitation.revokedAt ||
+        invitation.expiresAt <= now ||
+        invitation.user.role !== 'CUSTOMER' ||
+        invitation.user.status !== 'PENDING_ACTIVATION' ||
+        invitation.user.loginEmail !== null ||
+        invitation.user.passwordHash !== null ||
+        invitation.user.activatedAt !== null
+      )
+        throw invalidInvitation()
+
+      const activated = await tx.user.update({
+        where: { id: invitation.userId },
+        data: {
+          loginEmail: email,
+          passwordHash,
+          status: 'ACTIVE',
+          activatedAt: now,
+        },
+        select: publicUserSelect,
+      })
+      const consumed = await tx.invitationToken.updateMany({
+        where: {
+          id: invitation.id,
+          usedAt: null,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        data: { usedAt: now },
+      })
+      if (consumed.count !== 1) throw invalidInvitation()
+      await tx.invitationToken.updateMany({
+        where: { userId: activated.id, usedAt: null, revokedAt: null },
+        data: { revokedAt: now },
+      })
+      await tx.session.updateMany({
+        where: { userId: activated.id, revokedAt: null },
+        data: { revokedAt: now },
+      })
+      await tx.session.create({ data: sessionData(activated.id, token, now) })
+      return activated
+    })
+    return { token, user }
   }
 }

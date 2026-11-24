@@ -12,7 +12,7 @@ import {
   newToken,
   tokenHash,
 } from '../../src/modules/auth/security.ts'
-import { integrationEnvironment } from './support.ts'
+import { activeCredentials, integrationEnvironment } from './support.ts'
 
 const env = integrationEnvironment()
 const db = createDatabase(env.DATABASE_URL)
@@ -43,7 +43,11 @@ before(async () => {
   ;[admin, foreign] = await Promise.all([
     db.user.findUniqueOrThrow({ where: { loginEmail: env.ADMIN_EMAIL } }),
     db.user.create({
-      data: { loginEmail: randomUUID() + '@example.test', status: 'ACTIVE' },
+      data: {
+        loginEmail: randomUUID() + '@example.test',
+        status: 'ACTIVE',
+        ...(await activeCredentials()),
+      },
     }),
   ])
   ;[adminCookie, foreignCookie] = await Promise.all([

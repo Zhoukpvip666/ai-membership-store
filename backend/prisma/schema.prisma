@@ -142,7 +142,7 @@ model User {
   id                String        @id @default(uuid()) @db.VarChar(36)
   username          String?       @db.VarChar(80)
   adminLabel        String?       @db.VarChar(80)
-  loginEmail        String        @unique @db.VarChar(254)
+  loginEmail        String?       @unique @db.VarChar(254)
   notificationEmail String?       @db.VarChar(254)
   passwordHash      String?       @db.VarChar(255)
   role              UserRole      @default(CUSTOMER)
@@ -261,7 +261,7 @@ model Order {
   formData                   Json?
   amountFen                  Int
   renewalPriceSnapshotFen    Int?
-  contactEmailSnapshot       String               @db.VarChar(254)
+  contactEmailSnapshot       String?              @db.VarChar(254)
   targetIdentifier           String?              @db.VarChar(254)
   paymentStatus              PaymentStatus        @default(UNPAID)
   fulfillmentStatus          FulfillmentStatus    @default(NOT_STARTED)

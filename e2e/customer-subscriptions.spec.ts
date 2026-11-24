@@ -6,7 +6,10 @@ import {
   newToken,
   tokenHash,
 } from '../backend/src/modules/auth/security.ts'
-import { integrationEnvironment } from '../backend/test/integration/support.ts'
+import {
+  activeCredentials,
+  integrationEnvironment,
+} from '../backend/test/integration/support.ts'
 
 const env = integrationEnvironment()
 const db = createDatabase(env.DATABASE_URL)
@@ -35,7 +38,11 @@ async function signIn(context: BrowserContext, userId: string) {
 
 async function customer() {
   return db.user.create({
-    data: { loginEmail: randomUUID() + '@example.test', status: 'ACTIVE' },
+    data: {
+      loginEmail: randomUUID() + '@example.test',
+      status: 'ACTIVE',
+      ...(await activeCredentials()),
+    },
   })
 }
 

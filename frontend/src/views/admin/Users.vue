@@ -25,7 +25,6 @@ const formOpen = ref(false)
 const editing = ref<Customer>()
 const form = reactive({
   adminLabel: '',
-  loginEmail: '',
   notificationEmail: '',
 })
 const statusTarget = ref<Customer>()
@@ -93,7 +92,6 @@ function openForm(user?: Customer) {
   editing.value = user
   Object.assign(form, {
     adminLabel: user?.adminLabel ?? '',
-    loginEmail: user?.loginEmail ?? '',
     notificationEmail: user?.notificationEmail ?? '',
   })
   formError.value = ''
@@ -106,12 +104,14 @@ async function save() {
   try {
     const input = {
       adminLabel: form.adminLabel || null,
-      notificationEmail: form.notificationEmail || null,
+      ...(editing.value?.activatedAt && editing.value.loginEmail
+        ? { notificationEmail: form.notificationEmail || null }
+        : {}),
     }
     await api(
       '/admin/users' + (editing.value ? '/' + editing.value.id : ''),
       editing.value ? 'PATCH' : 'POST',
-      editing.value ? input : { ...input, loginEmail: form.loginEmail },
+      editing.value ? input : { adminLabel: form.adminLabel },
     )
     formOpen.value = false
     await load()
@@ -204,8 +204,7 @@ onMounted(() => load())
       <ElButton type="primary" @click="openForm()">新增客户</ElButton>
     </div>
     <p class="inline-note">
-      客户可保持待激活状态并拥有订单和订阅。localhost / 127.0.0.1
-      邀请链接只能在本机打开，不能从其他设备访问；本系统不会发送邮件。
+      待激活客户也可以关联订单和订阅。请手动向客户分享邀请链接。
     </p>
     <p v-if="error" class="form-error" role="alert">{{ error }}</p>
     <div class="panel">
@@ -310,22 +309,16 @@ onMounted(() => load())
     >
       <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
       <ElForm label-position="top" @submit.prevent="save">
-        <ElFormItem label="内部备注"
+        <ElFormItem label="客户备注名称"
           ><ElInput
             v-model="form.adminLabel"
             maxlength="80"
-            aria-label="内部备注"
+            aria-label="客户备注名称"
+            :required="!editing"
         /></ElFormItem>
-        <ElFormItem label="登录邮箱"
-          ><ElInput
-            v-model="form.loginEmail"
-            type="email"
-            maxlength="254"
-            aria-label="客户登录邮箱"
-            :disabled="Boolean(editing)"
-            required
-        /></ElFormItem>
-        <ElFormItem label="通知邮箱（可选）"
+        <ElFormItem
+          v-if="editing?.activatedAt && editing.loginEmail"
+          label="通知邮箱（可选）"
           ><ElInput
             v-model="form.notificationEmail"
             type="email"
@@ -336,8 +329,8 @@ onMounted(() => load())
         <p class="muted">
           {{
             editing
-              ? '登录邮箱创建后保持不变。'
-              : '创建后为待激活状态，密码由客户通过邀请链接自行设置。'
+              ? '登录邮箱由客户绑定，后台无法修改。'
+              : '客户通过邀请链接自行填写邮箱和密码。'
           }}
         </p>
         <ElButton type="primary" native-type="submit" :loading="busy"
@@ -384,7 +377,7 @@ onMounted(() => load())
           <span class="avatar">{{ adminName(selected).slice(0, 1) }}</span>
           <div>
             <h3>{{ adminName(selected) }}</h3>
-            <span class="muted">{{ selected.loginEmail }}</span>
+            <span class="muted">{{ selected.loginEmail ?? '待绑定邮箱' }}</span>
           </div>
         </div>
         <dl class="detail-grid">
@@ -394,7 +387,11 @@ onMounted(() => load())
           </div>
           <div>
             <dt>通知邮箱</dt>
-            <dd>{{ selected.notificationEmail || selected.loginEmail }}</dd>
+            <dd>
+              {{
+                selected.notificationEmail ?? selected.loginEmail ?? '未设置'
+              }}
+            </dd>
           </div>
           <div>
             <dt>订单数量</dt>

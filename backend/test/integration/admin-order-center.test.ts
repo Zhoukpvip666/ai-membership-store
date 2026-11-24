@@ -13,7 +13,7 @@ import {
   tokenHash,
 } from '../../src/modules/auth/security.ts'
 import { buildOrderSnapshot } from '../../src/modules/orders/revisions.ts'
-import { integrationEnvironment } from './support.ts'
+import { activeCredentials, integrationEnvironment } from './support.ts'
 import { businessSnapshot } from './order-source-support.ts'
 const env = integrationEnvironment(),
   db = createDatabase(env.DATABASE_URL)
@@ -112,6 +112,7 @@ before(async () => {
       loginEmail: randomUUID() + '@example.com',
       username: 'Center customer',
       status: 'ACTIVE',
+      ...(await activeCredentials()),
       adminLabel: 'PRIVATE_LABEL',
     },
   })

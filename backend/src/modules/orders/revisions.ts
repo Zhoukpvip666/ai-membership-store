@@ -56,7 +56,7 @@ export const orderSnapshotV1 = z.strictObject({
     productId: z.string(),
     productNameSnapshot: z.string(),
     termSnapshot: z.string(),
-    contactEmailSnapshot: z.string(),
+    contactEmailSnapshot: z.string().nullable(),
     subscriptionId: z.string().nullable(),
     productDescriptionSnapshot: z.string().nullable(),
     targetIdentifier: z.string().nullable(),

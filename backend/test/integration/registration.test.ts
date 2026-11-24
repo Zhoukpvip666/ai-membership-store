@@ -264,7 +264,7 @@ test('normalized duplicates and simultaneous registration preserve a single acco
   assert.equal(login.body.user.id, user.id)
 })
 
-test('the ADMIN email and a pending invitation cannot be claimed by registration', async () => {
+test('registration protects ADMIN email and creates a separate account without claiming a pending invitation', async () => {
   const admin = await adminLogin()
   const owner = await db.user.findUniqueOrThrow({
     where: { id: admin.body.user.id },
@@ -273,7 +273,7 @@ test('the ADMIN email and a pending invitation cannot be claimed by registration
   const pending = await request(
     '/admin/users',
     'POST',
-    { loginEmail: email },
+    { adminLabel: '未绑定客户档案' },
     admin.cookie,
   )
   assert.equal(pending.status, 201)
@@ -285,12 +285,13 @@ test('the ADMIN email and a pending invitation cannot be claimed by registration
     admin.cookie,
   )
   assert.equal(invitation.status, 201)
-  for (const knownEmail of [owner.loginEmail.toUpperCase(), email]) {
-    const duplicate = await register(knownEmail)
-    assert.equal(duplicate.status, 409)
-    assert.equal(duplicate.body.error.code, 'EMAIL_EXISTS')
-    assert.equal(duplicate.setCookie, null)
-  }
+  const duplicate = await register(env.ADMIN_EMAIL.toUpperCase())
+  assert.equal(duplicate.status, 409)
+  assert.equal(duplicate.body.error.code, 'EMAIL_EXISTS')
+  assert.equal(duplicate.setCookie, null)
+  const separate = await register(email)
+  assert.equal(separate.status, 201)
+  assert.notEqual(separate.body.user.id, pendingId)
   const unchangedOwner = await db.user.findUniqueOrThrow({
     where: { id: owner.id },
   })
@@ -304,13 +305,146 @@ test('the ADMIN email and a pending invitation cannot be claimed by registration
   assert.equal(unchangedPending.activatedAt, null)
   assert.equal(unchangedPending.createdByAdminId, owner.id)
   const token = new URL(invitation.body.url).hash.slice(1)
-  assert.equal(
-    (await request('/auth/activate', 'POST', { token, password })).status,
-    200,
+  const claimDuplicate = await request(registration, 'POST', {
+    invitationToken: token,
+    email,
+    password,
+  })
+  assert.equal(claimDuplicate.status, 409)
+  assert.equal(claimDuplicate.body.error.code, 'EMAIL_EXISTS')
+  const inviteEmail = emailAddress()
+  const activated = await request(registration, 'POST', {
+    invitationToken: token,
+    email: inviteEmail,
+    password,
+  })
+  assert.equal(activated.status, 201)
+  assert.equal(activated.body.user.id, pendingId)
+  assert.equal(activated.body.user.loginEmail, inviteEmail)
+})
+
+test('ordinary registration and two invitations racing for one email create only one identity', async () => {
+  const admin = await adminLogin()
+  const profiles = await Promise.all(
+    ['Invite race A', 'Invite race B'].map((adminLabel) =>
+      request('/admin/users', 'POST', { adminLabel }, admin.cookie),
+    ),
   )
-  const login = await request('/auth/login', 'POST', { email, password })
-  assert.equal(login.status, 200)
-  assert.equal(login.body.user.id, pendingId)
+  assert.ok(profiles.every((profile) => profile.status === 201))
+  const issued = await Promise.all(
+    profiles.map((profile) =>
+      request(
+        '/admin/users/' + profile.body.user.id + '/invitations',
+        'POST',
+        {},
+        admin.cookie,
+      ),
+    ),
+  )
+  assert.ok(issued.every((invite) => invite.status === 201))
+  const email = emailAddress()
+  const results = await Promise.all([
+    register(email),
+    ...issued.map((invite) =>
+      request(registration, 'POST', {
+        email,
+        password,
+        invitationToken: new URL(invite.body.url).hash.slice(1),
+      }),
+    ),
+  ])
+  assert.deepEqual(
+    results.map((result) => result.status).sort(),
+    [201, 409, 409],
+  )
+  assert.equal(await db.user.count({ where: { loginEmail: email } }), 1)
+  for (const [index, invite] of issued.entries()) {
+    const stored = await db.invitationToken.findUniqueOrThrow({
+      where: { id: invite.body.invitation.id },
+    })
+    const profile = await db.user.findUniqueOrThrow({
+      where: { id: stored.userId },
+    })
+    const won = results[index + 1].status === 201
+    assert.equal(Boolean(stored.usedAt), won)
+    assert.equal(profile.loginEmail, won ? email : null)
+    assert.equal(
+      await db.session.count({ where: { userId: profile.id } }),
+      Number(won),
+    )
+    if (!won) assert.equal(results[index + 1].body.error.code, 'EMAIL_EXISTS')
+  }
+})
+
+test('invited registration rolls back the profile and invitation when Session insertion fails', async () => {
+  const admin = await adminLogin()
+  const created = await request(
+    '/admin/users',
+    'POST',
+    { adminLabel: 'Invitation session failure' },
+    admin.cookie,
+  )
+  assert.equal(created.status, 201)
+  const userId = created.body.user.id
+  const issued = await request(
+    '/admin/users/' + userId + '/invitations',
+    'POST',
+    {},
+    admin.cookie,
+  )
+  assert.equal(issued.status, 201)
+  const requestBody = {
+    invitationToken: new URL(issued.body.url).hash.slice(1),
+    email: emailAddress(),
+    password,
+  }
+  const initialUser = await db.user.findUnique({ where: { id: userId } })
+  const invitationId = issued.body.invitation.id
+  const initialInvitation = await db.invitationToken.findUnique({
+    where: { id: invitationId },
+  })
+  sql(
+    "CREATE TRIGGER T25_reject_session BEFORE INSERT ON Session FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'intentional isolated failure';",
+  )
+  try {
+    const failed = await request(registration, 'POST', requestBody)
+    assert.equal(failed.status, 503)
+    assert.equal(failed.setCookie, null)
+    assert.deepEqual(
+      await db.user.findUnique({ where: { id: userId } }),
+      initialUser,
+    )
+    assert.deepEqual(
+      await db.invitationToken.findUnique({ where: { id: invitationId } }),
+      initialInvitation,
+    )
+    assert.equal(await db.session.count({ where: { userId } }), 0)
+  } finally {
+    sql('DROP TRIGGER T25_reject_session;')
+  }
+  assert.equal((await request(registration, 'POST', requestBody)).status, 201)
+})
+
+test('legacy activation endpoint and malformed invitation never create an account', async () => {
+  const email = emailAddress()
+  const old = await request('/auth/activate', 'POST', {
+    token: 'a'.repeat(43),
+    password,
+  })
+  assert.equal(old.status, 404)
+  const body = { email, password }
+  const malformed = await request(registration, 'POST', {
+    ...body,
+    invitationToken: '',
+  })
+  assert.equal(malformed.status, 400)
+  const unknown = await request(registration, 'POST', {
+    ...body,
+    invitationToken: 'b'.repeat(43),
+  })
+  assert.equal(unknown.status, 409)
+  assert.equal(unknown.body.error.code, 'INVITATION_INVALID')
+  assert.equal(await db.user.count({ where: { loginEmail: email } }), 0)
 })
 
 test('registration rejects managed fields, including role and status, and writes nothing', async () => {

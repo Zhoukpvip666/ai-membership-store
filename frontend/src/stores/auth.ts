@@ -72,10 +72,11 @@ export const auth = {
     })
     return acceptSession(user)
   },
-  async register(email: string, password: string) {
+  async register(email: string, password: string, invitationToken?: string) {
     const { user } = await api<{ user: Account }>('/auth/register', 'POST', {
       email,
       password,
+      invitationToken,
     })
     return acceptSession(user)
   },

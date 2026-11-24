@@ -5,7 +5,10 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Prisma } from '../backend/src/generated/prisma/client.ts'
 import { createDatabase } from '../backend/src/db/client.ts'
-import { integrationEnvironment } from '../backend/test/integration/support.ts'
+import {
+  activeCredentials,
+  integrationEnvironment,
+} from '../backend/test/integration/support.ts'
 import {
   COOKIE_NAME,
   hashPassword,
@@ -68,6 +71,7 @@ async function setup(context: BrowserContext, login = false) {
         loginEmail: marker + '@example.com',
         role: 'CUSTOMER',
         status: 'ACTIVE',
+        ...(await activeCredentials()),
         ...(login ? { passwordHash: await hashPassword(password) } : {}),
       },
     }),
@@ -76,6 +80,7 @@ async function setup(context: BrowserContext, login = false) {
         loginEmail: 'other-' + marker + '@example.com',
         role: 'CUSTOMER',
         status: 'ACTIVE',
+        ...(await activeCredentials()),
       },
     }),
     db.user.findFirstOrThrow({ where: { role: 'ADMIN' } }),
@@ -226,7 +231,7 @@ test('customer login and real paginated, searchable own orders with recoverable 
   const foreign = await createOrder({ userId: other.id })
   await page.goto(ordersPath)
   await expect(page).toHaveURL(/\/login\?/)
-  await page.getByLabel('登录邮箱', { exact: true }).fill(user.loginEmail)
+  await page.getByLabel('登录邮箱', { exact: true }).fill(user.loginEmail!)
   await page.getByLabel('密码', { exact: true }).fill(password)
   await page.getByRole('button', { name: '登录', exact: true }).click()
   await expect(page).toHaveURL(ordersPath)

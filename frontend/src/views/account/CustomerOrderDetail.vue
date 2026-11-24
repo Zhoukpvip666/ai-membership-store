@@ -337,7 +337,7 @@ onMounted(load)
               <dl class="customer-facts contact-facts">
                 <div>
                   <dt>联系人邮箱</dt>
-                  <dd>{{ order.contactEmailSnapshot }}</dd>
+                  <dd>{{ order.contactEmailSnapshot ?? '未记录' }}</dd>
                 </div>
               </dl>
             </section>

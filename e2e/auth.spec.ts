@@ -18,7 +18,8 @@ test.beforeEach(async ({ page }) => {
       throw new Error('Browser tests must not call external services.')
     if (
       url.pathname.startsWith('/api/') &&
-      !/^\/api\/v1\/(?:auth\/(?:login|logout|me|activate)|customer\/(?:orders|order-guidance)|admin\/(?:settings|products|users(?:\/[^/]+(?:\/(?:invitations|status))?)?|invitations\/[^/]+\/revoke))$/.test(
+      url.pathname !== '/api/v1/storefront/config' &&
+      !/^\/api\/v1\/(?:auth\/(?:login|logout|me|register)|customer\/(?:orders|order-guidance|subscriptions)|admin\/(?:settings|products|users(?:\/[^/]+(?:\/(?:invitations|status))?)?|invitations\/[^/]+\/revoke))$/.test(
         url.pathname,
       )
     )
@@ -58,23 +59,22 @@ async function post(page: Page, path: string, body: unknown) {
   })
 }
 async function createCustomer(page: Page) {
-  const email = randomUUID() + '@example.com'
+  const adminLabel = '浏览器客户-' + randomUUID()
   await page.getByRole('button', { name: '新增客户', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '新增客户', exact: true })
-  await expect(dialog.locator('input[type=password]')).toHaveCount(0)
-  await dialog
-    .getByRole('textbox', { name: '内部备注', exact: true })
-    .fill('浏览器测试客户')
-  await dialog
-    .getByRole('textbox', { name: '客户登录邮箱', exact: true })
-    .fill(email)
+  await expect(dialog.locator('input')).toHaveCount(1)
+  await dialog.getByRole('textbox', { name: '客户备注名称' }).fill(adminLabel)
   await dialog.getByRole('button', { name: '保存客户', exact: true }).click()
   await expect(dialog).not.toBeVisible()
-  await page.getByRole('textbox', { name: '搜索用户', exact: true }).fill(email)
+  await searchCustomer(page, adminLabel)
+  await expect(page.locator('tbody tr')).toContainText('待激活')
+  await expect(page.locator('tbody tr')).toContainText('待绑定邮箱')
+  return db.user.findFirstOrThrow({ where: { adminLabel } })
+}
+async function searchCustomer(page: Page, value: string) {
+  await page.getByRole('textbox', { name: '搜索用户', exact: true }).fill(value)
   await page.getByRole('button', { name: '查询', exact: true }).click()
   await expect(page.locator('tbody tr')).toHaveCount(1)
-  await expect(page.locator('tbody tr')).toContainText('待激活')
-  return email
 }
 async function openDetail(page: Page) {
   await page
@@ -85,18 +85,19 @@ async function openDetail(page: Page) {
   await expect(dialog).toBeVisible()
   return dialog
 }
-async function activate(page: Page, url: string) {
+async function activate(page: Page, url: string, email: string) {
   await page.goto(url)
   await expect(page).toHaveURL('/activate')
+  await page.getByLabel('登录邮箱', { exact: true }).fill(email)
   await page.getByLabel('设置密码', { exact: true }).fill(customerPassword)
   await page.getByLabel('确认密码', { exact: true }).fill(customerPassword)
   await Promise.all([
     page.waitForResponse(
       (response) =>
-        new URL(response.url()).pathname === '/api/v1/auth/activate' &&
+        new URL(response.url()).pathname === '/api/v1/auth/register' &&
         response.request().method() === 'POST',
     ),
-    page.getByRole('button', { name: '激活账户', exact: true }).click(),
+    page.getByRole('button', { name: '注册并登录', exact: true }).click(),
   ])
 }
 
@@ -137,22 +138,11 @@ test('admin login, safe cookies, refresh and logout protect administration', asy
   await expect(page).toHaveURL(/\/admin\/login/)
 })
 
-test('real customers persist pending; duplicate email, editing, disabling and restoring work', async ({
+test('real profiles have no email; editing, disabling and restoring work', async ({
   page,
 }, info) => {
   await login(page)
-  const email = await createCustomer(page)
-  await page.getByRole('button', { name: '新增客户', exact: true }).click()
-  const create = page.getByRole('dialog', { name: '新增客户', exact: true })
-  await create
-    .getByRole('textbox', { name: '内部备注', exact: true })
-    .fill('重复邮箱')
-  await create
-    .getByRole('textbox', { name: '客户登录邮箱', exact: true })
-    .fill(email.toUpperCase())
-  await create.getByRole('button', { name: '保存客户', exact: true }).click()
-  await expect(create.getByRole('alert')).toContainText('登录邮箱已被使用')
-  await create.getByRole('button', { name: 'Close this dialog' }).click()
+  const customer = await createCustomer(page)
   await page
     .locator('tbody tr')
     .getByRole('button', { name: '编辑', exact: true })
@@ -160,13 +150,13 @@ test('real customers persist pending; duplicate email, editing, disabling and re
   const edit = page.getByRole('dialog', { name: '编辑客户', exact: true })
   await expect(
     edit.getByRole('textbox', { name: '客户登录邮箱', exact: true }),
-  ).toBeDisabled()
+  ).toHaveCount(0)
   await edit
-    .getByRole('textbox', { name: '内部备注', exact: true })
-    .fill('已编辑客户')
-  await edit
-    .getByRole('textbox', { name: '客户通知邮箱', exact: true })
-    .fill('notice@example.com')
+    .getByRole('textbox', { name: '客户备注名称', exact: true })
+    .fill(customer.adminLabel + '-已编辑客户')
+  await expect(edit.getByRole('textbox', { name: '客户通知邮箱' })).toHaveCount(
+    0,
+  )
   await edit.getByRole('button', { name: '保存客户', exact: true }).click()
   await expect(edit).not.toBeVisible()
   await expect(page.locator('tbody tr')).toContainText('已编辑客户')
@@ -191,7 +181,7 @@ test('real customers persist pending; duplicate email, editing, disabling and re
     )
   }
   const detail = await openDetail(page)
-  await expect(detail).toContainText('notice@example.com')
+  await expect(detail).toContainText('待绑定邮箱')
   await expect(detail).toContainText('尚未激活')
   expect(
     await page.evaluate(
@@ -203,15 +193,15 @@ test('real customers persist pending; duplicate email, editing, disabling and re
     fullPage: true,
   })
   await page.reload()
-  await page.getByRole('textbox', { name: '搜索用户', exact: true }).fill(email)
-  await page.getByRole('button', { name: '查询', exact: true }).click()
-  await expect(page.locator('tbody tr')).toHaveCount(1)
+  await searchCustomer(page, customer.adminLabel!)
   await expect(page.locator('tbody tr')).toContainText('已编辑客户')
   const stored = await db.user.findUniqueOrThrow({
-    where: { loginEmail: email },
+    where: { id: customer.id },
   })
   expect(stored.status).toBe('PENDING_ACTIVATION')
   expect(stored.passwordHash).toBeNull()
+  expect(stored.loginEmail).toBeNull()
+  expect(stored.notificationEmail).toBeNull()
 })
 
 test('invitation copying, one-time response, reissue, activation and customer isolation work', async ({
@@ -221,7 +211,8 @@ test('invitation copying, one-time response, reissue, activation and customer is
   // This flow intentionally includes three activation attempts and two browser contexts.
   test.setTimeout(60000)
   await login(page)
-  const email = await createCustomer(page)
+  const user = await createCustomer(page)
+  const email = randomUUID() + '@example.test'
   let detail = await openDetail(page)
   await expect(detail).toContainText('只能在本机打开')
   await detail
@@ -276,22 +267,16 @@ test('invitation copying, one-time response, reissue, activation and customer is
   })
   const customerPage = await customerContext.newPage()
   try {
-    await activate(customerPage, oldUrl)
+    await activate(customerPage, oldUrl, email)
     await expect(customerPage.getByRole('alert')).toContainText('邀请无效')
-    await activate(customerPage, currentUrl)
-    await expect(
-      customerPage.getByRole('heading', { name: '账户激活成功', exact: true }),
-    ).toBeVisible()
-    await activate(customerPage, currentUrl)
-    await expect(customerPage.getByRole('alert')).toContainText('邀请无效')
-    await customerPage.goto('/login')
-    await customerPage
-      .getByRole('textbox', { name: '登录邮箱', exact: true })
-      .fill(email)
-    await customerPage
-      .getByLabel('密码', { exact: true })
-      .fill(customerPassword)
-    await submitLogin(customerPage)
+    await activate(customerPage, currentUrl, email)
+    const me = await customerPage.request.get('/api/v1/auth/me')
+    expect(me.status()).toBe(200)
+    expect((await me.json()).user).toMatchObject({
+      id: user.id,
+      loginEmail: email,
+      status: 'ACTIVE',
+    })
     await expect(customerPage).toHaveURL('/profile')
     await expect(customerPage.locator('.profile-panel')).toContainText(email)
     expect(
@@ -304,7 +289,7 @@ test('invitation copying, one-time response, reissue, activation and customer is
     await expect(customerPage.locator('.customer-order-card')).toHaveCount(0)
     await customerPage.goto('/subscriptions')
     await expect(
-      customerPage.getByText('真实订阅历史将在后续任务接入', { exact: false }),
+      customerPage.getByText('暂无订阅', { exact: true }),
     ).toBeVisible()
     await expect(customerPage.locator('.subscription-card')).toHaveCount(0)
     await customerPage.goto('/profile')
@@ -327,8 +312,8 @@ test('expired and explicitly revoked invitations fail on the activation page', a
   // Two separate activation contexts plus real database setup can exceed 30s in parallel.
   test.setTimeout(60000)
   await login(page)
-  const email = await createCustomer(page)
-  const user = await db.user.findUniqueOrThrow({ where: { loginEmail: email } })
+  const user = await createCustomer(page)
+  const email = randomUUID() + '@example.test'
   for (const state of ['expired', 'revoked']) {
     const response = await post(
       page,
@@ -355,7 +340,7 @@ test('expired and explicitly revoked invitations fail on the activation page', a
     const context = await browser.newContext({ baseURL: env.APP_BASE_URL })
     try {
       const customerPage = await context.newPage()
-      await activate(customerPage, invitation.url)
+      await activate(customerPage, invitation.url, email)
       await expect(customerPage.getByRole('alert')).toContainText('邀请无效')
     } finally {
       await context.close()
@@ -371,23 +356,15 @@ test('disabling a customer immediately revokes their browser session', async ({
   browser,
 }) => {
   await login(page)
-  const email = await createCustomer(page)
-  const user = await db.user.findUniqueOrThrow({ where: { loginEmail: email } })
+  const user = await createCustomer(page)
+  const email = randomUUID() + '@example.test'
   const invitation = await (
     await post(page, '/admin/users/' + user.id + '/invitations', {})
   ).json()
   const context = await browser.newContext({ baseURL: env.APP_BASE_URL })
   try {
     const customerPage = await context.newPage()
-    await activate(customerPage, invitation.url)
-    await customerPage.goto('/login')
-    await customerPage
-      .getByRole('textbox', { name: '登录邮箱', exact: true })
-      .fill(email)
-    await customerPage
-      .getByLabel('密码', { exact: true })
-      .fill(customerPassword)
-    await submitLogin(customerPage)
+    await activate(customerPage, invitation.url, email)
     await expect(customerPage).toHaveURL('/profile')
     const response = await page.request.patch(
       '/api/v1/admin/users/' + user.id + '/status',
