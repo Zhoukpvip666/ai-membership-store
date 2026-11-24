@@ -22,8 +22,8 @@ Use the status index for what is implemented and the linked task-specific contra
 - After each task, run the relevant tests, type checks, lint, and build commands that exist.
 - Report changed files, commands executed, results, known gaps, and the next recommended task.
 - Wait for approval before starting the next substantial task.
-- Update the relevant documentation whenever an implementation decision changes the documented behavior.
-- When a feature merges, reconcile docs/00-project-status.md, the roadmap and affected contracts. Keep historical test results tied to their reported scope; do not describe them as a new run or proof of deployment.
+- The owner assigns project design and status documentation maintenance to ChatGPT. Follow the approved task contract; Codex implements and tests, reports discrepancies, changed files, exact commands/results and remaining gaps, and does not independently revise product/design contracts unless explicitly instructed.
+- After feature review/merge, the documentation maintainer reconciles docs/00-project-status.md, the roadmap and affected contracts from verified evidence. Keep historical test results tied to their reported scope; do not describe them as a new run or proof of deployment.
 
 ## Product and workflow constraints
 

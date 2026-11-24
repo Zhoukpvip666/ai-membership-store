@@ -114,6 +114,7 @@ These are implementation defaults, not irreversible decisions. Confirm any chang
 32. [docs/31-production-clean-install.md](docs/31-production-clean-install.md) — T23.1 production profiles, first administrator initialization and isolated acceptance.
 33. [docs/32-production-infrastructure.md](docs/32-production-infrastructure.md) — T23.2 Caddy, systemd, MySQL and release packaging, with the rehearsal and launch boundaries.
 34. [docs/33-production-backup-and-monitoring.md](docs/33-production-backup-and-monitoring.md) — T23.3 paired backups, restore, private logs and monitoring.
+35. [docs/34-customer-claim-registration.md](docs/34-customer-claim-registration.md) — owner-approved T25 design: customer records and invitation-based registration (pending implementation).
 
 For production, use the [runtime example](.env.production.example), [clean installation guide](docs/31-production-clean-install.md) and [infrastructure runbook](docs/32-production-infrastructure.md). The production API, migrator and first-ADMIN command use separate credential contexts. Provision the clean database and bootstrap the owner before opening public registration in the approved launch window.
 

@@ -6,9 +6,11 @@ Start with the [project status index](00-project-status.md) for the current impl
 
 The storefront has progressed through the merged T24 additions, including registration, ADMIN self-purchase, customer subscription reads, WeChat payment claims, storefront redesign and product covers. The operating overview remains Mock. Order-based renewal remains future work; the earlier ADMIN direct-renewal API is retained in compatibility mode. Production design is merged, but the currently deployed revision, applied migrations and server state were not inspected for this documentation update.
 
-## Current priority — customer-facing storefront launch
+## Current priority — T25 customer records and invitation registration
 
-[T23.5-8 storefront launch polish](30-storefront-launch-preparation.md) is implemented and pending review. It adds public store branding, current customer copy and an explicit demonstration label for the operating overview. Release deployment and opening traffic are separate steps.
+[T23.5-8 storefront launch polish](30-storefront-launch-preparation.md) is merged in PR #53. It adds public store branding, current customer copy and an explicit demonstration label for the operating overview.
+
+**T25 — approved design; implementation pending.** Follow [the T25 contract](34-customer-claim-registration.md): ADMIN creates a label-only pending customer, existing invitations support registration with a customer-chosen email and password, and the original User ID and business history are preserved. Add a nullable unique loginEmail migration, safely clear only never-activated historical administrator-created accounts' preset emails, adapt nullable-email consumers and version-sensitive operations checks, and validate isolated migration/auth/concurrency/UI behavior. Submit one implementation PR. Production migration and release are separate approvals.
 
 ## Order creation API — merged
 

@@ -1,5 +1,7 @@
 # Local Operations Data Model (Task 1.2 and Phase 2)
 
+> **T25 approved model override (pending implementation):** [T25](34-customer-claim-registration.md) changes User.loginEmail to nullable while retaining the unique index. New ADMIN-created customer records have NULL loginEmail, notificationEmail, passwordHash and activatedAt. Invitation registration sets the login identity on the same User ID. Only never-activated ADMIN-created CUSTOMER records' preset emails are cleared during the new migration; activated/previously activated users and all business relations are preserved. The original non-null email field and activation rules below describe the current implementation until T25 is delivered.
+
 > **Document scope:** This is a staged data-model history with later overrides. The [current project status](00-project-status.md) identifies merged capabilities. Original table/migration counts and stage-specific statements that an API is absent apply only to the named stage. T24.1 WeChat settings and [T24.5B product covers](29-product-cover-images.md) are later additive schema changes; consult the committed schema/migrations and [current API contract](05-api-contract.md) rather than treating these earlier table lists as an exhaustive current inventory.
 
 This is the approved data model for the first persistent, local-only operating version. It supersedes the earlier conceptual model where it conflicts with this document. Full workflow and scope rules are in [10-local-operations-mvp.md](10-local-operations-mvp.md).

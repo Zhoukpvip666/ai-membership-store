@@ -1,5 +1,7 @@
 # Phase 2 — User Model Refactoring & Subscription Management Core
 
+> **Later approved design (pending implementation):** [T25](34-customer-claim-registration.md) permits unclaimed customer records without a login email and updates name fallbacks/DTOs accordingly. The historical Phase 2 creation and activation rules below remain the current baseline until T25 is implemented; all subscription and ownership safeguards remain applicable.
+
 > **Historical implementation and compatibility scope:** This guide preserves Phase 2 behavior and its migration/test history. Its administrator direct-creation and manual-renewal endpoints remain compatibility functionality; they are distinct from customer/order-based renewal, which remains unimplemented. Initial order fulfillment and ORDER-linked subscription creation were later merged in PR #26, and customer subscription reads in PR #38. See the [current project status](00-project-status.md) and [manual fulfillment contract](24-manual-fulfillment-api.md). References below to placeholder/Mock order and customer pages describe the Phase 2 handoff only.
 
 This phase was implemented on a separate feature worktree for owner review and superseded the older renewal design for its administrator subscription operations. Its original handoff stopped at its PR; that historical scope is not a prohibition on the later merged order/payment stages or authorization to begin new features.

@@ -1,5 +1,7 @@
 # Interface Specification
 
+> **T25 approved UI override (pending implementation):** [T25](34-customer-claim-registration.md) reduces the ADMIN create-customer dialog to the private label and displays unbound email as 待绑定邮箱. Preserve the existing invitation link and metadata controls. The invite entry uses registration with email/password/confirmation and automatically signs in the customer to their original User record, without exposing business records before authentication. Ordinary registration and purchase continuation remain unchanged. Earlier password-only activation and required administrator-provided email descriptions below are the implementation baseline until T25 is delivered.
+
 > **Merged snapshot (2026-11-23, Asia/Shanghai):** Reconciled against `main` at `105e1514e6ce97853d5e83d0b5c131df6872551b`. See [project status](00-project-status.md) for the current implementation boundary. Milestone reports and test results below retain their original scope; this documentation update does not rerun tests or establish deployment status.
 
 > **T21 CUSTOMER order center override (2026-11-20):** `/account/orders` is the real API-backed view of the signed-in customer's own orders, using the existing customer list/detail/edit/cancel APIs plus `GET /customer/order-guidance`. This override applies to existing-order management and is merged in PR #31. See [T21 contract](26-customer-order-center.md).

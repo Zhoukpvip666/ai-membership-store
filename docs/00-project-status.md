@@ -1,6 +1,6 @@
 # Current Project Status
 
-**Verified repository snapshot** — `main` at [`84b02ad7cc2a1daeb0a7929dbb5de9a174d6aafa`](https://github.com/lear111/ai-membership-store/commit/84b02ad7cc2a1daeb0a7929dbb5de9a174d6aafa), the merge of [PR #52](https://github.com/lear111/ai-membership-store/pull/52).
+**Verified implementation snapshot** — `main` at [`bd9b1168c4fa7acbdaf247f6e9c56cfbf5c61232`](https://github.com/lear111/ai-membership-store/commit/bd9b1168c4fa7acbdaf247f6e9c56cfbf5c61232), the merge of [PR #53](https://github.com/lear111/ai-membership-store/pull/53). Subsequent documentation-only commits do not alter this implementation baseline.
 
 This index records implemented repository capabilities and outstanding boundaries. It is not a release record, a new test run, or evidence that a server or database has been upgraded. Check the current branch and relevant PR before starting another task.
 
@@ -15,7 +15,9 @@ The current main includes the customer order detail and product description link
 
 ## Current work priority
 
-[T23.5-8 storefront launch polish](30-storefront-launch-preparation.md) is implemented on the review branch. The public name API and shared branding prepare the customer-facing storefront for launch. The operating overview explicitly labels its data as a demonstration. A separate release is required to publish these changes.
+[T23.5-8 storefront launch polish](30-storefront-launch-preparation.md) is merged in PR #53. The public name API, shared branding and demonstration label are implemented.
+
+**Next approved design (not implemented):** [T25 customer records and invitation registration](34-customer-claim-registration.md). ADMIN creates a record with a private label and no email; the customer uses the existing invitation link to register and claim that same User ID. The current implementation still requires an ADMIN-supplied login email and password-only invitation activation. T25 requires a new migration, isolated upgrade/fresh-install tests, review and a separately approved production release.
 
 ## Product and technical baseline
 

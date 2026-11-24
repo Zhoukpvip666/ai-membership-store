@@ -1,5 +1,7 @@
 # Local Operations API Contract (Task 1.2 and Phase 2)
 
+> **T25 approved API override (pending implementation):** See [T25 target contract](34-customer-claim-registration.md). POST /admin/users accepts only adminLabel; pending user email fields become nullable. POST /auth/register accepts email/password and optional invitationToken, and either creates a new user or atomically claims an existing pending User and returns the normal registration Session. The existing /activate#TOKEN invitation URL, issuance/revocation/expiry and safe metadata remain; the password-only activation API cannot bypass the new registration contract. Until the T25 implementation merges, the implemented endpoint descriptions below remain the baseline.
+
 > **Merged snapshot (2026-11-23, Asia/Shanghai):** Reconciled against `main` at `105e1514e6ce97853d5e83d0b5c131df6872551b`. See [project status](00-project-status.md) for the current implementation boundary. Milestone reports and test results below retain their original scope; this documentation update does not rerun tests or establish deployment status.
 
 Base path: /api/v1. Payloads are JSON except for the explicitly documented binary image upload/read routes. Timestamps are UTC ISO-8601. Money is integer CNY fen. Validate all input with Zod or an equivalent schema validator. This contract covers the local-only offline operations milestone; online payment and supplier/email APIs are deliberately absent.

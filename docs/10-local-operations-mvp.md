@@ -1,5 +1,7 @@
 # Task 1.2 — Local Offline Customer and Order Management
 
+> **Later approved design (pending implementation):** [T25](34-customer-claim-registration.md) changes customer creation and invitation registration while preserving ADMIN-managed orders/subscriptions for unclaimed customer records. This historical milestone is not the new T25 implementation contract.
+
 > **Historical milestone:** This document preserves the original Task 1.2 scope, exclusions and implementation sequence. It is not the current backlog or feature inventory. Public registration, catalog, customer purchasing, order centers and subscription reads were implemented in later stages; see the [current project status](00-project-status.md). Historical deployment restrictions and test records below do not establish the current state of any server.
 
 > **Historical model-only stage (2026-11-18):** [Order/subscription stage 1](15-order-subscription-foundation.md) introduced the order-first data model while retaining Phase 2 runtime behavior. New workflow subscriptions require a source order after full manual payment confirmation and fulfillment. USER/ADMIN/SYSTEM_RENEWAL sources describe origins, not online payment. That stage added schema/migration/compatibility/tests only; later stages added order/payment APIs and UI. Unknown historical periods and unlinked subscriptions remain unchanged. Migration verification uses isolated databases only.
