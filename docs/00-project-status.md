@@ -1,6 +1,6 @@
 # Current Project Status
 
-**Verified implementation snapshot** — `main` at [`234397bb5ba3c7c009f63a0a8f53cc6bfae3e374`](https://github.com/lear111/ai-membership-store/commit/234397bb5ba3c7c009f63a0a8f53cc6bfae3e374), the merge of [PR #54](https://github.com/lear111/ai-membership-store/pull/54). Subsequent documentation-only commits do not alter this implementation baseline.
+**Verified implementation snapshot** — `main` at [`408b3b276a26abe97be2b519f5d8d9f19fc68682`](https://github.com/lear111/ai-membership-store/commit/408b3b276a26abe97be2b519f5d8d9f19fc68682), the merge of [PR #55](https://github.com/lear111/ai-membership-store/pull/55), following T25 in PR #54. Subsequent documentation-only commits do not alter this implementation baseline.
 
 This index records implemented repository capabilities and outstanding boundaries. It is not a release record, a new test run, or evidence that a server or database has been upgraded. Check the current branch and relevant PR before starting another task.
 
@@ -19,9 +19,9 @@ The current main includes the customer order detail and product description link
 
 **T25 customer records and invitation registration is implemented and merged in PR #54.** ADMIN creates a label-only customer record; the customer uses the existing invitation link to register with their own email/password and claim the same User ID. Migration 15 makes `loginEmail` nullable, preserves the unique index, clears only confirmed never-activated ADMIN-created customer emails, and allows nullable order contact snapshots without rewriting history. See [T25 contract and implementation evidence](34-customer-claim-registration.md).
 
-**Production rollout is intentionally deferred.** The owner has chosen to accumulate several application updates and deploy them together rather than migrate production for each individual PR. The last production release evidence provided in this conversation is T23.5-9 at `bd9b116`; no evidence here shows migration 15 or PR #54 deployed. Continue development and isolated validation against `main`. When the owner chooses a release window, inspect the actual production account classification, create and verify a recoverable backup/restore point, then apply the complete reviewed migration chain and deploy one compatible release. Do not perform production preflight, backup, migration, or deployment merely because another PR merges.
+**Production rollout is intentionally deferred.** The owner has chosen to accumulate several application updates and deploy them together rather than migrate production for each individual PR. The last production release evidence provided in this conversation is T23.5-9 at `bd9b116`; no evidence here shows migration 15, PR #54, or the T26 application changes deployed. Continue development and isolated validation against `main`. When the owner chooses a release window, inspect the actual production account classification, create and verify a recoverable backup/restore point, then apply the complete reviewed migration chain and deploy one compatible release. Do not perform production preflight, backup, migration, or deployment merely because another PR merges.
 
-**T26 — approved next implementation, pending PR:** extend each dynamic `textarea` field/default to 10,000 characters, with 64 KiB UTF-8 caps for serialized schema and submitted form data, and a 128 KiB JSON request-body cap. Other field limits remain unchanged. This is application validation/transport only; no database migration. See [T26 contract](35-product-form-long-text.md).
+**T26 product form long text is implemented and merged in PR #55.** Each dynamic `textarea` input/default supports 10,000 UTF-16 code units; `text` remains 500 and `email` 254. Serialized schema and order `formData` each allow 64 KiB UTF-8; Express JSON bodies allow 128 KiB. No Prisma Schema/Migration or dependency change. See [T26 contract and validation evidence](35-product-form-long-text.md).
 
 ## Product and technical baseline
 
@@ -50,6 +50,7 @@ The repository uses Vue 3, TypeScript, Vite and Element Plus, with Node.js 24, E
 | T24.5B product covers | One optional cover per product, administrator upload/replace/remove, normalized WebP storage, protected current-image reads, 4:3 display and a two-column mobile catalog | [PR #46](https://github.com/lear111/ai-membership-store/pull/46), [cover implementation and operation guide](29-product-cover-images.md) |
 | T25 customer records and invitation registration | ADMIN creates label-only pending customer records; existing invite links register a customer-chosen email/password and atomically claim the original User ID, preserving orders/subscriptions | [PR #54](https://github.com/lear111/ai-membership-store/pull/54), [T25 contract and implementation evidence](34-customer-claim-registration.md) |
 | Customer order detail polish | Redesigned offline payment section, prominent order number and merchant remarks, and safe HTTP/HTTPS links in product descriptions | [PR #49](https://github.com/lear111/ai-membership-store/pull/49) |
+| T26 dynamic form long text | Textarea values/defaults up to 10,000 UTF-16 code units; 64 KiB UTF-8 schema/formData limits; 128 KiB JSON request limit; text/email limits unchanged | [PR #55](https://github.com/lear111/ai-membership-store/pull/55), [T26 contract](35-product-form-long-text.md) |
 
 ## Current boundaries and unfinished work
 

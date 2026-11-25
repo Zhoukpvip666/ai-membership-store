@@ -1,6 +1,6 @@
 # Task 1.2.3 — Products, settings and dynamic form configuration
 
-> **T26 approved limit override (implementation pending):** [T26 contract](35-product-form-long-text.md) raises each dynamic `textarea` input and default value to 10,000 characters. `text` remains 500 and `email` remains 254. Serialized form schema and submitted form data each have a 64 KiB UTF-8 aggregate limit; the Express JSON request-body limit becomes 128 KiB. The 500-character textarea defaults, 8 KiB schema/form-data limits and 16 KiB request limit described in the historical Form contract below are the pre-T26 baseline and remain current until T26 is implemented and merged.
+> **T26 implemented limit override (PR #55):** [T26 contract](35-product-form-long-text.md) raises each dynamic `textarea` input and default value to 10,000 UTF-16 code units. `text` remains 500 and `email` remains 254. Serialized form schema and submitted form data each have a 64 KiB UTF-8 aggregate limit; the Express JSON request-body limit is 128 KiB. The older 500-character textarea, 8 KiB schema/formData and 16 KiB request limits described below are historical pre-T26 values.
 
 > Historical milestone report with later implementation addenda. See [current project status](00-project-status.md) for merged capabilities. [Phase 2](14-user-subscription-core.md) records the later subscription compatibility contract. Prior table/test counts and prototype-only boundaries below describe their original milestone, not the current schema or complete application.
 
@@ -35,19 +35,20 @@ The shared browser-safe Zod contract is `backend/src/contracts/product-form.ts`.
 | Item | Rule |
 |---|---|
 | Version | Literal 1; strict objects reject unknown keys at every level |
-| Fields | 0–20, ordered; serialized UTF-8 schema maximum 8192 bytes |
+| Fields | 0–20, ordered; serialized UTF-8 schema maximum 65,536 bytes (64 KiB) |
 | ID | Unique, stable, 1–64 ASCII letters/digits/underscore/hyphen, begins with a letter; prototype-related keys rejected |
 | Label / hint | Trimmed nonempty label max 80; hint max 200, defaults to empty string |
 | Required | Boolean; preview marker only, no customer submission in this task |
 | Options | Required only for select/radio/checkbox; 1–20 strict `{value,label}` records, nonempty max 80 each, unique values |
-| Text / textarea default | Optional string, max 500 |
+| Text default | Optional string, max 500 |
+| Textarea default | Optional string, max 10,000 UTF-16 code units |
 | Email default | Optional valid email (max 254) or empty string |
 | Select / radio default | Optional string matching one option value |
 | Checkbox default | Optional array of distinct existing option values, max 20 |
 | Number default | Optional finite number within ±Number.MAX_SAFE_INTEGER; decimals allowed |
 | Date default | Optional real calendar date in YYYY-MM-DD format |
 
-The total request still has the existing 16 KiB limit. A schema satisfying individual field limits may still exceed the total 8 KiB schema limit and be rejected. Removing an option clears/filter its default; changing field type retains the field ID and common properties but resets type-specific values. Option IDs generated in the UI are stable across label edits and reorder. No arbitrary markup is executed; literal angle-bracket text is escaped by Vue.
+The Express JSON request body limit is 128 KiB. Submitted `formData` is limited to 65,536 UTF-8 bytes (64 KiB), independently of the 64 KiB schema limit. A schema satisfying individual field limits may still exceed the aggregate schema limit and be rejected. Removing an option clears/filter its default; changing field type retains the field ID and common properties but resets type-specific values. Option IDs generated in the UI are stable across label edits and reorder. No arbitrary markup is executed; literal angle-bracket text is escaped by Vue.
 
 ## Versioned incremental migrations and historical data
 
